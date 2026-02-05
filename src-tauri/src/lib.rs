@@ -1,3 +1,16 @@
+use tokio::sync::Mutex;
+
+mod file_control;
+
+
+
+pub struct AppState {
+    file_list: Mutex<Vec<String>>, //This is a quick access to all the current files in the curret working dir
+    wdir: String, // The path to the current working director
+    //.. as needed
+}
+
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {

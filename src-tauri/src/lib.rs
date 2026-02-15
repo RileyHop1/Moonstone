@@ -27,14 +27,18 @@ impl AppState {
     fn remove_project(&self, project_name: String) {
         let mut projects = self.projects.lock().unwrap();
         projects.retain(|project| project != &project_name);
-
     }
 
 
     fn update_current_directory(&self, new_directory: String) {
-
+        *self.current_directory.lock().unwrap() = new_directory;
     }
 }
+
+
+
+
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {

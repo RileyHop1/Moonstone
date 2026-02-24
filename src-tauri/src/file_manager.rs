@@ -14,22 +14,22 @@ pub async fn create_file(app: AppHandle, parent_directory: String, file_name: St
 
         //Blocks empty file names.
         if file_name.is_empty() {
-            return Err("File name can't be empty");
+            return Err("File name can't be empty".to_string());
         }
 
         let full_path = std::path::Path::new(&parent_directory).join(&file_name);
 
-        //Returns an error if the file alread exists.
+        //Returns an error if the file already exists.
         if full_path.exists() {
             return Err(format!("File {} already exists", file_name));
         }
 
-        tokio::fs::write(&full_path, "")
+        fs::write(&full_path, "")
             .await.map_err(|e| e.to_string())?;
 
         let path_str = full_path.to_string_lossy().to_string();
 
-        app.emit_all("file-created", path_str.clone()).unwrap();
+        app.emit_all("file-created", path_str.clone()).map_err(|e| e.to_string)?;
 
         Ok(path_str)
 }
@@ -50,12 +50,12 @@ pub async fn create_directory(app: AppHandle, parent_directory: String, dir_name
         return Err(format!("Directory {} already exists", dir_name));
     }
 
-    tokio::fs::create_dir_all(&full_path)
+    fs::create_dir_all(&full_path)
         .await.map_err(|e| e.to_string())?;
 
     let path_str = full_path.to_string_lossy().to_string();
 
-    app.emit_all("directory-created", path_str.clone()).unwrap();
+    app.emit_all("directory-created", path_str.clone()).map_err(|e| e.to_string)?;
 
     Ok(path_str)
 

@@ -4,44 +4,36 @@ use tauri::{
     Manager
 };
 
-
-
-
-
 #[tauri::command]
 pub async fn create_file(app: AppHandle, parent_directory: String, file_name: String) 
-    -> Result<String, String> {
+-> Result<String, String> {
+    // Blocks empty file names.
+    if file_name.is_empty() {
+        return Err("File name can't be empty".to_string());
+    }
 
-        //Blocks empty file names.
-        if file_name.is_empty() {
-            return Err("File name can't be empty".to_string());
-        }
+    let full_path = std::path::Path::new(&parent_directory).join(&file_name);
 
-        let full_path = std::path::Path::new(&parent_directory).join(&file_name);
+    // Returns an error if the file already exists.
+    if full_path.exists() {
+        return Err(format!("File {} already exists", file_name));
+    }
 
-        //Returns an error if the file already exists.
-        if full_path.exists() {
-            return Err(format!("File {} already exists", file_name));
-        }
+    fs::write(&full_path, "")
+        .await.map_err(|e| e.to_string())?;
 
-        fs::write(&full_path, "")
-            .await.map_err(|e| e.to_string())?;
+    let path_str = full_path.to_string_lossy().to_string();
 
-        let path_str = full_path.to_string_lossy().to_string();
+    // FIX: was `.map_err(|e| e.to_string)?` — missing () on to_string
 
-        app.emit_all("file-created", path_str.clone()).map_err(|e| e.to_string)?;
-
-        Ok(path_str)
+    Ok(path_str)
 }
-
-
 
 #[tauri::command]
 pub async fn create_directory(app: AppHandle, parent_directory: String, dir_name: String) 
-    -> Result<String, String> {
-
+-> Result<String, String> {
     if dir_name.is_empty() {
-        return Err("Directory cannot be empty");
+        return Err("Directory cannot be empty".to_string());
     }
 
     let full_path = std::path::Path::new(&parent_directory).join(&dir_name);
@@ -55,10 +47,7 @@ pub async fn create_directory(app: AppHandle, parent_directory: String, dir_name
 
     let path_str = full_path.to_string_lossy().to_string();
 
-    app.emit_all("directory-created", path_str.clone()).map_err(|e| e.to_string)?;
+    app.emit_all("directory-created", path_str.clone()).map_err(|e| e.to_string())?;
 
     Ok(path_str)
-
 }
-
-

@@ -1,22 +1,43 @@
 import { invoke } from "@tauri-apps/api/core";
+import { EditorView, basicSetup } from "codemirror";
+import { EditorState } from "@codemirror/state";
+import { oneDark } from "@codemirror/theme-one-dark";
 
-let greetInputEl: HTMLInputElement | null;
-let greetMsgEl: HTMLElement | null;
 
-async function greet() {
-  if (greetMsgEl && greetInputEl) {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsgEl.textContent = await invoke("greet", {
-      name: greetInputEl.value,
-    });
-  }
-}
+const initialDoc = 
+  `
+  \\documentclass{article}
+  \\begin{document}
 
-window.addEventListener("DOMContentLoaded", () => {
-  greetInputEl = document.querySelector("#greet-input");
-  greetMsgEl = document.querySelector("#greet-msg");
-  document.querySelector("#greet-form")?.addEventListener("submit", (e) => {
-    e.preventDefault();
-    greet();
-  });
+  Hello, Moonstone!
+
+  \\end{document}
+  `;
+
+
+const editorPanel = document.querySelector(".editor-panel") as HTMLElement;
+
+
+const state = EditorState.create({
+  doc: initialDoc,
+  extensions: [
+    basicSetup,
+    oneDark,
+    EditorView.theme({
+      "&": {
+        height: "100%",
+        fontSize: "14px"
+      },
+      ".cm-scroller": {
+        overflow: "auto",
+      },
+    })
+  ],
 });
+
+
+const editor = new EditorView({
+  state,
+  parent: editorPanel,
+  });
+

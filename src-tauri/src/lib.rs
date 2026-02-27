@@ -1,5 +1,9 @@
 use std::sync::{Arc, Mutex};
 
+
+mod file_manager;
+mod project_manager;
+
 struct AppState {
     // Add any state you want to share across commands here
     projects: Arc<Mutex<Vec<String>>>,

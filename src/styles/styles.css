@@ -88,3 +88,12 @@ html, body {
   background: var(--bg-editor);
   overflow: hidden;
 }
+
+/* ---- Preview panel ---- */
+.preview-panel {
+  flex: 1;
+  background: var(--bg-preview);
+  border-left: 1px solid var(--border-color);
+  overflow-y: auto;
+  padding: 20px;
+}

@@ -80,26 +80,26 @@ A built-in library of commonly used LaTeX snippets (matrices, equations, figure 
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        Moonstone App                             │
-│                                                                  │
+│                        Moonstone App                            │
+│                                                                 │
 │  ┌──────────────────────────────────────────────────────────┐   │
-│  │                     Frontend (TypeScript + Vite)          │   │
-│  │                                                           │   │
-│  │  ┌─────────────┐   ┌──────────────┐   ┌──────────────┐  │   │
+│  │                     Frontend (TypeScript + Vite)         │   │
+│  │                                                          │   │
+│  │  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐  │   │
 │  │  │   Editor     │──▶│ Parse Engine │──▶│   Renderer   │  │   │
 │  │  │ (CodeMirror) │◀──│ (LaTeX AST)  │   │   (KaTeX /   │  │   │
-│  │  └─────────────┘   └──────────────┘   │   MathJax)   │  │   │
-│  │         │                             └──────────────┘  │   │
+│  │  └──────────────┘   └──────────────┘   │   MathJax)   │  │   │
+│  │         │                              └──────────────┘  │   │
 │  │         │  Tauri Commands                     │          │   │
 │  └─────────┼─────────────────────────────────────┼──────────┘   │
-│            ▼                                     ▼               │
+│            ▼                                     ▼              │
 │  ┌──────────────────────────────────────────────────────────┐   │
-│  │                      Backend (Rust)                       │   │
-│  │                                                           │   │
+│  │                      Backend (Rust)                      │   │
+│  │                                                          │   │
 │  │  ┌─────────────────┐       ┌──────────────────────────┐  │   │
-│  │  │  file_manager   │◀──────│    project_manager        │  │   │
-│  │  │  create_file()  │       │    Project { name, path,  │  │   │
-│  │  │  create_dir()   │       │    files, dates }         │  │   │
+│  │  │  file_manager   │◀──────│    project_manager       │  │   │
+│  │  │  create_file()  │       │    Project { name, path, │  │   │
+│  │  │  create_dir()   │       │    files, dates }        │  │   │
 │  │  └─────────────────┘       └──────────────────────────┘  │   │
 │  └──────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
@@ -116,7 +116,20 @@ A built-in library of commonly used LaTeX snippets (matrices, equations, figure 
 - `file_manager` — low-level file and directory operations. Creates `.tex` files and subdirectories, validates inputs, and emits Tauri events (`file-created`, `directory-created`) so the frontend can react to changes.
 - `project_manager` — manages the concept of a project, which is a named root directory containing one or more `.tex` files. On creation, a project initialises its directory and seeds it with an initial file via `file_manager`. The `Project` struct tracks metadata including name, path, creation date, last modified date, and file count.
 
-**Document Preview Panel** — an optional side panel showing a full rendered preview of the document, updated on save or on a configurable debounce interval.
+
+### 4.1 Frontend Structure
+
+The frontend follows a **feature-based architecture**, where code is organised by what it does rather than by file type. This keeps related logic, styles, and DOM construction co-located, making the codebase easier to navigate as it grows.
+
+The top-level `src/` directory is split into three areas:
+
+**`views/`** — Contains the major screens of the application. Each view is a self-contained module responsible for constructing its own DOM, managing its lifecycle, and applying its own styles. Views do not use separate HTML files; instead, they build their UI programmatically in TypeScript so that the single `index.html` shell can swap between them. Complex views may contain nested sub-modules for distinct regions of the interface (e.g., the editor workspace contains separate modules for the file tree, the text editor, and the live preview panel).
+
+**`shared/`** — Cross-cutting code that is not owned by any single view. This includes the application's event bus for decoupled communication between components, TypeScript type definitions and interfaces used across the codebase, and wrapper functions around Tauri's command and event APIs so that backend interaction is centralised in one place.
+
+**`styles/`** — Global CSS that applies across the entire application. This includes the CSS reset, CSS custom properties (variables) for theming, typography defaults, and any layout utilities shared between views. View-specific styles live alongside their view rather than here — only truly common styles belong in this directory.
+
+The single `main.ts` entry point is responsible for bootstrapping the application, determining which view to mount, and coordinating top-level concerns like initialisation and routing between views.
 
 ---
 
@@ -190,7 +203,7 @@ Rendering is triggered on a short debounce (configurable, default ~150ms) after 
 ## 9. Roadmap
 
 ### Phase 1 — Prototype (Current)
-- [ ] Basic Tauri app shell with a working text editor
+- [x] Basic Tauri app shell with a working text editor
 - [ ] Inline rendering of `$...$` and `$$...$$` math expressions using KaTeX
 - [ ] Click-to-edit interaction for rendered expressions
 - [ ] Basic error display for invalid expressions
@@ -242,4 +255,4 @@ The following are explicitly not goals for Moonstone, at least through v1.0:
 
 ---
 
-*Last updated: February 2026*
+*Last updated: March 2026*

@@ -203,7 +203,7 @@ Rendering is triggered on a short debounce (configurable, default ~150ms) after 
 ## 9. Roadmap
 
 ### Phase 1 — Prototype (Current)
-- [x] Basic Tauri app shell with a working text editor
+- [ ] Basic Tauri app shell with a working text editor
 - [ ] Inline rendering of `$...$` and `$$...$$` math expressions using KaTeX
 - [ ] Click-to-edit interaction for rendered expressions
 - [ ] Basic error display for invalid expressions

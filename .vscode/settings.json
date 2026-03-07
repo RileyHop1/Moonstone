@@ -1,0 +1,7 @@
+{
+    "editor.autoClosingBrackets": "never",
+    "editor.autoClosingComments": "languageDefined",
+    "editor.autoClosingDelete": "never",
+    "editor.autoClosingOvertype": "never",
+    "editor.autoClosingQuotes": "never"
+}

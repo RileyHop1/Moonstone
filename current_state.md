@@ -1,4 +1,4 @@
-# Moonstone — Codebase State (March 2026)
+# Moonstone — Codebase State (May 2026)
 
 This document is a precise snapshot of the Moonstone codebase for use as context when working with AI assistants. It describes every source file, what code is actually in each file, the interfaces exposed, and where the project is in its development arc.
 
@@ -8,12 +8,12 @@ This document is a precise snapshot of the Moonstone codebase for use as context
 
 Moonstone is a **Tauri 2** desktop application — a modern LaTeX editor with inline live preview. The tech stack is:
 
-- **Frontend:** Vanilla TypeScript, built and served by Vite
+- **Frontend:** React 19 + TypeScript, built and served by Vite
 - **Backend:** Rust, exposed to the frontend via Tauri's command/event API
-- **Editor (planned):** CodeMirror 6
+- **Editor:** CodeMirror 6 (LaTeX language extension, One Dark theme)
 - **Math rendering (planned):** KaTeX with MathJax fallback
 
-The project is in **early prototyping**. The backend has meaningful, tested logic. The frontend is currently a static HTML shell with almost no TypeScript — it has been recently reorganised from the default Tauri scaffold toward a planned feature-based architecture.
+The project is in **early prototyping**. The backend has meaningful, tested logic. The frontend was recently migrated from a vanilla TypeScript `View` class scaffold to React; it currently renders the three-panel shell and mounts a working CodeMirror editor in the editor panel.
 
 ---
 
@@ -31,8 +31,17 @@ Moonstone/
 ├── README.md               ← Design document (not code)
 ├── current_state.md        ← This file
 │
-├── src/                    ← TypeScript frontend
-│   ├── main.ts             ← Entry point (currently empty — 1 blank line)
+├── src/                    ← React + TypeScript frontend
+│   ├── main.tsx            ← Entry point — mounts <App /> into #root
+│   ├── App.tsx             ← Root component, three-panel layout
+│   ├── views/              ← major regions of the application
+│   │   └── editor/
+│   │       └── TextEditor/
+│   │           ├── TextEditor.tsx   ← CodeMirror-backed editor component
+│   │           ├── TextEditor.css   ← Component styles
+│   │           └── index.ts         ← barrel re-export
+│   ├── components/         ← view-agnostic UI primitives (empty, .gitkeep)
+│   ├── shared/             ← hooks, types, Tauri wrappers (empty, .gitkeep)
 │   ├── styles/
 │   │   └── styles.css      ← Global CSS: theme variables, reset, layout
 │   └── assets/
@@ -60,7 +69,17 @@ Moonstone/
 ## Frontend
 
 ### `index.html`
-The single HTML file that acts as the app shell. It imports `styles.css` and `main.ts`. The DOM structure is fully hand-written (no framework), and it already establishes the three-panel layout:
+Minimal HTML shell. It imports `styles.css` and `src/main.tsx`, and exposes a single `<div id="root">` for React to mount into. All DOM construction now lives in React components — the shell is no longer hand-written here.
+
+---
+
+### `src/main.tsx`
+React entry point. Looks up `#root`, throws if missing, and calls `createRoot(...).render(<StrictMode><App /></StrictMode>)`.
+
+---
+
+### `src/App.tsx`
+The root component. Renders the three-panel layout that used to live in `index.html`:
 
 ```
 .app
@@ -68,17 +87,38 @@ The single HTML file that acts as the app shell. It imports `styles.css` and `ma
   div.workspace
     aside.sidebar
       div.sidebar-header   → "Files" label
-      div.file-tree        → empty, placeholder comment
-    section.editor-panel   → empty, where CodeMirror will go
-    section.preview-panel  → empty, where the rendered preview will go
+      div.file-tree        → empty, placeholder for the file tree component
+    section.editor-panel   → contains <TextEditor />
 ```
 
-**Status:** Static shell only. No TypeScript is wired to any of these DOM elements yet.
+The preview-panel section is not yet rendered.
 
 ---
 
-### `src/main.ts`
-**Currently empty** (contains a single blank line). This is the Vite entry point referenced by `index.html`. All previous scaffold code (the `greet()` demo) has been removed.
+### `src/views/editor/TextEditor/TextEditor.tsx`
+React component that mounts a CodeMirror 6 editor. Re-exported via `src/views/editor/TextEditor/index.ts` so consumers can import from the folder path.
+
+- Uses `useRef<HTMLDivElement>` to capture the host element.
+- In `useEffect` (run once on mount), constructs an `EditorView` with `basicSetup`, `latex({ autoCloseTags, enableLinting, enableTooltips })`, and the `oneDark` theme, parented to the ref.
+- Returns a `editor.destroy()` cleanup so StrictMode double-invocation and unmounts are safe.
+- Renders a single `<div ref={hostRef} className="view-container-text-editor" />`.
+
+The math-rendering scaffolding that previously lived in `text-editor.ts` (`MathRender` ViewPlugin, `MathWidget`) was incomplete and has been dropped during the migration. It will be reintroduced when the live-preview parser is built.
+
+---
+
+### `src/views/editor/TextEditor/TextEditor.css`
+Component stylesheet. Defines `.view-container-text-editor { height: 100%; width: 100%; }`.
+
+---
+
+### `src/components/`
+Reserved for view-agnostic UI primitives (buttons, icons, dialogs, etc.). Empty placeholder (`.gitkeep`) — nothing lives here yet.
+
+---
+
+### `src/shared/`
+Reserved for non-UI cross-cutting code: reusable hooks, TypeScript types, and Tauri command/event wrappers. Empty placeholder (`.gitkeep`) — nothing lives here yet.
 
 ---
 
@@ -113,12 +153,13 @@ Global stylesheet. Contains:
 - `.editor-panel` — `flex: 1`, `--bg-editor`, `overflow: hidden`
 - `.preview-panel` — `flex: 1`, `--bg-preview`, left border, `overflow-y: auto`, 20px padding
 
-**Status:** Complete enough to render the three-panel layout correctly. No component-specific styles yet (no CodeMirror overrides, no file tree item styles).
+**Status:** Complete enough to render the three-panel layout correctly. No file-tree item styles yet, and no CodeMirror overrides beyond the One Dark theme defaults.
 
 ---
 
 ### `vite.config.ts`
-Standard Tauri + Vite configuration. Key settings:
+Standard Tauri + Vite configuration, plus the `@vitejs/plugin-react` plugin. Key settings:
+- `plugins: [react()]` — enables JSX/TSX and Fast Refresh
 - `clearScreen: false` — preserves Rust error output in the terminal
 - Dev server on port **1420** (`strictPort: true`)
 - Watches all files except `**/src-tauri/**`
@@ -129,6 +170,7 @@ Standard Tauri + Vite configuration. Key settings:
 ### `tsconfig.json`
 - Target: `ES2020`
 - Module: `ESNext`, resolution: `bundler`
+- `jsx: "react-jsx"` (new transform; no `import React` needed in components)
 - `strict: true`, `noUnusedLocals: true`, `noUnusedParameters: true`
 - `noEmit: true` (Vite handles the actual compilation)
 - `include: ["src"]` — only compiles files under `src/`
@@ -142,18 +184,24 @@ Standard Tauri + Vite configuration. Key settings:
 - `npm run tauri` — Tauri CLI
 
 **Runtime dependencies (installed, available for use):**
-| Package | Version | Purpose |
-|---|---|---|
-| `@tauri-apps/api` | ^2 | Tauri JS bindings (invoke, events, etc.) |
-| `@tauri-apps/plugin-opener` | ^2 | Open files/URLs with native OS handler |
-| `codemirror` | ^6.0.2 | CodeMirror 6 meta-package |
-| `@codemirror/state` | ^6.5.4 | Editor state management |
-| `@codemirror/view` | ^6.39.15 | Editor DOM rendering |
-| `@codemirror/theme-one-dark` | ^6.1.3 | Dark theme for CodeMirror |
-| `@codemirror/lang-javascript` | ^6.2.4 | JS language support (temp, until LaTeX extension is built) |
-| `katex` | ^0.16.33 | Math rendering library |
+| Package | Purpose |
+|---|---|
+| `react`, `react-dom` | UI framework |
+| `@tauri-apps/api` | Tauri JS bindings (invoke, events, etc.) |
+| `@tauri-apps/plugin-opener` | Open files/URLs with native OS handler |
+| `codemirror` | CodeMirror 6 meta-package |
+| `@codemirror/state` | Editor state management |
+| `@codemirror/view` | Editor DOM rendering |
+| `@codemirror/theme-one-dark` | Dark theme for CodeMirror |
+| `@codemirror/lang-javascript` | JS language support (temp, not used by `TextEditor`) |
+| `codemirror-lang-latex` | LaTeX language extension used by `TextEditor` |
+| `katex` | Math rendering library (not yet imported anywhere) |
 
-**Note:** CodeMirror and KaTeX are installed but not yet imported or used anywhere in the TypeScript source.
+**Dev dependencies of note:**
+| Package | Purpose |
+|---|---|
+| `@vitejs/plugin-react` | React Fast Refresh + JSX support in Vite |
+| `@types/react`, `@types/react-dom` | React type definitions |
 
 ---
 
@@ -340,34 +388,38 @@ Grants the `main` window `core:default` and `opener:default` permissions. No fil
 
 ## Known Gaps / What Is Not Yet Done
 
-1. **`src/main.ts` is empty** — no TypeScript wires up the DOM, CodeMirror, or Tauri commands.
+1. **Backend commands not registered** — `file_manager::create_file` and `file_manager::create_directory` are tagged `#[tauri::command]` but `lib.rs`'s `invoke_handler` only includes `greet`. The frontend cannot call them until they are added to `tauri::generate_handler![]`.
 
-2. **CodeMirror is not mounted** — the packages are installed in `node_modules` but are never imported or initialised anywhere. The `.editor-panel` `<section>` in `index.html` is empty.
+2. **No Tauri integration on the frontend** — `@tauri-apps/api` is installed but no React component invokes a command or subscribes to an event yet.
 
-3. **Backend commands not registered** — `file_manager::create_file` and `file_manager::create_directory` are tagged `#[tauri::command]` but `lib.rs`'s `invoke_handler` only includes `greet`. The frontend cannot call them until they are added to `tauri::generate_handler![]`.
+3. **No file tree component** — the `.file-tree` div in `App.tsx` is an empty placeholder.
 
-4. **`settings.rs` is empty** — no settings struct, no persistence, no commands.
+4. **No preview panel** — `App.tsx` does not render a `.preview-panel` section, and there is no live-preview component.
 
-5. **`AppState` is defined but nothing uses it** — `projects`, `current_directory`, and `within_project` are managed but no command reads or writes them.
+5. **Math rendering is unimplemented** — KaTeX is installed but unused. The `MathRender`/`MathWidget` stubs from the previous vanilla-TS scaffold were dropped during the React migration and will be reintroduced when the parser is built.
 
-6. **No `views/` or `shared/` directories yet** — the README design doc describes a feature-based `src/` structure (`views/`, `shared/`, `styles/`) but only `styles/` exists so far.
+6. **`settings.rs` is empty** — no settings struct, no persistence, no commands.
 
-7. **KaTeX is installed but unused** — no rendering logic exists on the frontend.
+7. **`AppState` is defined but nothing uses it** — `projects`, `current_directory`, and `within_project` are managed but no command reads or writes them.
 
-8. **`@codemirror/lang-javascript` is a placeholder** — a LaTeX CodeMirror language extension doesn't yet exist; JS language support is installed temporarily.
+8. **No `shared/` directory yet** — the README design doc describes `shared/` (hooks, types, Tauri wrappers); it has not been created yet.
+
+9. **`@codemirror/lang-javascript` is unused** — the editor uses `codemirror-lang-latex`. The JS language package can be removed once we are sure nothing else depends on it.
 
 ---
 
 ## Planned Frontend Architecture (from README)
 
-The README documents the intended `src/` structure (not yet implemented):
+The README documents the intended `src/` structure:
 
 ```
 src/
-├── main.ts              ← bootstrap, view routing
-├── views/               ← one module per screen/major UI area
-│   └── editor/          ← (planned) file tree + CodeMirror + preview panel
-├── shared/              ← event bus, type definitions, Tauri API wrappers
+├── main.tsx            ← React bootstrap
+├── App.tsx             ← root component
+├── views/              ← major UI regions (one folder per region)
+│   └── editor/         ← FileTree + TextEditor + Preview components
+├── components/         ← view-agnostic UI primitives
+├── shared/             ← hooks, type definitions, Tauri API wrappers
 └── styles/
-    └── styles.css       ← (exists) global CSS variables, reset, layout
+    └── styles.css      ← global CSS variables, reset, layout
 ```

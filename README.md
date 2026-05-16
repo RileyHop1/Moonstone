@@ -83,7 +83,7 @@ A built-in library of commonly used LaTeX snippets (matrices, equations, figure 
 │                        Moonstone App                            │
 │                                                                 │
 │  ┌──────────────────────────────────────────────────────────┐   │
-│  │                     Frontend (TypeScript + Vite)         │   │
+│  │                     Frontend (React + TypeScript + Vite) │   │
 │  │                                                          │   │
 │  │  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐  │   │
 │  │  │   Editor     │──▶│ Parse Engine │──▶│   Renderer   │  │   │
@@ -119,17 +119,21 @@ A built-in library of commonly used LaTeX snippets (matrices, equations, figure 
 
 ### 4.1 Frontend Structure
 
-The frontend follows a **feature-based architecture**, where code is organised by what it does rather than by file type. This keeps related logic, styles, and DOM construction co-located, making the codebase easier to navigate as it grows.
+The frontend follows a **feature-based architecture**, where code is organised by what it does rather than by file type. This keeps related logic, styles, and components co-located, making the codebase easier to navigate as it grows.
 
-The top-level `src/` directory is split into three areas:
+The top-level `src/` directory is split into four areas:
 
-**`views/`** — Contains the major screens of the application. Each view is a self-contained module responsible for constructing its own DOM, managing its lifecycle, and applying its own styles. Views do not use separate HTML files; instead, they build their UI programmatically in TypeScript so that the single `index.html` shell can swap between them. Complex views may contain nested sub-modules for distinct regions of the interface (e.g., the editor workspace contains separate modules for the file tree, the text editor, and the live preview panel).
+**`views/`** — The major regions of the application. Each view is a self-contained React component (or tree of components) responsible for rendering its own UI, managing its lifecycle (via hooks), and applying its own styles. `App.tsx` composes the active view. Complex views nest sub-components for distinct regions of the interface (e.g. the editor workspace contains separate components for the file tree, the text editor, and the live preview panel).
 
-**`shared/`** — Cross-cutting code that is not owned by any single view. This includes the application's event bus for decoupled communication between components, TypeScript type definitions and interfaces used across the codebase, and wrapper functions around Tauri's command and event APIs so that backend interaction is centralised in one place.
+**`components/`** — View-agnostic UI primitives that can be reused anywhere (buttons, icons, dialogs, menus, etc.). A piece of UI belongs here when it has no knowledge of where in the app it is being rendered. Anything tied to a specific view lives under that view instead.
 
-**`styles/`** — Global CSS that applies across the entire application. This includes the CSS reset, CSS custom properties (variables) for theming, typography defaults, and any layout utilities shared between views. View-specific styles live alongside their view rather than here — only truly common styles belong in this directory.
+**`shared/`** — Non-UI cross-cutting code: reusable hooks, TypeScript type definitions and interfaces, and wrapper functions around Tauri's command and event APIs so backend interaction is centralised in one place.
 
-The single `main.ts` entry point is responsible for bootstrapping the application, determining which view to mount, and coordinating top-level concerns like initialisation and routing between views.
+**`styles/`** — Global CSS that applies across the entire application. This includes the CSS reset, CSS custom properties (variables) for theming, typography defaults, and any layout utilities shared between components. Component-specific styles live alongside their component rather than here — only truly common styles belong in this directory.
+
+**Folder conventions.** Each component lives in its own PascalCase folder containing the component file, its CSS, and an `index.ts` barrel that re-exports the component. This lets imports stay short (`from "./views/editor/TextEditor"`) and gives a clean place to add tests or sibling helpers later.
+
+The `main.tsx` entry point is responsible for bootstrapping React and mounting the root `<App />` component into `#root`.
 
 ---
 
@@ -193,7 +197,7 @@ Rendering is triggered on a short debounce (configurable, default ~150ms) after 
 | Backend | Rust | Handles file I/O, parse-heavy operations, and performance-critical processing |
 | Editor Component | CodeMirror 6 | Highly extensible, performant, good LaTeX language support |
 | Math Rendering | KaTeX + MathJax fallback | KaTeX for speed; MathJax for coverage |
-| Frontend | Vanilla TypeScript | No framework overhead; direct DOM control |
+| Frontend | React + TypeScript | Component model for the growing UI surface (panels, dialogs, settings); strong ecosystem |
 | Build Tool | Vite + Node | Fast HMR during development; Node for frontend tooling |
 
 > **Note:** The tech stack is provisional during the prototyping phase. Decisions will be revisited before the first public release.

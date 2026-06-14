@@ -1,0 +1,18 @@
+.dropdownContainer {
+  position: relative;
+}
+
+.dropdownMenu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+
+}
+
+.dropdownTrigger {
+
+}
+
+.dropdownItem {
+
+}

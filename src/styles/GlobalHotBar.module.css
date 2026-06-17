@@ -1,0 +1,10 @@
+.HotBar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: #f3f3f3;
+  border-bottom: 1px solid #d0d0d0;
+  font-size: 14px;
+  user-select: none;
+}

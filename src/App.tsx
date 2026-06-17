@@ -1,4 +1,5 @@
 import { TextEditor } from "./views/editor/TextEditor";
+import GlobalHotBar from "./components/GlobalHotBar";
 
 export function App() {
     return (
@@ -6,6 +7,8 @@ export function App() {
             <header className="titlebar">
                 <span className="titlebar-title">Moonstone</span>
             </header>
+
+            <GlobalHotBar />
 
             <div className="workspace">
                 <aside className="sidebar">

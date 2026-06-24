@@ -6,13 +6,15 @@
   padding: 4px 10px;
   background: transparent;
   border: none;
+  color: var(--text-secondary);
   font-size: inherit;
   cursor: pointer;
   border-radius: 4px;
 }
 
 .dropdownTrigger:hover {
-  background: #e2e2e2;
+  background: var(--bg-sidebar);
+  color: var(--text-primary);
 }
 
 .dropdownMenu {
@@ -23,10 +25,10 @@
   padding: 4px 0;
   min-width: 160px;
   list-style: none;
-  background: #ffffff;
-  border: 1px solid #d0d0d0;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-color);
   border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), var(--glow);
   z-index: 100;
 }
 
@@ -34,10 +36,10 @@
   padding: 6px 14px;
   cursor: pointer;
   white-space: nowrap;
-  color: #1a1a1a
+  color: var(--text-primary);
 }
 
 .dropdownItem:hover {
-  background: #2563eb;
-  color: #ffffff;
+  background: var(--accent);
+  color: var(--bg-titlebar);
 }

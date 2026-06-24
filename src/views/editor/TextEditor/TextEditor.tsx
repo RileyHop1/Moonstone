@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { EditorView, basicSetup } from "codemirror";
 import { latex } from "codemirror-lang-latex";
-import { oneDark } from "@codemirror/theme-one-dark";
+import { moonstone } from "./moonstoneTheme";
 import "./TextEditor.css";
 
 export function TextEditor() {
@@ -19,7 +19,7 @@ export function TextEditor() {
                     enableLinting: true,
                     enableTooltips: true,
                 }),
-                oneDark,
+                moonstone,
             ],
             parent: hostRef.current,
         });

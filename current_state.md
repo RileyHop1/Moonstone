@@ -1,4 +1,4 @@
-# Moonstone — Codebase State (May 2026)
+# Moonstone — Codebase State (June 2026)
 
 This document is a precise snapshot of the Moonstone codebase for use as context when working with AI assistants. It describes every source file, what code is actually in each file, the interfaces exposed, and where the project is in its development arc.
 
@@ -13,7 +13,7 @@ Moonstone is a **Tauri 2** desktop application — a modern LaTeX editor with in
 - **Editor:** CodeMirror 6 (LaTeX language extension, One Dark theme)
 - **Math rendering (planned):** KaTeX with MathJax fallback
 
-The project is in **early prototyping**. The backend has meaningful, tested logic. The frontend was recently migrated from a vanilla TypeScript `View` class scaffold to React; it currently renders the three-panel shell and mounts a working CodeMirror editor in the editor panel.
+The project is in **early prototyping**. The backend has meaningful, tested logic. The frontend was recently migrated from a vanilla TypeScript `View` class scaffold to React; it currently renders the application shell — a titlebar, a global menu bar (the "hot bar"), and the three-panel workspace — and mounts a working CodeMirror editor in the editor panel.
 
 ---
 
@@ -37,13 +37,18 @@ Moonstone/
 │   ├── views/              ← major regions of the application
 │   │   └── editor/
 │   │       └── TextEditor/
-│   │           ├── TextEditor.tsx   ← CodeMirror-backed editor component
-│   │           ├── TextEditor.css   ← Component styles
-│   │           └── index.ts         ← barrel re-export
-│   ├── components/         ← view-agnostic UI primitives (empty, .gitkeep)
+│   │           ├── TextEditor.tsx     ← CodeMirror-backed editor component
+│   │           ├── moonstoneTheme.ts  ← Custom CodeMirror "Moonstone gem" theme
+│   │           ├── TextEditor.css     ← Component styles
+│   │           └── index.ts           ← barrel re-export
+│   ├── components/         ← view-agnostic UI primitives
+│   │   ├── GlobalHotBar.tsx ← Top menu bar (File/Edit/Insert/View/Settings/Help)
+│   │   └── DropDown.tsx     ← Reusable labelled dropdown menu
 │   ├── shared/             ← hooks, types, Tauri wrappers (empty, .gitkeep)
 │   ├── styles/
-│   │   └── styles.css      ← Global CSS: theme variables, reset, layout
+│   │   ├── styles.css            ← Global CSS: theme variables, reset, layout
+│   │   ├── GlobalHotBar.module.css ← GlobalHotBar styles (CSS module)
+│   │   └── DropDown.module.css     ← DropDown styles (CSS module)
 │   └── assets/
 │       ├── tauri.svg
 │       ├── typescript.svg
@@ -79,11 +84,12 @@ React entry point. Looks up `#root`, throws if missing, and calls `createRoot(..
 ---
 
 ### `src/App.tsx`
-The root component. Renders the three-panel layout that used to live in `index.html`:
+The root component. Renders the application shell:
 
 ```
 .app
   header.titlebar          → "Moonstone" title text
+  <GlobalHotBar />         → top menu bar (File/Edit/Insert/View/Settings/Help)
   div.workspace
     aside.sidebar
       div.sidebar-header   → "Files" label
@@ -95,15 +101,50 @@ The preview-panel section is not yet rendered.
 
 ---
 
+### `src/components/GlobalHotBar.tsx`
+The application-wide menu bar, rendered directly under the titlebar. Default-exported component.
+
+- Composes six `DropDown` instances: **File** (New Project, Open Project, New File, Save, Recent Projects), **Edit** (Undo, Redo, Find & Replace), **Insert** (Math, Tables, Template), **View** (Source, Live Preview, Full Preview), **Settings** (Light/Dark, Settings Menu), and **Help** (Documentation).
+- Each dropdown's `onSelect` currently just `console.log`s the chosen option — none of the menu actions are wired to behaviour yet.
+- Styled via `GlobalHotBar.module.css` (CSS module).
+
+---
+
+### `src/components/DropDown.tsx`
+A reusable, view-agnostic dropdown menu primitive. Default-exported component.
+
+**Props (`DropDownProps`):**
+- `name: string` — label shown on the trigger button
+- `options: string[]` — items listed when the menu is open
+- `onSelect: (option: string) => void` — called with the chosen option
+
+**Behaviour:**
+- Tracks open/closed state with `useState`.
+- Renders a trigger `<button>` that toggles the menu, and (when open) a `<ul>` of `<li>` items keyed by option text. Selecting an item calls `onSelect` and closes the menu.
+- Registers a `mousedown` listener (via `useEffect`, gated on `isOpen` and using a `useRef` on the container) to close the menu when the user clicks outside; the listener is cleaned up on close/unmount.
+- Styled via `DropDown.module.css` (CSS module).
+
+Currently mouse-driven only — no keyboard navigation, `Escape`-to-close, or ARIA attributes yet.
+
+---
+
 ### `src/views/editor/TextEditor/TextEditor.tsx`
 React component that mounts a CodeMirror 6 editor. Re-exported via `src/views/editor/TextEditor/index.ts` so consumers can import from the folder path.
 
 - Uses `useRef<HTMLDivElement>` to capture the host element.
-- In `useEffect` (run once on mount), constructs an `EditorView` with `basicSetup`, `latex({ autoCloseTags, enableLinting, enableTooltips })`, and the `oneDark` theme, parented to the ref.
+- In `useEffect` (run once on mount), constructs an `EditorView` with `basicSetup`, `latex({ autoCloseTags, enableLinting, enableTooltips })`, and the custom `moonstone` theme (from `moonstoneTheme.ts`), parented to the ref.
 - Returns a `editor.destroy()` cleanup so StrictMode double-invocation and unmounts are safe.
 - Renders a single `<div ref={hostRef} className="view-container-text-editor" />`.
 
 The math-rendering scaffolding that previously lived in `text-editor.ts` (`MathRender` ViewPlugin, `MathWidget`) was incomplete and has been dropped during the migration. It will be reintroduced when the live-preview parser is built.
+
+---
+
+### `src/views/editor/TextEditor/moonstoneTheme.ts`
+Custom CodeMirror 6 theme ("Moonstone gem"), replacing the previous `@codemirror/theme-one-dark`. Exports a single `moonstone` extension (an array combining an `EditorView.theme(...)` for the editor chrome and a `syntaxHighlighting(HighlightStyle.define(...))` for token colours).
+
+- **Chrome** (background, cursor, selection, active line, gutters, brackets, tooltips, autocomplete) is wired to the global theme variables from `styles.css` (`var(--text-primary)`, `var(--accent)`, `var(--border-color)`, etc.) so the editor stays in sync with the rest of the app. The editor background is `transparent`, letting the `.editor-panel` colour (and any future sheen) show through. Marked `{ dark: true }`.
+- **Syntax** uses a restrained moonlit palette defined locally in the file: pale lavender keywords, silver-blue names/links, moonlit-teal strings, pale-violet numbers, muted blue-grey italic comments, and a soft red for invalid tokens.
 
 ---
 
@@ -113,7 +154,7 @@ Component stylesheet. Defines `.view-container-text-editor { height: 100%; width
 ---
 
 ### `src/components/`
-Reserved for view-agnostic UI primitives (buttons, icons, dialogs, etc.). Empty placeholder (`.gitkeep`) — nothing lives here yet.
+View-agnostic UI primitives. Now contains `GlobalHotBar.tsx` and `DropDown.tsx` (documented above); the `.gitkeep` remains. Their styles live in `src/styles/` as CSS modules (see below).
 
 ---
 
@@ -128,24 +169,26 @@ Global stylesheet. Contains:
 **CSS custom properties (`:root`):**
 | Variable | Value | Purpose |
 |---|---|---|
-| `--bg-app` | `#1e1e2e` | Main app background |
-| `--bg-sidebar` | `#181825` | Sidebar background |
-| `--bg-editor` | `#1e1e2e` | Editor panel background |
-| `--bg-preview` | `#232336` | Preview panel background |
-| `--bg-titlebar` | `#11111b` | Title bar background |
-| `--text-primary` | `#cdd6f4` | Main text colour |
-| `--text-secondary` | `#a6adc8` | Dimmed/label text |
-| `--border-color` | `#313244` | All borders |
-| `--accent` | `#89b4fa` | Accent/highlight colour |
+| `--bg-app` | `#0d1117` | Main app background (blue-black gem body) |
+| `--bg-sidebar` | `#0a0e14` | Sidebar background |
+| `--bg-editor` | `#0d1117` | Editor panel background |
+| `--bg-preview` | `#131a26` | Preview panel background |
+| `--bg-titlebar` | `#070a0f` | Title bar background |
+| `--text-primary` | `#e6ecff` | Main text colour (moonlight white) |
+| `--text-secondary` | `#8b93b0` | Dimmed/label text |
+| `--border-color` | `#1e2738` | All borders |
+| `--accent` | `#a9c6ff` | Accent/highlight colour (silver-blue sheen) |
+| `--glow` | `0 0 10px rgba(169,198,255,0.35)` | Reusable adularescent glow (shadows/text-shadow) |
+| `--sheen` | radial gradient | Off-center moonlight gradient applied to the body background |
 
-(Colour palette is Catppuccin Mocha.)
+(Colour palette is a custom **Moonstone gem** theme — cool blue-black with a silver-blue sheen, evoking the gemstone's adularescence.)
 
 **CSS rules defined:**
 - `*, *::before, *::after` — box-sizing reset, zero margin/padding
-- `html, body` — full height, font stack, background colour, `overflow: hidden`
+- `html, body` — full height, font stack, background colour + `--sheen` radial gradient (fixed attachment), `overflow: hidden`
 - `.app` — `display: flex; flex-direction: column; height: 100vh`
 - `.titlebar` — 36px tall, `--bg-titlebar`, flex row, bottom border
-- `.titlebar-title` — 13px, semibold, `--text-secondary`
+- `.titlebar-title` — 13px, semibold, `--text-primary` with a `--glow` text-shadow and slight letter-spacing
 - `.workspace` — `display: flex; flex: 1; overflow: hidden`
 - `.sidebar` — 220px wide, `--bg-sidebar`, right border, flex column
 - `.sidebar-header` — 10px/12px padding, 12px uppercase label, bottom border
@@ -153,7 +196,17 @@ Global stylesheet. Contains:
 - `.editor-panel` — `flex: 1`, `--bg-editor`, `overflow: hidden`
 - `.preview-panel` — `flex: 1`, `--bg-preview`, left border, `overflow-y: auto`, 20px padding
 
-**Status:** Complete enough to render the three-panel layout correctly. No file-tree item styles yet, and no CodeMirror overrides beyond the One Dark theme defaults.
+**Status:** Complete enough to render the layout correctly. No file-tree item styles yet. The editor is themed by the custom `moonstone` CodeMirror theme (see `moonstoneTheme.ts`), which consumes these same variables.
+
+---
+
+### `src/styles/GlobalHotBar.module.css`
+CSS module for `GlobalHotBar`. Styles `.HotBar` as a horizontal flex strip under the titlebar, using the global theme variables (`--bg-titlebar` background, `--border-color` bottom border, `--text-secondary` text) so it matches the Catppuccin Mocha dark theme. Includes `user-select: none`.
+
+---
+
+### `src/styles/DropDown.module.css`
+CSS module for `DropDown`. Styles the trigger button, the absolutely-positioned menu, and its items. Also theme-variable driven: transparent trigger with a `--bg-sidebar` hover, a `--bg-sidebar` menu panel bordered with `--border-color`, and items that highlight to the `--accent` colour on hover. The dropdown menu uses `z-index: 100` to sit above the workspace.
 
 ---
 
@@ -192,7 +245,7 @@ Standard Tauri + Vite configuration, plus the `@vitejs/plugin-react` plugin. Key
 | `codemirror` | CodeMirror 6 meta-package |
 | `@codemirror/state` | Editor state management |
 | `@codemirror/view` | Editor DOM rendering |
-| `@codemirror/theme-one-dark` | Dark theme for CodeMirror |
+| `@codemirror/theme-one-dark` | Dark theme for CodeMirror (no longer used — replaced by the custom `moonstone` theme; still installed) |
 | `@codemirror/lang-javascript` | JS language support (temp, not used by `TextEditor`) |
 | `codemirror-lang-latex` | LaTeX language extension used by `TextEditor` |
 | `katex` | Math rendering library (not yet imported anywhere) |

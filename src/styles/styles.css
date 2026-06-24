@@ -1,14 +1,19 @@
-/* ---- Theme variables ---- */
+/* ---- Theme variables (Moonstone gem) ---- */
 :root {
-  --bg-app: #1e1e2e;
-  --bg-sidebar: #181825;
-  --bg-editor: #1e1e2e;
-  --bg-preview: #232336;
-  --bg-titlebar: #11111b;
-  --text-primary: #cdd6f4;
-  --text-secondary: #a6adc8;
-  --border-color: #313244;
-  --accent: #89b4fa;
+  --bg-app: #0d1117;        /* blue-black gem body */
+  --bg-sidebar: #0a0e14;
+  --bg-editor: #0d1117;
+  --bg-preview: #131a26;
+  --bg-titlebar: #070a0f;
+  --text-primary: #e6ecff;  /* moonlight white */
+  --text-secondary: #8b93b0;
+  --border-color: #1e2738;
+  --accent: #a9c6ff;        /* silver-blue sheen */
+
+  /* Adularescence: soft cool glow used on accents/focus */
+  --glow: 0 0 10px rgba(169, 198, 255, 0.35);
+  /* Off-center moonlight catching the stone */
+  --sheen: radial-gradient(120% 80% at 70% 0%, #1a2740 0%, var(--bg-app) 55%);
 }
 
 /* ---- Reset ---- */
@@ -22,6 +27,8 @@ html, body {
   height: 100%;
   font-family: 'Segoe UI', system-ui, sans-serif;
   background: var(--bg-app);
+  background-image: var(--sheen);
+  background-attachment: fixed;
   color: var(--text-primary);
   overflow: hidden;
 }
@@ -47,7 +54,9 @@ html, body {
 .titlebar-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--text-primary);
+  text-shadow: var(--glow);
+  letter-spacing: 0.3px;
 }
 
 /* ---- Workspace (three panels) ---- */

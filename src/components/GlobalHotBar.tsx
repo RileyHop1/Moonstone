@@ -1,4 +1,3 @@
-import { useState } from "react";
 import DropDown from "./DropDown";
 import styles from "../styles/GlobalHotBar.module.css";
 

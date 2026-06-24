@@ -125,7 +125,7 @@ The top-level `src/` directory is split into four areas:
 
 **`views/`** — The major regions of the application. Each view is a self-contained React component (or tree of components) responsible for rendering its own UI, managing its lifecycle (via hooks), and applying its own styles. `App.tsx` composes the active view. Complex views nest sub-components for distinct regions of the interface (e.g. the editor workspace contains separate components for the file tree, the text editor, and the live preview panel).
 
-**`components/`** — View-agnostic UI primitives that can be reused anywhere (buttons, icons, dialogs, menus, etc.). A piece of UI belongs here when it has no knowledge of where in the app it is being rendered. Anything tied to a specific view lives under that view instead.
+**`components/`** — View-agnostic UI primitives that can be reused anywhere (buttons, icons, dialogs, menus, etc.). A piece of UI belongs here when it has no knowledge of where in the app it is being rendered. Anything tied to a specific view lives under that view instead. The first primitives live here now: a reusable `DropDown` menu and the `GlobalHotBar` — the application-wide menu bar (File / Edit / Insert / View / Settings / Help) that sits beneath the titlebar.
 
 **`shared/`** — Non-UI cross-cutting code: reusable hooks, TypeScript type definitions and interfaces, and wrapper functions around Tauri's command and event APIs so backend interaction is centralised in one place.
 
@@ -259,4 +259,4 @@ The following are explicitly not goals for Moonstone, at least through v1.0:
 
 ---
 
-*Last updated: March 2026*
+*Last updated: June 2026*

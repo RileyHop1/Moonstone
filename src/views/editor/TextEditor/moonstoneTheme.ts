@@ -23,7 +23,8 @@ const operator = "var(--syn-operator)";
 const heading = "var(--syn-heading)";
 
 const moonstoneHighlight = HighlightStyle.define([
-    { tag: t.comment, color: comment, fontStyle: "italic" },
+    // Dimmed so comments visually recede from rendered content.
+    { tag: t.comment, color: comment, fontStyle: "italic", opacity: "0.6" },
     { tag: [t.keyword, t.modifier, t.controlKeyword], color: keyword },
     { tag: [t.name, t.function(t.variableName), t.labelName], color: name },
     { tag: [t.variableName, t.propertyName], color: "var(--syn-variable)" },

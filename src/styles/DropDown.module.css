@@ -39,6 +39,19 @@
   color: var(--text-primary);
 }
 
+/* Fixed-width gutter so checked and unchecked items align. */
+.dropdownCheck {
+  display: inline-block;
+  width: 1em;
+  margin-right: 6px;
+  text-align: center;
+  color: var(--accent);
+}
+
+.dropdownItem:hover .dropdownCheck {
+  color: var(--bg-titlebar);
+}
+
 .dropdownItem:hover {
   background: var(--accent);
   color: var(--bg-titlebar);

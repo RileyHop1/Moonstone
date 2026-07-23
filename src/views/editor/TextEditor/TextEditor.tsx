@@ -12,14 +12,17 @@ import { EditorView, basicSetup } from "codemirror";
 import { keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import { latex } from "codemirror-lang-latex";
+import type { ViewMode } from "../../../shared/types";
 import { moonstone } from "./moonstoneTheme";
-import { livePreview } from "./LivePreview";
+import { previewCompartment, previewExtensionForMode } from "./viewMode";
 import "./TextEditor.css";
 
 /** Props for {@link TextEditor}. */
 export interface TextEditorProps {
     /** Document contents the editor starts with. */
     readonly initialDoc: string;
+    /** View mode the editor mounts in (compartment reconfigures later). */
+    readonly initialViewMode: ViewMode;
     /** Receives the created EditorView so the parent can drive it. */
     readonly onViewReady: (view: EditorView) => void;
     /** Called whenever the document changes (parent tracks dirtiness). */
@@ -36,6 +39,7 @@ export interface TextEditorProps {
  */
 export function TextEditor({
     initialDoc,
+    initialViewMode,
     onViewReady,
     onDocChanged,
     onSaveRequested,
@@ -47,6 +51,7 @@ export function TextEditor({
     const onViewReadyRef = useRef(onViewReady);
     const onDocChangedRef = useRef(onDocChanged);
     const onSaveRequestedRef = useRef(onSaveRequested);
+    const initialViewModeRef = useRef(initialViewMode);
     onViewReadyRef.current = onViewReady;
     onDocChangedRef.current = onDocChanged;
     onSaveRequestedRef.current = onSaveRequested;
@@ -64,7 +69,7 @@ export function TextEditor({
                     enableTooltips: true,
                 }),
                 moonstone,
-                livePreview(),
+                previewCompartment.of(previewExtensionForMode(initialViewModeRef.current)),
                 EditorView.updateListener.of((update) => {
                     if (update.docChanged) onDocChangedRef.current();
                 }),

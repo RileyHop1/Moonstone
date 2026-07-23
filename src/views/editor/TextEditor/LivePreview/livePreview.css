@@ -88,6 +88,61 @@
     border-bottom-right-radius: 8px;
 }
 
+/* Inline formatting marks: the content of \textbf{...} etc. */
+.cm-fmt-bold {
+    font-weight: 700;
+}
+
+.cm-fmt-italic {
+    font-style: italic;
+}
+
+.cm-fmt-underline {
+    text-decoration: underline;
+}
+
+/* Section headings: size only — margins would distort the line
+   layout inside environment boxes. */
+.cm-heading-1 {
+    font-size: 1.5em;
+    font-weight: 700;
+}
+
+.cm-heading-2 {
+    font-size: 1.3em;
+    font-weight: 700;
+}
+
+.cm-heading-3 {
+    font-size: 1.15em;
+    font-weight: 700;
+}
+
+/* List-item marker rendered in place of \item. */
+.cm-list-marker {
+    color: var(--accent);
+    padding-right: 0.35em;
+    cursor: text;
+}
+
+/* Reference chips rendered in place of \ref/\eqref/\cite/\label. */
+.cm-ref-chip {
+    display: inline-block;
+    padding: 0 0.45em;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-preview);
+    color: var(--text-secondary);
+    font-size: 0.85em;
+    cursor: pointer;
+    user-select: none;
+}
+
+.cm-ref-chip:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
 /* Collapsed-preamble chip shown above the document box. */
 .cm-preamble-chip {
     display: inline-block;

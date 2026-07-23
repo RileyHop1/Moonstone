@@ -17,15 +17,26 @@
  * it, which reveals it on the next update.
  */
 
-import { EditorState, StateField } from "@codemirror/state";
+import { EditorState, Facet, StateField } from "@codemirror/state";
 import type { EditorSelection, Extension, Range } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin } from "@codemirror/view";
 import type { DecorationSet, ViewUpdate } from "@codemirror/view";
 import { findMathRanges } from "./findMath";
 import { findEnvironments } from "./findEnvironments";
+import { findFormatRanges } from "./findFormatting";
+import { findListItems } from "./findListItems";
+import { findRefRanges } from "./findRefs";
+import { findSections } from "./findSections";
 import { findSymbolRanges } from "./symbols";
 import { parseTabular } from "./parseTabular";
-import { MathWidget, PreambleWidget, SymbolWidget, TableWidget } from "./MathWidget";
+import {
+    ListMarkerWidget,
+    MathWidget,
+    PreambleWidget,
+    RefChipWidget,
+    SymbolWidget,
+    TableWidget,
+} from "./MathWidget";
 import "katex/dist/katex.min.css";
 import "./livePreview.css";
 
@@ -42,14 +53,53 @@ function selectionTouches(selection: EditorSelection, from: number, to: number):
 }
 
 /**
- * Builds the inline decorations (inline math + special-character
- * symbols) for the visible ranges only.
+ * Whether cursor contact reveals rendered source. Live mode provides
+ * `true`; read-only mode provides `false` so everything stays rendered
+ * regardless of the selection. Absent (e.g. no preview), defaults to
+ * revealing.
+ */
+const revealFacet = Facet.define<boolean, boolean>({
+    combine: (values) => values[0] ?? true,
+});
+
+/**
+ * Reports whether a rendered region should reveal its source: only
+ * when reveal is enabled (live mode) and the selection touches it.
+ *
+ * @param state - The editor state (carries the reveal facet + selection).
+ * @param from - Range start.
+ * @param to - Range end.
+ * @returns True when the region should show as raw source.
+ */
+function isRevealed(state: EditorState, from: number, to: number): boolean {
+    if (!state.facet(revealFacet)) return false;
+    const { selection } = state;
+    return selectionTouches(selection, from, to);
+}
+
+/**
+ * The inline layer's decoration output, split by purpose.
+ *
+ * Replaces are atomic (arrow keys hop over them); content marks must
+ * NOT be atomic or the cursor could never enter formatted text.
+ */
+interface InlineDecorationSets {
+    /** Everything rendered: replaces plus content marks. */
+    readonly decorations: DecorationSet;
+    /** Replaces only, fed to `EditorView.atomicRanges`. */
+    readonly atomic: DecorationSet;
+}
+
+/**
+ * Builds the inline decorations (inline math, formatting commands,
+ * and special-character symbols) for the visible ranges only.
  *
  * @param view - The editor view.
- * @returns Replace decorations for every rendered inline segment.
+ * @returns The rendered decorations and their atomic subset.
  */
-function buildInlineDecorations(view: EditorView): DecorationSet {
-    const decorations: Range<Decoration>[] = [];
+function buildInlineDecorations(view: EditorView): InlineDecorationSets {
+    const replaces: Range<Decoration>[] = [];
+    const marks: Range<Decoration>[] = [];
     const { state } = view;
 
     // Visible ranges are expanded to whole lines so a `$...$` pair is
@@ -71,10 +121,10 @@ function buildInlineDecorations(view: EditorView): DecorationSet {
             // Display math is the block layer's responsibility.
             if (math.display) continue;
 
-            if (selectionTouches(state.selection, math.from, math.to)) continue;
+            if (isRevealed(state, math.from, math.to)) continue;
 
             const source = state.doc.sliceString(math.innerFrom, math.innerTo);
-            decorations.push(
+            replaces.push(
                 Decoration.replace({ widget: new MathWidget(source, false) }).range(
                     math.from,
                     math.to,
@@ -82,11 +132,26 @@ function buildInlineDecorations(view: EditorView): DecorationSet {
             );
         }
 
-        // Special characters outside math (KaTeX renders those itself).
-        for (const symbol of findSymbolRanges(text, from, mathRanges)) {
-            if (selectionTouches(state.selection, symbol.from, symbol.to)) continue;
+        collectFormattingDecorations(state, text, from, mathRanges, replaces, marks);
 
-            decorations.push(
+        const refRanges = findRefRanges(text, from, mathRanges);
+        for (const ref of refRanges) {
+            if (isRevealed(state, ref.from, ref.to)) continue;
+
+            replaces.push(
+                Decoration.replace({ widget: new RefChipWidget(ref.kind, ref.keys) }).range(
+                    ref.from,
+                    ref.to,
+                ),
+            );
+        }
+
+        // Special characters outside math and reference chips (KaTeX
+        // renders math; a chip already replaces its whole command).
+        for (const symbol of findSymbolRanges(text, from, [...mathRanges, ...refRanges])) {
+            if (isRevealed(state, symbol.from, symbol.to)) continue;
+
+            replaces.push(
                 Decoration.replace({ widget: new SymbolWidget(symbol.symbol) }).range(
                     symbol.from,
                     symbol.to,
@@ -95,31 +160,74 @@ function buildInlineDecorations(view: EditorView): DecorationSet {
         }
     }
 
-    return Decoration.set(decorations, true);
+    return {
+        decorations: Decoration.set([...replaces, ...marks], true),
+        atomic: Decoration.set(replaces, true),
+    };
 }
 
-/** Viewport-limited plugin rendering inline math. */
+/**
+ * Adds decorations for every formatting command the cursor is not
+ * touching: replaces hiding the command token and closing brace, and
+ * a style mark over the content (which stays editable raw text).
+ *
+ * @param state - The editor state.
+ * @param text - The visible chunk's text.
+ * @param offset - Document position of `text[0]`.
+ * @param mathRanges - Math intervals to exclude (KaTeX territory).
+ * @param replaces - Output list for the hidden-token replaces.
+ * @param marks - Output list for the content style marks.
+ */
+function collectFormattingDecorations(
+    state: EditorState,
+    text: string,
+    offset: number,
+    mathRanges: readonly Interval[],
+    replaces: Range<Decoration>[],
+    marks: Range<Decoration>[],
+): void {
+    for (const format of findFormatRanges(text, offset, mathRanges)) {
+        if (isRevealed(state, format.from, format.to)) continue;
+
+        replaces.push(Decoration.replace({}).range(format.from, format.contentFrom));
+        replaces.push(Decoration.replace({}).range(format.contentTo, format.to));
+        marks.push(
+            Decoration.mark({ class: `cm-fmt-${format.style}` }).range(
+                format.contentFrom,
+                format.contentTo,
+            ),
+        );
+    }
+}
+
+/** Viewport-limited plugin rendering inline math, formatting, and symbols. */
 const inlineMathPlugin = ViewPlugin.fromClass(
     class {
         decorations: DecorationSet;
+        atomic: DecorationSet;
 
         constructor(view: EditorView) {
-            this.decorations = buildInlineDecorations(view);
+            const sets = buildInlineDecorations(view);
+            this.decorations = sets.decorations;
+            this.atomic = sets.atomic;
         }
 
         update(update: ViewUpdate) {
             if (update.docChanged || update.selectionSet || update.viewportChanged) {
-                this.decorations = buildInlineDecorations(update.view);
+                const sets = buildInlineDecorations(update.view);
+                this.decorations = sets.decorations;
+                this.atomic = sets.atomic;
             }
         }
     },
     {
         decorations: (value) => value.decorations,
         provide: (plugin) =>
-            // Atomic ranges make arrow keys jump over rendered math
-            // instead of stepping through the hidden source.
+            // Atomic ranges make arrow keys jump over rendered widgets
+            // instead of stepping through the hidden source. Only the
+            // replaces are atomic — content marks stay enterable.
             EditorView.atomicRanges.of(
-                (view) => view.plugin(plugin)?.decorations ?? Decoration.none,
+                (view) => view.plugin(plugin)?.atomic ?? Decoration.none,
             ),
     },
 );
@@ -154,7 +262,9 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
     const decorations: Range<Decoration>[] = [];
 
     const hiddenMath = collectDisplayMathDecorations(state, docText, decorations);
-    collectEnvironmentDecorations(state, docText, hiddenMath, decorations);
+    const envInfo = collectEnvironmentDecorations(state, docText, hiddenMath, decorations);
+    collectHeadingDecorations(state, docText, hiddenMath, envInfo, decorations);
+    collectListItemDecorations(state, docText, hiddenMath, envInfo, decorations);
 
     return Decoration.set(decorations, true);
 }
@@ -178,7 +288,7 @@ function collectDisplayMathDecorations(
     for (const math of findMathRanges(docText, 0)) {
         if (!math.display) continue;
 
-        if (selectionTouches(state.selection, math.from, math.to)) continue;
+        if (isRevealed(state, math.from, math.to)) continue;
 
         const source = docText.slice(math.innerFrom, math.innerTo);
         const startLine = state.doc.lineAt(math.from);
@@ -202,6 +312,14 @@ function collectDisplayMathDecorations(
     return hidden;
 }
 
+/** Replaced-region bookkeeping produced by the environment pass. */
+interface EnvironmentDecorationInfo {
+    /** Whole tag lines hidden behind block replaces. */
+    readonly hiddenLines: readonly Interval[];
+    /** Regions fully replaced by widgets (tables, the preamble chip). */
+    readonly replacedEnvRanges: readonly Interval[];
+}
+
 /**
  * Adds decorations for every environment the cursor is outside of:
  * hidden `\begin`/`\end` lines, box styling on interior lines, and
@@ -211,13 +329,15 @@ function collectDisplayMathDecorations(
  * @param docText - The full document text.
  * @param hiddenMath - Intervals already replaced by display math.
  * @param decorations - Output list decorations are pushed into.
+ * @returns The replaced regions, so later passes avoid overlapping
+ *   replaces (which CodeMirror rejects within one decoration set).
  */
 function collectEnvironmentDecorations(
     state: EditorState,
     docText: string,
     hiddenMath: readonly Interval[],
     decorations: Range<Decoration>[],
-): void {
+): EnvironmentDecorationInfo {
     // Dedupe hidden lines: nested `\begin`s on one line would otherwise
     // produce overlapping block replaces, which CodeMirror rejects.
     const hiddenLineNumbers = new Set<number>();
@@ -238,8 +358,8 @@ function collectEnvironmentDecorations(
         // environment (especially `document`), and editing the body
         // must not un-box it.
         const tagsRevealed =
-            selectionTouches(state.selection, beginLine.from, beginLine.to) ||
-            selectionTouches(state.selection, endLine.from, endLine.to);
+            isRevealed(state, beginLine.from, beginLine.to) ||
+            isRevealed(state, endLine.from, endLine.to);
         if (tagsRevealed) continue;
 
         if (overlapsAny(replacedEnvRanges, env.from, env.to)) continue;
@@ -262,8 +382,95 @@ function collectEnvironmentDecorations(
         boxInteriorLines(decorations, state, beginLine.number, endLine.number);
 
         if (env.name === "document") {
-            collapsePreamble(decorations, state, beginLine.from);
+            const preamble = collapsePreamble(decorations, state, beginLine.from);
+            if (preamble) replacedEnvRanges.push(preamble);
         }
+    }
+
+    const hiddenLines = [...hiddenLineNumbers].map((lineNumber) => {
+        const line = state.doc.line(lineNumber);
+        return { from: line.from, to: line.to };
+    });
+
+    return { hiddenLines, replacedEnvRanges };
+}
+
+/**
+ * Adds heading decorations for every sectioning command: a line class
+ * sizing the whole line, plus replaces hiding the `\section{` prefix
+ * and closing `}` when the cursor is off the heading line.
+ *
+ * The line class is applied even while the heading is revealed so the
+ * text keeps its size during editing (Obsidian-style).
+ *
+ * @param state - The editor state.
+ * @param docText - The full document text.
+ * @param hiddenMath - Intervals already replaced by display math.
+ * @param envInfo - Replaced regions from the environment pass.
+ * @param decorations - Output list decorations are pushed into.
+ */
+function collectHeadingDecorations(
+    state: EditorState,
+    docText: string,
+    hiddenMath: readonly Interval[],
+    envInfo: EnvironmentDecorationInfo,
+    decorations: Range<Decoration>[],
+): void {
+    for (const section of findSections(docText)) {
+        // Headings inside fully replaced regions (tables, preamble,
+        // hidden tag lines, display math) must not add decorations —
+        // overlapping replaces are rejected within one set.
+        if (overlapsAny(envInfo.replacedEnvRanges, section.from, section.to)) continue;
+        if (overlapsAny(envInfo.hiddenLines, section.from, section.to)) continue;
+        if (overlapsAny(hiddenMath, section.from, section.to)) continue;
+
+        const line = state.doc.lineAt(section.from);
+        decorations.push(
+            Decoration.line({ class: `cm-heading-${section.level}` }).range(line.from),
+        );
+
+        if (isRevealed(state, line.from, line.to)) continue;
+
+        decorations.push(Decoration.replace({}).range(section.from, section.contentFrom));
+        decorations.push(Decoration.replace({}).range(section.contentTo, section.to));
+    }
+}
+
+/**
+ * Adds a marker widget for every `\item` the cursor is not touching.
+ *
+ * The reveal granularity is the token only: editing the item's text
+ * keeps the marker rendered, matching the env-box philosophy that
+ * editing a body must not un-render its container.
+ *
+ * @param state - The editor state.
+ * @param docText - The full document text.
+ * @param hiddenMath - Intervals already replaced by display math.
+ * @param envInfo - Replaced regions from the environment pass.
+ * @param decorations - Output list decorations are pushed into.
+ */
+function collectListItemDecorations(
+    state: EditorState,
+    docText: string,
+    hiddenMath: readonly Interval[],
+    envInfo: EnvironmentDecorationInfo,
+    decorations: Range<Decoration>[],
+): void {
+    for (const item of findListItems(docText)) {
+        // Items inside fully replaced regions must not add replaces —
+        // overlapping replaces are rejected within one set.
+        if (overlapsAny(envInfo.replacedEnvRanges, item.from, item.to)) continue;
+        if (overlapsAny(envInfo.hiddenLines, item.from, item.to)) continue;
+        if (overlapsAny(hiddenMath, item.from, item.to)) continue;
+
+        if (isRevealed(state, item.from, item.to)) continue;
+
+        decorations.push(
+            Decoration.replace({ widget: new ListMarkerWidget(item.marker) }).range(
+                item.from,
+                item.to,
+            ),
+        );
     }
 }
 
@@ -296,7 +503,7 @@ function tryReplaceTabular(
 
     // A table is replaced wholesale, so any cursor contact reveals the
     // source (the generic box then applies while editing inside).
-    if (selectionTouches(state.selection, env.from, env.to)) return false;
+    if (isRevealed(state, env.from, env.to)) return false;
 
     const parsed = parseTabular(docText.slice(env.beginTo, env.endFrom));
     if (!parsed) return false;
@@ -378,22 +585,26 @@ function boxInteriorLines(
  * @param decorations - Output list decorations are pushed into.
  * @param state - The editor state.
  * @param documentBeginFrom - Start position of the `\begin{document}` line.
+ * @returns The replaced interval, or null when the preamble stays
+ *   visible (cursor inside it, or no preamble at all).
  */
 function collapsePreamble(
     decorations: Range<Decoration>[],
     state: EditorState,
     documentBeginFrom: number,
-): void {
+): Interval | null {
     // No preamble when \begin{document} is the first line.
-    if (documentBeginFrom === 0) return;
+    if (documentBeginFrom === 0) return null;
 
     const preambleTo = documentBeginFrom - 1;
 
-    if (selectionTouches(state.selection, 0, preambleTo)) return;
+    if (isRevealed(state, 0, preambleTo)) return null;
 
     decorations.push(
         Decoration.replace({ widget: new PreambleWidget(), block: true }).range(0, preambleTo),
     );
+
+    return { from: 0, to: preambleTo };
 }
 
 /** Whole-document field rendering block math, env boxes, and preamble. */
@@ -410,11 +621,21 @@ const blockPreviewField = StateField.define<DecorationSet>({
     provide: (field) => EditorView.decorations.from(field),
 });
 
+/** Options for {@link livePreview}. */
+export interface LivePreviewOptions {
+    /**
+     * Whether cursor contact reveals rendered source (default true).
+     * Read-only mode passes false so everything stays rendered.
+     */
+    readonly reveal?: boolean;
+}
+
 /**
  * The complete live-preview extension for the Moonstone editor.
  *
+ * @param options - Rendering options (e.g. disabling cursor reveal).
  * @returns The combined inline and block preview layers.
  */
-export function livePreview(): Extension {
-    return [inlineMathPlugin, blockPreviewField];
+export function livePreview(options?: LivePreviewOptions): Extension {
+    return [inlineMathPlugin, blockPreviewField, revealFacet.of(options?.reveal ?? true)];
 }

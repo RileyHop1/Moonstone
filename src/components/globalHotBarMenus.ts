@@ -14,6 +14,8 @@ import type { SettingsValue } from "../shared/settings";
 export interface MenuItem {
     readonly label: string;
     readonly action: (() => void) | null;
+    /** True renders a checkmark (e.g. the active view mode). */
+    readonly checked?: boolean;
 }
 
 /** One hot bar menu: its button label and its items. */
@@ -62,7 +64,7 @@ function buildEditMenu({ editor }: MenuContext): Menu {
         items: [
             { label: "Undo", action: editor ? editor.undo : null },
             { label: "Redo", action: editor ? editor.redo : null },
-            { label: "Find & Replace", action: null },
+            { label: "Find & Replace", action: editor ? editor.findReplace : null },
         ],
     };
 }
@@ -85,17 +87,31 @@ function buildInsertMenu({ editor }: MenuContext): Menu {
 }
 
 /**
- * Builds the View menu (all entries are future work).
+ * Builds the View menu: the three view modes, with a checkmark on the
+ * active one.
  *
+ * @param context - The wiring context.
  * @returns The menu definition.
  */
-function buildViewMenu(): Menu {
+function buildViewMenu({ editor }: MenuContext): Menu {
     return {
         name: "View",
         items: [
-            { label: "Source", action: null },
-            { label: "Live Preview", action: null },
-            { label: "Full Preview", action: null },
+            {
+                label: "Source",
+                action: editor ? () => editor.setViewMode("source") : null,
+                checked: editor?.viewMode === "source",
+            },
+            {
+                label: "Live Preview",
+                action: editor ? () => editor.setViewMode("live") : null,
+                checked: editor?.viewMode === "live",
+            },
+            {
+                label: "Read Only",
+                action: editor ? () => editor.setViewMode("readonly") : null,
+                checked: editor?.viewMode === "readonly",
+            },
         ],
     };
 }
@@ -143,7 +159,7 @@ export function buildMenus(context: MenuContext): readonly Menu[] {
         buildFileMenu(context),
         buildEditMenu(context),
         buildInsertMenu(context),
-        buildViewMenu(),
+        buildViewMenu(context),
         buildSettingsMenu(context),
         buildHelpMenu(),
     ];

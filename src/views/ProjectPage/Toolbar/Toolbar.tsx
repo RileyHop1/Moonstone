@@ -3,6 +3,7 @@
  */
 
 import type { EditorActions, SnippetName } from "../../../shared/appActions";
+import type { ViewMode } from "../../../shared/types";
 import "./Toolbar.css";
 
 /** A transient toolbar status: confirmation (info) or failure (error). */
@@ -17,11 +18,27 @@ export interface ToolbarProps {
     readonly isDirty: boolean;
     /** True when a file is open in the editor. */
     readonly hasOpenFile: boolean;
+    /** The editor's current view mode (drives the segmented control). */
+    readonly viewMode: ViewMode;
     /** The editor actions the buttons delegate to. */
     readonly actions: EditorActions;
     /** Status shown at the right edge (e.g. "Saved ✓" or errors). */
     readonly statusMessage: StatusMessage | null;
 }
+
+/** One segment of the view-mode control: its label, tooltip, and mode. */
+interface ViewModeSegment {
+    readonly label: string;
+    readonly title: string;
+    readonly mode: ViewMode;
+}
+
+/** The view-mode segments, in display order. */
+const VIEW_MODE_SEGMENTS: readonly ViewModeSegment[] = [
+    { label: "Src", title: "Source — raw LaTeX", mode: "source" },
+    { label: "Live", title: "Live preview", mode: "live" },
+    { label: "Read", title: "Read only — fully rendered", mode: "readonly" },
+];
 
 /** One snippet button's label, tooltip, and snippet name. */
 interface SnippetButton {
@@ -50,7 +67,10 @@ const SNIPPET_BUTTONS: readonly SnippetButton[] = [
  * @param props - Editor state and actions.
  * @returns The toolbar element.
  */
-export function Toolbar({ isDirty, hasOpenFile, actions, statusMessage }: ToolbarProps) {
+export function Toolbar({ isDirty, hasOpenFile, viewMode, actions, statusMessage }: ToolbarProps) {
+    // Read-only mode is non-editable, so snippet insertion is disabled.
+    const canEdit = hasOpenFile && viewMode !== "readonly";
+
     return (
         <div className="editor-toolbar">
             <button
@@ -80,6 +100,32 @@ export function Toolbar({ isDirty, hasOpenFile, actions, statusMessage }: Toolba
             >
                 Redo
             </button>
+            <button
+                type="button"
+                className="toolbar-button"
+                disabled={!hasOpenFile}
+                title="Find & Replace (Ctrl+F)"
+                onClick={actions.findReplace}
+            >
+                🔍
+            </button>
+
+            <span className="toolbar-separator" />
+
+            <div className="toolbar-segment" role="group" aria-label="View mode">
+                {VIEW_MODE_SEGMENTS.map((segment) => (
+                    <button
+                        key={segment.mode}
+                        type="button"
+                        className={`toolbar-segment-button${viewMode === segment.mode ? " toolbar-segment-active" : ""}`}
+                        disabled={!hasOpenFile}
+                        title={segment.title}
+                        onClick={() => actions.setViewMode(segment.mode)}
+                    >
+                        {segment.label}
+                    </button>
+                ))}
+            </div>
 
             <span className="toolbar-separator" />
 
@@ -88,7 +134,7 @@ export function Toolbar({ isDirty, hasOpenFile, actions, statusMessage }: Toolba
                     key={snippet.name}
                     type="button"
                     className="toolbar-button toolbar-button-snippet"
-                    disabled={!hasOpenFile}
+                    disabled={!canEdit}
                     title={snippet.title}
                     onClick={() => actions.insertSnippet(snippet.name)}
                 >

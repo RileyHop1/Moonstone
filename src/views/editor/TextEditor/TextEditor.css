@@ -17,3 +17,36 @@
 .view-container-text-editor .cm-scroller {
     overflow: auto;
 }
+
+/* Themed find/replace panel so it matches the app's dark surfaces. */
+.view-container-text-editor .cm-panels {
+    background: var(--bg-titlebar);
+    color: var(--text-primary);
+    border-top: 1px solid var(--border-color);
+}
+
+.view-container-text-editor .cm-panel.cm-search {
+    padding: 0.4rem 0.6rem;
+}
+
+.view-container-text-editor .cm-panel.cm-search label {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+
+.view-container-text-editor .cm-panel.cm-search input,
+.view-container-text-editor .cm-panel.cm-search button {
+    background: var(--bg-preview);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.view-container-text-editor .cm-panel.cm-search button:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.view-container-text-editor .cm-panel.cm-search .cm-button {
+    background-image: none;
+}

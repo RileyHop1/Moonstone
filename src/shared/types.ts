@@ -41,6 +41,14 @@ export type FileNode =
 /** Color theme of the application. */
 export type Theme = "dark" | "light";
 
+/**
+ * How the editor renders its document:
+ * - `source` — raw LaTeX, nothing rendered, editable.
+ * - `live` — Obsidian-style preview that reveals source at the cursor.
+ * - `readonly` — everything rendered, no reveal, not editable.
+ */
+export type ViewMode = "source" | "live" | "readonly";
+
 /** User preferences persisted by the backend. */
 export interface AppSettings {
     readonly theme: Theme;

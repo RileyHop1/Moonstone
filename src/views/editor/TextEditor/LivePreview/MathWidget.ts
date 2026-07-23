@@ -6,6 +6,7 @@
 import { WidgetType } from "@codemirror/view";
 import katex from "katex";
 import { findMathRanges } from "./findMath";
+import type { RefKind } from "./findRefs";
 import type { TabularRows } from "./parseTabular";
 
 /**
@@ -151,7 +152,9 @@ export class TableWidget extends WidgetType {
 
             for (const cell of row) {
                 const tableCell = document.createElement("td");
-                renderCellContents(tableCell, cell);
+                if (cell.span > 1) tableCell.colSpan = cell.span;
+                if (cell.align !== null) tableCell.style.textAlign = cell.align;
+                renderCellContents(tableCell, cell.source);
                 tableRow.appendChild(tableCell);
             }
 
@@ -210,6 +213,104 @@ function renderCellContents(cell: HTMLElement, source: string): void {
 
     if (position < source.length) {
         cell.appendChild(document.createTextNode(source.slice(position)));
+    }
+}
+
+/**
+ * Inline widget rendering a list-item marker (`\item` → `•` or `1.`).
+ */
+export class ListMarkerWidget extends WidgetType {
+    /**
+     * @param marker - The rendered marker text.
+     */
+    constructor(private readonly marker: string) {
+        super();
+    }
+
+    /**
+     * Compares widgets so unchanged markers are not re-rendered.
+     *
+     * @param other - The widget to compare against.
+     * @returns True when both render the same marker.
+     */
+    override eq(other: ListMarkerWidget): boolean {
+        return other.marker === this.marker;
+    }
+
+    /**
+     * Renders the marker.
+     *
+     * @returns The marker element.
+     */
+    override toDOM(): HTMLElement {
+        const span = document.createElement("span");
+        span.className = "cm-list-marker";
+        span.textContent = this.marker;
+        return span;
+    }
+
+    /**
+     * Lets clicks through so clicking the marker reveals `\item`.
+     *
+     * @returns Always false.
+     */
+    override ignoreEvent(): boolean {
+        return false;
+    }
+}
+
+/** Reference kind → chip icon. */
+const REF_ICONS: Record<RefKind, string> = {
+    ref: "🔗",
+    eqref: "🔗",
+    cite: "📖",
+    label: "🏷",
+};
+
+/**
+ * Inline chip rendering a reference command (`\ref{key}` → 🔗 key).
+ */
+export class RefChipWidget extends WidgetType {
+    /**
+     * @param kind - Which reference command is rendered.
+     * @param keys - The referenced keys.
+     */
+    constructor(
+        private readonly kind: RefKind,
+        private readonly keys: readonly string[],
+    ) {
+        super();
+    }
+
+    /**
+     * Compares widgets so unchanged chips are not re-rendered.
+     *
+     * @param other - The widget to compare against.
+     * @returns True when both render the same chip.
+     */
+    override eq(other: RefChipWidget): boolean {
+        return other.kind === this.kind && other.keys.join(",") === this.keys.join(",");
+    }
+
+    /**
+     * Renders the chip.
+     *
+     * @returns The chip element.
+     */
+    override toDOM(): HTMLElement {
+        const chip = document.createElement("span");
+        chip.className = `cm-ref-chip cm-ref-chip-${this.kind}`;
+        chip.textContent = `${REF_ICONS[this.kind]} ${this.keys.join(", ")}`;
+        return chip;
+    }
+
+    /**
+     * Lets clicks through so clicking the chip reveals the command.
+     *
+     * @returns Always false.
+     */
+    override ignoreEvent(): boolean {
+        return false;
     }
 }
 

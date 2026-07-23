@@ -62,6 +62,7 @@ export default function GlobalHotBar() {
                         (item): DropDownOption => ({
                             label: item.label,
                             disabled: item.action === null,
+                            checked: item.checked ?? false,
                         }),
                     )}
                     onSelect={(label) => handleSelect(menu, label)}

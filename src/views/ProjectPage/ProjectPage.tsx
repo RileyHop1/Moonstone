@@ -19,10 +19,16 @@ import {
     renameEntry,
     saveFile,
 } from "../../shared/tauri";
-import type { FileNode, LoadState, ProjectInfo } from "../../shared/types";
+import type { FileNode, LoadState, ProjectInfo, ViewMode } from "../../shared/types";
 import { useDockDrag } from "../../shared/useDockDrag";
 import type { DockSide } from "../../shared/useDockDrag";
+import { openSearchPanel } from "@codemirror/search";
 import { TextEditor } from "../editor/TextEditor";
+import {
+    DEFAULT_VIEW_MODE,
+    previewCompartment,
+    previewExtensionForMode,
+} from "../editor/TextEditor/viewMode";
 import { SNIPPETS, insertSnippetIntoView } from "../editor/TextEditor/snippets";
 import { FileBrowser } from "./FileBrowser";
 import type { FileOperation } from "./FileBrowser";
@@ -88,6 +94,7 @@ export function ProjectPage({ project }: ProjectPageProps) {
     const [dockSide, setDockSide] = useState<DockSide>("left");
     const [statusMessage, setStatusMessage] = useState<StatusMessage | null>(null);
     const [dialog, setDialog] = useState<FileDialogState | null>(null);
+    const [viewMode, setViewMode] = useState<ViewMode>(DEFAULT_VIEW_MODE);
 
     const viewRef = useRef<EditorView | null>(null);
     const statusTimerRef = useRef<number | null>(null);
@@ -329,9 +336,26 @@ export function ProjectPage({ project }: ProjectPageProps) {
                 if (!confirmDiscardChanges()) return;
                 navigate({ kind: "browser" });
             },
+            viewMode,
+            setViewMode: (mode: ViewMode) => setViewMode(mode),
+            findReplace: () => {
+                const view = viewRef.current;
+                if (!view) return;
+                openSearchPanel(view);
+                view.focus();
+            },
         }),
-        [save, confirmDiscardChanges, navigate, project.path],
+        [save, confirmDiscardChanges, navigate, project.path, viewMode],
     );
+
+    // Swap the preview configuration in place when the mode changes,
+    // preserving the document and undo history (a remount would lose
+    // both). No-ops when no file is open yet.
+    useEffect(() => {
+        viewRef.current?.dispatch({
+            effects: previewCompartment.reconfigure(previewExtensionForMode(viewMode)),
+        });
+    }, [viewMode]);
 
     // Make the hotbar's Save/Undo/Redo/Insert items work while this
     // page is open.
@@ -348,6 +372,7 @@ export function ProjectPage({ project }: ProjectPageProps) {
             <Toolbar
                 isDirty={isDirty}
                 hasOpenFile={openFile !== null}
+                viewMode={viewMode}
                 actions={actions}
                 statusMessage={statusMessage}
             />
@@ -367,6 +392,7 @@ export function ProjectPage({ project }: ProjectPageProps) {
                             // Remount per file: clean editor + fresh undo history.
                             key={openFile.path}
                             initialDoc={openFile.initialDoc}
+                            initialViewMode={viewMode}
                             onViewReady={(view) => {
                                 viewRef.current = view;
                             }}

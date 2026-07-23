@@ -8,7 +8,7 @@ import type { MenuContext } from "../components/globalHotBarMenus";
 import type { EditorActions } from "../shared/appActions";
 
 /** A fully wired editor-actions stub. */
-function makeEditorActions(): EditorActions {
+function makeEditorActions(overrides?: Partial<EditorActions>): EditorActions {
     return {
         save: vi.fn(),
         undo: vi.fn(),
@@ -16,6 +16,10 @@ function makeEditorActions(): EditorActions {
         insertSnippet: vi.fn(),
         newFile: vi.fn(),
         exitProject: vi.fn(),
+        viewMode: "live",
+        setViewMode: vi.fn(),
+        findReplace: vi.fn(),
+        ...overrides,
     };
 }
 
@@ -68,6 +72,45 @@ describe("buildMenus", () => {
 
         findItem(context, "Insert", "Math").action?.();
         expect(editor.insertSnippet).toHaveBeenCalledWith("inlineMath");
+    });
+
+    it("disables View and Find & Replace without an editor", () => {
+        const context = makeContext(null);
+
+        expect(findItem(context, "Edit", "Find & Replace").action).toBeNull();
+        expect(findItem(context, "View", "Source").action).toBeNull();
+        expect(findItem(context, "View", "Live Preview").action).toBeNull();
+        expect(findItem(context, "View", "Read Only").action).toBeNull();
+    });
+
+    it("wires Find & Replace to the editor", () => {
+        const editor = makeEditorActions();
+        const context = makeContext(editor);
+
+        findItem(context, "Edit", "Find & Replace").action?.();
+
+        expect(editor.findReplace).toHaveBeenCalled();
+    });
+
+    it("dispatches each view mode from the View menu", () => {
+        const editor = makeEditorActions();
+        const context = makeContext(editor);
+
+        findItem(context, "View", "Source").action?.();
+        findItem(context, "View", "Live Preview").action?.();
+        findItem(context, "View", "Read Only").action?.();
+
+        expect(editor.setViewMode).toHaveBeenNthCalledWith(1, "source");
+        expect(editor.setViewMode).toHaveBeenNthCalledWith(2, "live");
+        expect(editor.setViewMode).toHaveBeenNthCalledWith(3, "readonly");
+    });
+
+    it("checks the active view mode", () => {
+        const context = makeContext(makeEditorActions({ viewMode: "readonly" }));
+
+        expect(findItem(context, "View", "Source").checked).toBe(false);
+        expect(findItem(context, "View", "Live Preview").checked).toBe(false);
+        expect(findItem(context, "View", "Read Only").checked).toBe(true);
     });
 
     it("toggles the theme from the Settings menu", () => {

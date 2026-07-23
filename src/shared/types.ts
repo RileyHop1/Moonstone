@@ -1,0 +1,68 @@
+/**
+ * Shared domain types used across Moonstone's pages and the Tauri
+ * backend boundary.
+ */
+
+/**
+ * Outcome of an operation that can fail, as a discriminated union so
+ * callers must handle both branches.
+ */
+export type Result<T> =
+    | { readonly ok: true; readonly data: T }
+    | { readonly ok: false; readonly error: string };
+
+/** Metadata for one project, as returned by the `list_projects` command. */
+export interface ProjectInfo {
+    readonly name: string;
+    readonly path: string;
+    /** RFC3339 timestamp of the last filesystem modification. */
+    readonly lastModified: string;
+    /** Number of entries directly inside the project directory. */
+    readonly fileCount: number;
+}
+
+/**
+ * One node of a project's file tree, discriminated on `kind` to match
+ * the backend's serde `tag = "kind"` serialization.
+ */
+export type FileNode =
+    | {
+          readonly kind: "file";
+          readonly name: string;
+          readonly path: string;
+      }
+    | {
+          readonly kind: "directory";
+          readonly name: string;
+          readonly path: string;
+          readonly children: readonly FileNode[];
+      };
+
+/** Color theme of the application. */
+export type Theme = "dark" | "light";
+
+/** User preferences persisted by the backend. */
+export interface AppSettings {
+    readonly theme: Theme;
+    /** Editor font size in pixels. */
+    readonly editorFontSize: number;
+}
+
+/**
+ * Lifecycle of asynchronously loaded data, so components render
+ * loading/error/ready states exhaustively instead of juggling flags.
+ */
+export type LoadState<T> =
+    | { readonly status: "loading" }
+    | { readonly status: "error"; readonly message: string }
+    | { readonly status: "ready"; readonly data: T };
+
+/**
+ * Compile-time exhaustiveness check for discriminated unions.
+ *
+ * @param value - The value that should be unreachable.
+ * @returns Never returns; always throws.
+ */
+export function assertNever(value: never): never {
+    throw new Error(`Unexpected value: ${JSON.stringify(value)}`);
+}

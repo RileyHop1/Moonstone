@@ -1,0 +1,194 @@
+/**
+ * Typed wrappers around Tauri's `invoke` for every Moonstone backend
+ * command.
+ *
+ * Each wrapper returns a {@link Result} instead of throwing, so pages
+ * handle failures through the type system rather than try/catch.
+ */
+
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import type { AppSettings, FileNode, ProjectInfo, Result } from "./types";
+
+/**
+ * Settings as the backend stores them: the theme arrives as a plain
+ * string and is narrowed to {@link AppSettings} by the settings
+ * provider.
+ */
+export interface StoredSettings {
+    readonly theme: string;
+    readonly editorFontSize: number;
+}
+
+/**
+ * Converts an unknown thrown value into a human-readable message.
+ *
+ * Tauri commands reject with the `Err` string from Rust, but other
+ * failures (serialization, missing command) can be `Error`s.
+ *
+ * @param error - The caught value.
+ * @returns A displayable error message.
+ */
+function toErrorMessage(error: unknown): string {
+    if (typeof error === "string") return error;
+
+    if (error instanceof Error) return error.message;
+
+    return String(error);
+}
+
+/**
+ * Invokes a Tauri command and wraps the outcome in a {@link Result}.
+ *
+ * @param command - The registered command name.
+ * @param args - Arguments passed to the command (camelCase keys).
+ * @returns The command's data on success, or an error message.
+ */
+async function invokeCommand<T>(
+    command: string,
+    args?: Record<string, unknown>,
+): Promise<Result<T>> {
+    // Running in a plain browser (`npm run dev`) leaves the Tauri bridge
+    // undefined, which otherwise surfaces as a cryptic "reading 'invoke'"
+    // error — fail with an actionable message instead.
+    if (!isTauri()) {
+        return {
+            ok: false,
+            error:
+                "Moonstone's backend isn't available in a plain browser. " +
+                "Launch the app with `npm run tauri dev` instead of `npm run dev`.",
+        };
+    }
+
+    try {
+        const data = await invoke<T>(command, args);
+        return { ok: true, data };
+    } catch (error: unknown) {
+        return { ok: false, error: toErrorMessage(error) };
+    }
+}
+
+/**
+ * Lists every project under the Moonstone root.
+ *
+ * @returns All projects, sorted by name.
+ */
+export function listProjects(): Promise<Result<readonly ProjectInfo[]>> {
+    return invokeCommand("list_projects");
+}
+
+/**
+ * Creates a new project (directory plus initial `.tex` file).
+ *
+ * @param name - Name of the new project.
+ * @returns Metadata of the created project.
+ */
+export function createProject(name: string): Promise<Result<ProjectInfo>> {
+    return invokeCommand("create_project", { name });
+}
+
+/**
+ * Deletes a whole project (to the system recycle bin).
+ *
+ * @param projectPath - Absolute path of the project directory.
+ * @returns Nothing on success.
+ */
+export function deleteProject(projectPath: string): Promise<Result<null>> {
+    return invokeCommand("delete_project", { projectPath });
+}
+
+/**
+ * Lists the full file tree of a project.
+ *
+ * @param projectPath - Absolute path of the project directory.
+ * @returns The root directory node of the project.
+ */
+export function listProjectFiles(projectPath: string): Promise<Result<FileNode>> {
+    return invokeCommand("list_project_files", { projectPath });
+}
+
+/**
+ * Reads the contents of a `.tex` file.
+ *
+ * @param filePath - Absolute path of the file.
+ * @returns The file contents.
+ */
+export function readFile(filePath: string): Promise<Result<string>> {
+    return invokeCommand("read_file", { filePath });
+}
+
+/**
+ * Overwrites a `.tex` file with new contents.
+ *
+ * @param filePath - Absolute path of the file.
+ * @param contents - Full new contents of the file.
+ * @returns Nothing on success.
+ */
+export function saveFile(filePath: string, contents: string): Promise<Result<null>> {
+    return invokeCommand("save_file", { filePath, contents });
+}
+
+/**
+ * Creates an empty `.tex` file.
+ *
+ * @param parentDirectory - Directory to create the file in.
+ * @param fileName - Bare file name without extension.
+ * @returns The full path of the created file.
+ */
+export function createFile(parentDirectory: string, fileName: string): Promise<Result<string>> {
+    return invokeCommand("create_file", {
+        parentDirectory,
+        fileName,
+        fileExtension: "tex",
+    });
+}
+
+/**
+ * Creates a directory.
+ *
+ * @param parentDirectory - Directory to create the new directory in.
+ * @param dirName - Name of the new directory.
+ * @returns The full path of the created directory.
+ */
+export function createDirectory(parentDirectory: string, dirName: string): Promise<Result<string>> {
+    return invokeCommand("create_directory", { parentDirectory, dirName });
+}
+
+/**
+ * Renames a file or directory.
+ *
+ * @param path - Current path of the entry.
+ * @param newName - The new bare name.
+ * @returns The full path of the renamed entry.
+ */
+export function renameEntry(path: string, newName: string): Promise<Result<string>> {
+    return invokeCommand("rename_entry", { path, newName });
+}
+
+/**
+ * Deletes a file or directory (to the system recycle bin).
+ *
+ * @param path - Path of the entry to delete.
+ * @returns Nothing on success.
+ */
+export function deleteEntry(path: string): Promise<Result<null>> {
+    return invokeCommand("delete_entry", { path });
+}
+
+/**
+ * Loads the persisted user settings.
+ *
+ * @returns The stored settings (theme not yet narrowed).
+ */
+export function getSettings(): Promise<Result<StoredSettings>> {
+    return invokeCommand("get_settings");
+}
+
+/**
+ * Persists the user settings.
+ *
+ * @param settings - The settings to store.
+ * @returns Nothing on success.
+ */
+export function saveSettings(settings: AppSettings): Promise<Result<null>> {
+    return invokeCommand("save_settings", { settings });
+}

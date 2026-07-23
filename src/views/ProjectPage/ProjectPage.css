@@ -1,0 +1,71 @@
+/* Project page layout: toolbar on top, dockable browser + editor below. */
+
+.project-page {
+    position: relative;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.project-workspace {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+}
+
+/* Docking right reverses the flex order so the editor never remounts. */
+.project-page-dock-right .project-workspace {
+    flex-direction: row-reverse;
+}
+
+.project-page-dock-right .file-browser {
+    border-right: none;
+    border-left: 1px solid var(--border-color);
+}
+
+.project-editor-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg-editor);
+}
+
+.editor-placeholder {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+}
+
+/* Drop-zone overlays shown while dragging the file browser. */
+.dock-zones {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 150;
+}
+
+.dock-zone {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 50%;
+    transition: background 100ms ease;
+}
+
+.dock-zone-left {
+    left: 0;
+}
+
+.dock-zone-right {
+    right: 0;
+}
+
+.dock-zone-active {
+    background: rgba(169, 198, 255, 0.08);
+    outline: 1px dashed var(--accent);
+    outline-offset: -6px;
+}

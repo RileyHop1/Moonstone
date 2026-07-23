@@ -14,6 +14,49 @@
   --glow: 0 0 10px rgba(169, 198, 255, 0.35);
   /* Off-center moonlight catching the stone */
   --sheen: radial-gradient(120% 80% at 70% 0%, #1a2740 0%, var(--bg-app) 55%);
+
+  /* Editor */
+  --editor-font-size: 14px;
+
+  /* Syntax palette (moonlit pastels on dark) */
+  --syn-keyword: #b4a9ff;
+  --syn-name: #a9c6ff;
+  --syn-variable: #e6ecff;
+  --syn-string: #9ed0c4;
+  --syn-number: #d6b9ff;
+  --syn-comment: #5a6480;
+  --syn-operator: #8b93b0;
+  --syn-heading: #cdd6f4;
+  --syn-invalid: #ff8b8b;
+  --error-color: #ff9c9c;
+}
+
+/* ---- Light theme overrides ---- */
+:root[data-theme="light"] {
+  --bg-app: #eef1f8;
+  --bg-sidebar: #e4e9f4;
+  --bg-editor: #f7f9fd;
+  --bg-preview: #ffffff;
+  --bg-titlebar: #dbe2f0;
+  --text-primary: #1d2434;
+  --text-secondary: #5c6680;
+  --border-color: #c3cde0;
+  --accent: #3b62b8;
+
+  --glow: 0 0 10px rgba(59, 98, 184, 0.22);
+  --sheen: radial-gradient(120% 80% at 70% 0%, #ffffff 0%, var(--bg-app) 55%);
+
+  /* Deeper syntax tones for contrast on light backgrounds */
+  --syn-keyword: #6a4fc9;
+  --syn-name: #2b55a8;
+  --syn-variable: #1d2434;
+  --syn-string: #1f7a63;
+  --syn-number: #8244b8;
+  --syn-comment: #7c86a3;
+  --syn-operator: #5c6680;
+  --syn-heading: #16203a;
+  --syn-invalid: #c43c3c;
+  --error-color: #c43c3c;
 }
 
 /* ---- Reset ---- */
@@ -59,50 +102,87 @@ html, body {
   letter-spacing: 0.3px;
 }
 
-/* ---- Workspace (three panels) ---- */
-.workspace {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
+.titlebar-project {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-left: 6px;
 }
 
-/* ---- Sidebar ---- */
-.sidebar {
-  width: 220px;
-  background: var(--bg-sidebar);
-  border-right: 1px solid var(--border-color);
+/* ---- Shared modal dialog (name prompts) ---- */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 6, 10, 0.7);
+  z-index: 200;
+}
+
+.dialog-panel {
   display: flex;
   flex-direction: column;
-}
-
-.sidebar-header {
-  padding: 10px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-secondary);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.file-tree {
-  flex: 1;
-  overflow-y: auto;
-  padding: 4px 0;
-}
-
-/* ---- Editor panel ---- */
-.editor-panel {
-  flex: 1;
-  background: var(--bg-editor);
-  overflow: hidden;
-}
-
-/* ---- Preview panel ---- */
-.preview-panel {
-  flex: 1;
+  gap: 0.9rem;
+  width: min(360px, 90vw);
+  padding: 1.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
   background: var(--bg-preview);
-  border-left: 1px solid var(--border-color);
-  overflow-y: auto;
-  padding: 20px;
+  box-shadow: var(--glow);
+}
+
+.dialog-title {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+}
+
+.dialog-input {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.dialog-input:focus {
+  border-color: var(--accent);
+}
+
+.dialog-error {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--error-color);
+}
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.dialog-button {
+  padding: 0.45rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.dialog-button:hover {
+  border-color: var(--accent);
+}
+
+.dialog-button-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-app);
+  font-weight: 600;
+}
+
+.dialog-button-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
 }

@@ -12,20 +12,21 @@ import type { Extension } from "@codemirror/state";
  * silver-blues with a few soft accents for differentiation.
  */
 
-// Editor-specific moonlit syntax palette.
-const keyword = "#b4a9ff"; // pale lavender
-const name = "#a9c6ff"; // silver-blue (matches --accent)
-const string = "#9ed0c4"; // moonlit teal
-const number = "#d6b9ff"; // pale violet
-const comment = "#5a6480"; // muted blue-grey
-const operator = "#8b93b0"; // matches --text-secondary
-const heading = "#cdd6f4"; // bright moonlight
+// Syntax colours route through CSS variables so the light theme
+// (styles.css `[data-theme="light"]`) restyles the editor too.
+const keyword = "var(--syn-keyword)";
+const name = "var(--syn-name)";
+const string = "var(--syn-string)";
+const number = "var(--syn-number)";
+const comment = "var(--syn-comment)";
+const operator = "var(--syn-operator)";
+const heading = "var(--syn-heading)";
 
 const moonstoneHighlight = HighlightStyle.define([
     { tag: t.comment, color: comment, fontStyle: "italic" },
     { tag: [t.keyword, t.modifier, t.controlKeyword], color: keyword },
     { tag: [t.name, t.function(t.variableName), t.labelName], color: name },
-    { tag: [t.variableName, t.propertyName], color: "#e6ecff" },
+    { tag: [t.variableName, t.propertyName], color: "var(--syn-variable)" },
     { tag: [t.string, t.special(t.string), t.regexp], color: string },
     { tag: [t.number, t.bool, t.null, t.atom], color: number },
     { tag: [t.operator, t.punctuation, t.bracket, t.derefOperator], color: operator },
@@ -35,8 +36,8 @@ const moonstoneHighlight = HighlightStyle.define([
     { tag: [t.strong], fontWeight: "bold" },
     { tag: [t.emphasis], fontStyle: "italic" },
     { tag: [t.link, t.url], color: name, textDecoration: "underline" },
-    { tag: [t.escape, t.meta], color: "#8b93b0" },
-    { tag: t.invalid, color: "#ff8b8b" },
+    { tag: [t.escape, t.meta], color: operator },
+    { tag: t.invalid, color: "var(--syn-invalid)" },
 ]);
 
 const moonstoneEditor = EditorView.theme(

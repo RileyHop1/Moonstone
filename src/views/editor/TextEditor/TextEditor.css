@@ -1,5 +1,19 @@
-/*These are just temporary values, currently.*/
+/* Editor host: fills the editor panel and lets CodeMirror scroll. */
 .view-container-text-editor {
-    height: 100%;
+    flex: 1;
+    min-height: 0;
     width: 100%;
+    overflow: hidden;
+}
+
+.view-container-text-editor .cm-editor {
+    height: 100%;
+}
+
+.view-container-text-editor .cm-content {
+    font-size: var(--editor-font-size);
+}
+
+.view-container-text-editor .cm-scroller {
+    overflow: auto;
 }

@@ -50,3 +50,46 @@
 .view-container-text-editor .cm-panel.cm-search .cm-button {
     background-image: none;
 }
+
+/* Vim status/command panel, themed to match the dark surfaces. */
+.view-container-text-editor .cm-vim-panel {
+    background: var(--bg-titlebar);
+    color: var(--text-primary);
+    border-top: 1px solid var(--border-color);
+    padding: 0.15rem 0.5rem;
+    font-family: monospace;
+}
+
+.view-container-text-editor .cm-vim-panel input {
+    color: var(--text-primary);
+    font-family: monospace;
+}
+
+/* Vim normal-mode block cursor tinted with the app accent. */
+.view-container-text-editor .cm-fat-cursor {
+    background: var(--accent);
+    color: var(--bg-titlebar) !important;
+}
+
+/*
+ * Helix block cursor, themed to match.
+ *
+ * Only the `.cm-hx-cursor` mark (the actual one-character cursor) gets the
+ * accent background. Do NOT style `.cm-hx-block-cursor`: Helix adds that
+ * class to the whole scroll container as a normal-mode marker and never
+ * removes it on teardown, so a background there floods the entire editor
+ * with the accent colour — and the flood persists even after modal editing
+ * is switched off.
+ */
+.view-container-text-editor .cm-hx-cursor {
+    background: var(--accent);
+    color: var(--bg-titlebar);
+}
+
+.view-container-text-editor .hx-status-panel,
+.view-container-text-editor .hx-command-panel {
+    background: var(--bg-titlebar);
+    color: var(--text-primary);
+    border-top: 1px solid var(--border-color);
+    font-family: monospace;
+}

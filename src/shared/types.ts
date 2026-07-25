@@ -49,6 +49,14 @@ export type Theme = "dark" | "light";
  */
 export type ViewMode = "source" | "live" | "readonly";
 
+/**
+ * Modal editing style layered over the editor. Mutually exclusive:
+ * - `none` — ordinary editing.
+ * - `vim` — Vim keybindings.
+ * - `helix` — Helix (selection-first) keybindings.
+ */
+export type ModalMode = "none" | "vim" | "helix";
+
 /** User preferences persisted by the backend. */
 export interface AppSettings {
     readonly theme: Theme;

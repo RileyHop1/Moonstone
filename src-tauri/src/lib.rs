@@ -28,6 +28,7 @@ pub fn run() {
             file_manager::read_file,
             file_manager::save_file,
             file_manager::rename_entry,
+            file_manager::move_entry,
             file_manager::delete_entry,
             project_manager::list_projects,
             project_manager::create_project,

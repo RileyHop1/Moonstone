@@ -112,6 +112,20 @@ function buildViewMenu({ editor }: MenuContext): Menu {
                 action: editor ? () => editor.setViewMode("readonly") : null,
                 checked: editor?.viewMode === "readonly",
             },
+            {
+                label: "Vim Mode",
+                action: editor
+                    ? () => editor.setModalMode(editor.modalMode === "vim" ? "none" : "vim")
+                    : null,
+                checked: editor?.modalMode === "vim",
+            },
+            {
+                label: "Helix Mode",
+                action: editor
+                    ? () => editor.setModalMode(editor.modalMode === "helix" ? "none" : "helix")
+                    : null,
+                checked: editor?.modalMode === "helix",
+            },
         ],
     };
 }

@@ -31,6 +31,7 @@ tests exercise against temp directories.
 | `create_file` | `parentDirectory`, `fileName`, `fileExtension` | `string` (path) | Refuses overwrite; `.tex` only |
 | `create_directory` | `parentDirectory`, `dirName` | `string` (path) | Emits `directory-created` event |
 | `rename_entry` | `path`, `newName` | `string` (path) | Files keep `.tex`; refuses overwrite |
+| `move_entry` | `sourcePath`, `destinationDir` | `string` (path) | Refuses overwrite, self/descendant, and whole projects; no-op if already there |
 | `delete_entry` | `path` | `()` | Sends to the recycle bin; refuses the root and whole projects |
 | `get_settings` | — | `AppSettings` | Fail-soft: defaults on missing/corrupt file |
 | `save_settings` | `settings` | `()` | JSON in the app config dir |

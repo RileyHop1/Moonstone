@@ -443,3 +443,7 @@ pnpm-debug.log*
 # OS cruft
 .DS_Store
 Thumbs.db
+
+# Local working notes for AI assistance - not part of the project
+CLAUDE.md
+plan.md

@@ -19,6 +19,8 @@ function makeEditorActions(overrides?: Partial<EditorActions>): EditorActions {
         viewMode: "live",
         setViewMode: vi.fn(),
         findReplace: vi.fn(),
+        modalMode: "none",
+        setModalMode: vi.fn(),
         ...overrides,
     };
 }
@@ -111,6 +113,36 @@ describe("buildMenus", () => {
         expect(findItem(context, "View", "Source").checked).toBe(false);
         expect(findItem(context, "View", "Live Preview").checked).toBe(false);
         expect(findItem(context, "View", "Read Only").checked).toBe(true);
+    });
+
+    it("disables the modal-mode items without an editor", () => {
+        expect(findItem(makeContext(null), "View", "Vim Mode").action).toBeNull();
+        expect(findItem(makeContext(null), "View", "Helix Mode").action).toBeNull();
+    });
+
+    it("selects a modal mode from off", () => {
+        const editor = makeEditorActions({ modalMode: "none" });
+        const context = makeContext(editor);
+
+        findItem(context, "View", "Vim Mode").action?.();
+        expect(editor.setModalMode).toHaveBeenCalledWith("vim");
+
+        findItem(context, "View", "Helix Mode").action?.();
+        expect(editor.setModalMode).toHaveBeenCalledWith("helix");
+    });
+
+    it("turns the active modal mode back off", () => {
+        const editor = makeEditorActions({ modalMode: "vim" });
+
+        findItem(makeContext(editor), "View", "Vim Mode").action?.();
+        expect(editor.setModalMode).toHaveBeenCalledWith("none");
+    });
+
+    it("checks only the active modal mode (mutually exclusive)", () => {
+        const context = makeContext(makeEditorActions({ modalMode: "helix" }));
+
+        expect(findItem(context, "View", "Vim Mode").checked).toBe(false);
+        expect(findItem(context, "View", "Helix Mode").checked).toBe(true);
     });
 
     it("toggles the theme from the Settings menu", () => {

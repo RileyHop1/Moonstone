@@ -165,6 +165,17 @@ export function renameEntry(path: string, newName: string): Promise<Result<strin
 }
 
 /**
+ * Moves a file or directory into another directory.
+ *
+ * @param sourcePath - The entry to move.
+ * @param destinationDir - The target directory.
+ * @returns The entry's full path at its new location.
+ */
+export function moveEntry(sourcePath: string, destinationDir: string): Promise<Result<string>> {
+    return invokeCommand("move_entry", { sourcePath, destinationDir });
+}
+
+/**
  * Deletes a file or directory (to the system recycle bin).
  *
  * @param path - Path of the entry to delete.

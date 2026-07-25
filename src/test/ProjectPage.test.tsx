@@ -162,7 +162,7 @@ describe("ProjectPage", () => {
         });
     });
 
-    it("renames a file via the context menu", async () => {
+    it("renames a file inline via the context menu", async () => {
         mockCommands({
             list_project_files: () => TREE,
             read_file: () => "",
@@ -172,10 +172,10 @@ describe("ProjectPage", () => {
 
         fireEvent.contextMenu(await screen.findByText("demo.tex"));
         fireEvent.click(screen.getByText("Rename"));
-        fireEvent.change(screen.getByPlaceholderText("File name"), {
-            target: { value: "renamed" },
-        });
-        fireEvent.submit(screen.getByRole("button", { name: "Rename" }).closest("form")!);
+
+        const input = screen.getByDisplayValue("demo.tex");
+        fireEvent.change(input, { target: { value: "renamed" } });
+        fireEvent.keyDown(input, { key: "Enter" });
 
         await waitFor(() => {
             expect(invokeMock).toHaveBeenCalledWith("rename_entry", {
@@ -183,6 +183,41 @@ describe("ProjectPage", () => {
                 newName: "renamed",
             });
         });
+    });
+
+    it("moves a file onto a folder via drag-and-drop", async () => {
+        mockCommands({
+            list_project_files: () => TREE,
+            read_file: () => "",
+            move_entry: () => "C:/root/demo/chapters/demo.tex",
+        });
+        renderWithProviders(<ProjectPage project={PROJECT} />);
+
+        const dataTransfer = { setData: vi.fn(), getData: () => "", effectAllowed: "", dropEffect: "" };
+        fireEvent.dragStart(await screen.findByText("demo.tex"), { dataTransfer });
+        fireEvent.drop(screen.getByText("chapters"), { dataTransfer });
+
+        await waitFor(() => {
+            expect(invokeMock).toHaveBeenCalledWith("move_entry", {
+                sourcePath: "C:/root/demo/demo.tex",
+                destinationDir: "C:/root/demo/chapters",
+            });
+        });
+    });
+
+    it("expands and collapses all folders", async () => {
+        mockCommands({ list_project_files: () => TREE, read_file: () => "" });
+        renderWithProviders(<ProjectPage project={PROJECT} />);
+
+        // Nested file hidden while its folder is collapsed.
+        await screen.findByText("chapters");
+        expect(screen.queryByText("intro.tex")).toBeNull();
+
+        fireEvent.click(screen.getByTitle("Expand all folders"));
+        expect(screen.getByText("intro.tex")).toBeInTheDocument();
+
+        fireEvent.click(screen.getByTitle("Collapse all folders"));
+        expect(screen.queryByText("intro.tex")).toBeNull();
     });
 
     it("deletes a file via the context menu after confirmation", async () => {

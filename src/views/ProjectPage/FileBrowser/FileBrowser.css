@@ -121,3 +121,31 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+/* Directory highlighted as a drag-and-drop move target. */
+.file-tree-row-drop-target {
+    background: rgba(169, 198, 255, 0.2);
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
+}
+
+/* Row container shown while inline-renaming (a plain div, not a button). */
+.file-tree-row-renaming {
+    cursor: default;
+}
+
+.file-tree-rename-input {
+    flex: 1;
+    min-width: 0;
+    padding: 0 0.2rem;
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    background: var(--bg-app);
+    color: var(--text-primary);
+    font-size: 0.88rem;
+    font-family: inherit;
+}
+
+.file-tree-rename-input-error {
+    border-color: var(--error-color);
+}

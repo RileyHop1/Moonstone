@@ -41,6 +41,10 @@ The compartment is a module singleton, which is safe because exactly
 one editor exists at a time (the project page mounts a single keyed
 `TextEditor`, remounted per file).
 
+The **View** menu also holds **Vim Mode** and **Helix Mode** toggles
+(mutually exclusive, checkmark on the active one) — optional modal
+editing via the same compartment technique. See `modal-editing.md`.
+
 ## Find & Replace
 
 The **🔍 Find** button and the Edit menu's **Find & Replace** item both

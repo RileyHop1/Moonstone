@@ -8,25 +8,38 @@ file), and the titlebar shows the project name.
 ## File browser
 
 Queries `list_project_files` for the project's full tree (directories
-recurse into subdirectories). Directories expand/collapse on click;
-clicking a file reads it (`read_file`) and opens it in the editor. If
-the current file has unsaved changes, a confirm dialog protects them
-first.
+recurse into subdirectories). Directories expand/collapse on click, and
+the header's ⊞/⊟ buttons **expand-all / collapse-all**. Clicking a file
+reads it (`read_file`) and opens it in the editor. If the current file
+has unsaved changes, a confirm dialog protects them first.
 
 **File management:** the header's ＋file/＋folder buttons create at
 the project root; right-clicking a row opens a context menu —
 directories offer New File / New Folder / Rename / Delete, files offer
 Rename / Delete. Deletes are confirmed and go to the **recycle bin**
-(never permanent). Renaming keeps a file's `.tex` extension when the
-new name has no dot, and an open file follows its own (or an ancestor
-directory's) rename without losing unsaved edits. New projects seed
-their initial `.tex` with a basic document template.
+(never permanent).
 
-**Docking:** the "Files" header is a drag handle (pointer events with
-pointer capture, not HTML5 drag-and-drop). While dragging, the window
-halves highlight as drop zones; releasing docks the panel to that side.
+- **Inline rename:** "Rename" edits the name in place in the tree
+  (`RenameInput`) — Enter commits, Escape/blur cancels, invalid names
+  show the backend error on the field. Keeps a file's `.tex` extension
+  when the new name has no dot.
+- **Drag-to-move:** drag a file or folder onto a directory row (or the
+  empty body, which targets the project root) to move it — the new Rust
+  `move_entry` command. The UI and backend both reject moving a folder
+  into itself/a descendant and refuse to overwrite an existing name;
+  dropping onto the current folder is a no-op.
+- An open file follows its own (or an ancestor directory's) rename or
+  move without losing unsaved edits (`renamedOpenFilePath`).
+
+New projects seed their initial `.tex` with a basic document template.
+
+**Docking:** the "Files" header is a drag handle using **pointer
+events** with pointer capture — separate from the file rows' **HTML5
+drag-and-drop** (move). While dragging the header, the window halves
+highlight as drop zones; releasing docks the panel to that side.
 Docking right simply reverses the flex row (`row-reverse`), so the
-editor never remounts.
+editor never remounts. The window sets `dragDropEnabled: false`
+(`tauri.conf.json`) so the webview handles HTML5 DnD rather than the OS.
 
 ## Editor wiring
 
@@ -53,7 +66,8 @@ while this page is open and render disabled elsewhere.
 ## Files
 
 - `src/views/ProjectPage/ProjectPage.tsx` — state + orchestration
-- `src/views/ProjectPage/FileBrowser/` — tree panel
+- `src/views/ProjectPage/FileBrowser/` — tree panel (+ `RenameInput.tsx`)
 - `src/views/ProjectPage/Toolbar/` — action row
 - `src/shared/useDockDrag.ts` — drag-to-dock hook
+- `src-tauri/src/file_manager.rs` — `move_entry` and other file commands
 - Tests: `src/test/ProjectPage.test.tsx`

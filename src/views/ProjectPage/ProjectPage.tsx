@@ -15,11 +15,12 @@ import {
     createFile,
     deleteEntry,
     listProjectFiles,
+    moveEntry,
     readFile,
     renameEntry,
     saveFile,
 } from "../../shared/tauri";
-import type { FileNode, LoadState, ProjectInfo, ViewMode } from "../../shared/types";
+import type { FileNode, LoadState, ModalMode, ProjectInfo, ViewMode } from "../../shared/types";
 import { useDockDrag } from "../../shared/useDockDrag";
 import type { DockSide } from "../../shared/useDockDrag";
 import { openSearchPanel } from "@codemirror/search";
@@ -29,6 +30,11 @@ import {
     previewCompartment,
     previewExtensionForMode,
 } from "../editor/TextEditor/viewMode";
+import {
+    DEFAULT_MODAL_MODE,
+    modalCompartment,
+    modalExtensionForMode,
+} from "../editor/TextEditor/modalMode";
 import { SNIPPETS, insertSnippetIntoView } from "../editor/TextEditor/snippets";
 import { FileBrowser } from "./FileBrowser";
 import type { FileOperation } from "./FileBrowser";
@@ -51,8 +57,7 @@ interface OpenFile {
 /** A pending name-prompt dialog for a file operation. */
 type FileDialogState =
     | { readonly kind: "newFile"; readonly parentDir: string }
-    | { readonly kind: "newFolder"; readonly parentDir: string }
-    | { readonly kind: "rename"; readonly path: string; readonly currentName: string };
+    | { readonly kind: "newFolder"; readonly parentDir: string };
 
 /** How long transient info status messages stay visible. */
 const STATUS_CLEAR_MS = 2000;
@@ -95,6 +100,7 @@ export function ProjectPage({ project }: ProjectPageProps) {
     const [statusMessage, setStatusMessage] = useState<StatusMessage | null>(null);
     const [dialog, setDialog] = useState<FileDialogState | null>(null);
     const [viewMode, setViewMode] = useState<ViewMode>(DEFAULT_VIEW_MODE);
+    const [modalMode, setModalMode] = useState<ModalMode>(DEFAULT_MODAL_MODE);
 
     const viewRef = useRef<EditorView | null>(null);
     const statusTimerRef = useRef<number | null>(null);
@@ -214,13 +220,43 @@ export function ProjectPage({ project }: ProjectPageProps) {
     }, [showStatus]);
 
     /**
+     * Repoints the open file after an entry it lives under is renamed
+     * or moved, preserving any unsaved contents.
+     *
+     * @param from - The entry's old path.
+     * @param to - The entry's new path.
+     */
+    const repointOpenFile = useCallback((from: string, to: string): void => {
+        const openPath = openFileRef.current?.path;
+        if (openPath === undefined) return;
+
+        const newPath = renamedOpenFilePath(openPath, from, to);
+        if (newPath === null) return;
+
+        const currentDoc =
+            viewRef.current?.state.doc.toString() ?? openFileRef.current?.initialDoc ?? "";
+        setOpenFile({ path: newPath, initialDoc: currentDoc });
+    }, []);
+
+    /**
      * Handles a file-management request from the browser: prompts for
-     * names via dialog, or confirms and performs a delete.
+     * names via dialog, performs a move, or confirms and deletes.
      */
     const handleFileOperation = useCallback(
         async (operation: FileOperation): Promise<void> => {
-            if (operation.kind !== "delete") {
+            if (operation.kind === "newFile" || operation.kind === "newFolder") {
                 setDialog(operation);
+                return;
+            }
+
+            if (operation.kind === "move") {
+                const result = await moveEntry(operation.sourcePath, operation.destDir);
+                if (!result.ok) {
+                    showStatus({ kind: "error", text: result.error });
+                    return;
+                }
+                repointOpenFile(operation.sourcePath, result.data);
+                void refreshTree();
                 return;
             }
 
@@ -250,7 +286,26 @@ export function ProjectPage({ project }: ProjectPageProps) {
 
             void refreshTree();
         },
-        [refreshTree, showStatus],
+        [refreshTree, showStatus, repointOpenFile],
+    );
+
+    /**
+     * Renames an entry in place (from the inline tree editor).
+     *
+     * @param path - The entry to rename.
+     * @param newName - The new bare name.
+     * @returns An error message, or null on success.
+     */
+    const renameInline = useCallback(
+        async (path: string, newName: string): Promise<string | null> => {
+            const result = await renameEntry(path, newName);
+            if (!result.ok) return result.error;
+
+            repointOpenFile(path, result.data);
+            void refreshTree();
+            return null;
+        },
+        [refreshTree, repointOpenFile],
     );
 
     /**
@@ -273,26 +328,6 @@ export function ProjectPage({ project }: ProjectPageProps) {
                 case "newFolder": {
                     const result = await createDirectory(dialog.parentDir, name);
                     if (!result.ok) return result.error;
-                    break;
-                }
-
-                case "rename": {
-                    const result = await renameEntry(dialog.path, name);
-                    if (!result.ok) return result.error;
-
-                    // Keep the open file (and its unsaved contents)
-                    // pointing at the right path after a rename.
-                    const openPath = openFileRef.current?.path;
-                    if (openPath !== undefined) {
-                        const renamedPath = renamedOpenFilePath(openPath, dialog.path, result.data);
-                        if (renamedPath !== null) {
-                            const currentDoc =
-                                viewRef.current?.state.doc.toString() ??
-                                openFileRef.current?.initialDoc ??
-                                "";
-                            setOpenFile({ path: renamedPath, initialDoc: currentDoc });
-                        }
-                    }
                     break;
                 }
 
@@ -344,8 +379,10 @@ export function ProjectPage({ project }: ProjectPageProps) {
                 openSearchPanel(view);
                 view.focus();
             },
+            modalMode,
+            setModalMode: (mode: ModalMode) => setModalMode(mode),
         }),
-        [save, confirmDiscardChanges, navigate, project.path, viewMode],
+        [save, confirmDiscardChanges, navigate, project.path, viewMode, modalMode],
     );
 
     // Swap the preview configuration in place when the mode changes,
@@ -356,6 +393,14 @@ export function ProjectPage({ project }: ProjectPageProps) {
             effects: previewCompartment.reconfigure(previewExtensionForMode(viewMode)),
         });
     }, [viewMode]);
+
+    // Swap the modal keymap (vim/helix/none) in place, preserving
+    // document and undo history.
+    useEffect(() => {
+        viewRef.current?.dispatch({
+            effects: modalCompartment.reconfigure(modalExtensionForMode(modalMode)),
+        });
+    }, [modalMode]);
 
     // Make the hotbar's Save/Undo/Redo/Insert items work while this
     // page is open.
@@ -383,6 +428,7 @@ export function ProjectPage({ project }: ProjectPageProps) {
                     selectedPath={openFile?.path ?? null}
                     onSelectFile={(path) => void openFileByPath(path)}
                     onFileOperation={(operation) => void handleFileOperation(operation)}
+                    onRename={renameInline}
                     dragHandleProps={handleProps}
                 />
 
@@ -393,6 +439,7 @@ export function ProjectPage({ project }: ProjectPageProps) {
                             key={openFile.path}
                             initialDoc={openFile.initialDoc}
                             initialViewMode={viewMode}
+                            initialModalMode={modalMode}
                             onViewReady={(view) => {
                                 viewRef.current = view;
                             }}
@@ -409,8 +456,7 @@ export function ProjectPage({ project }: ProjectPageProps) {
                 <NameDialog
                     title={dialogTitle(dialog)}
                     placeholder={dialog.kind === "newFolder" ? "Folder name" : "File name"}
-                    submitLabel={dialog.kind === "rename" ? "Rename" : "Create"}
-                    initialValue={dialog.kind === "rename" ? dialog.currentName : ""}
+                    submitLabel="Create"
                     onSubmit={handleDialogSubmit}
                     onCancel={() => setDialog(null)}
                 />
@@ -442,8 +488,6 @@ function dialogTitle(dialog: FileDialogState): string {
             return "New File";
         case "newFolder":
             return "New Folder";
-        case "rename":
-            return `Rename ${dialog.currentName}`;
         default:
             return "";
     }

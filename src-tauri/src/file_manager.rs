@@ -283,6 +283,38 @@ pub async fn rename_entry<R: Runtime>(
     rename_entry_impl(&entry, &new_name)
 }
 
+/// Moves a file or directory into a different directory inside the
+/// Moonstone root (e.g. via drag-and-drop in the file browser).
+///
+/// # Parameters
+///
+/// * `source_path` - The entry to move (inside the Moonstone root).
+/// * `destination_dir` - The target directory (inside the root).
+///
+/// # Returns
+///
+/// The full path of the entry at its new location.
+///
+/// # Errors
+///
+/// Returns an error if either path escapes the root, the source is a
+/// whole project, the destination is not a directory or a descendant
+/// of the source, or the target name is already taken.
+#[tauri::command]
+pub async fn move_entry<R: Runtime>(
+    app: AppHandle<R>,
+    source_path: String,
+    destination_dir: String,
+) -> Result<String, String> {
+    let root = paths::moonstone_root(&app)?;
+    let source = paths::ensure_within_root(&root, Path::new(&source_path))?;
+    let dest = paths::ensure_within_root(&root, Path::new(&destination_dir))?;
+
+    ensure_deletable(&root, &source)?;
+
+    move_entry_impl(&source, &dest)
+}
+
 /// Deletes a file or directory inside a project, sending it to the
 /// system recycle bin so mistakes are recoverable.
 ///
@@ -338,6 +370,52 @@ pub fn rename_entry_impl(entry: &Path, new_name: &str) -> Result<String, String>
     }
 
     std::fs::rename(entry, &target).map_err(|e| e.to_string())?;
+
+    Ok(target.to_string_lossy().to_string())
+}
+
+/// Moves `source` into `dest_dir`, keeping its name.
+///
+/// # Parameters
+///
+/// * `source` - The existing file or directory to move.
+/// * `dest_dir` - The directory to move it into.
+///
+/// # Returns
+///
+/// The source's full path at its new location (unchanged when it is
+/// already inside `dest_dir`).
+///
+/// # Errors
+///
+/// Returns an error if `dest_dir` is not a directory, is the source
+/// itself or a descendant of it, the target name already exists, or
+/// the filesystem move fails.
+pub fn move_entry_impl(source: &Path, dest_dir: &Path) -> Result<String, String> {
+    if !dest_dir.is_dir() {
+        return Err("The destination is not a directory".to_string());
+    }
+
+    // Dropped onto its own current folder: nothing to do.
+    if source.parent() == Some(dest_dir) {
+        return Ok(source.to_string_lossy().to_string());
+    }
+
+    // A directory cannot be moved into itself or one of its descendants.
+    if dest_dir == source || dest_dir.starts_with(source) {
+        return Err("Can't move a folder into itself".to_string());
+    }
+
+    let name = source
+        .file_name()
+        .ok_or_else(|| "Entry has no name".to_string())?;
+    let target = dest_dir.join(name);
+
+    if target.exists() {
+        return Err(format!("{} already exists in the destination", name.to_string_lossy()));
+    }
+
+    std::fs::rename(source, &target).map_err(|e| e.to_string())?;
 
     Ok(target.to_string_lossy().to_string())
 }
@@ -784,6 +862,83 @@ mod file_manager_tests {
         rename_entry_impl(&sub, "sections").unwrap();
 
         assert!(dir.path().join("sections").is_dir());
+    }
+
+    #[test]
+    fn test_move_entry_moves_file_into_subdir() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("a.tex");
+        let sub = dir.path().join("chapters");
+        std::fs::write(&file, "x").unwrap();
+        std::fs::create_dir(&sub).unwrap();
+
+        let moved = move_entry_impl(&file, &sub).unwrap();
+
+        assert!(moved.ends_with("a.tex"));
+        assert!(sub.join("a.tex").exists());
+        assert!(!file.exists());
+    }
+
+    #[test]
+    fn test_move_entry_moves_directory() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("chapters");
+        let dest = dir.path().join("book");
+        std::fs::create_dir(&src).unwrap();
+        std::fs::create_dir(&dest).unwrap();
+
+        move_entry_impl(&src, &dest).unwrap();
+
+        assert!(dest.join("chapters").is_dir());
+        assert!(!src.exists());
+    }
+
+    #[test]
+    fn test_move_entry_refuses_overwrite() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("a.tex");
+        let sub = dir.path().join("chapters");
+        std::fs::write(&file, "").unwrap();
+        std::fs::create_dir(&sub).unwrap();
+        std::fs::write(sub.join("a.tex"), "").unwrap();
+
+        assert!(move_entry_impl(&file, &sub).is_err());
+    }
+
+    #[test]
+    fn test_move_entry_rejects_moving_into_own_descendant() {
+        let dir = tempdir().unwrap();
+        let parent = dir.path().join("parent");
+        let child = parent.join("child");
+        std::fs::create_dir_all(&child).unwrap();
+
+        assert!(move_entry_impl(&parent, &child).is_err());
+        assert!(move_entry_impl(&parent, &parent).is_err());
+    }
+
+    #[test]
+    fn test_move_entry_noop_when_already_in_destination() {
+        let dir = tempdir().unwrap();
+        let sub = dir.path().join("chapters");
+        std::fs::create_dir(&sub).unwrap();
+        let file = sub.join("a.tex");
+        std::fs::write(&file, "keep").unwrap();
+
+        let result = move_entry_impl(&file, &sub).unwrap();
+
+        assert!(result.ends_with("a.tex"));
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "keep");
+    }
+
+    #[test]
+    fn test_move_entry_rejects_non_directory_destination() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("a.tex");
+        let other = dir.path().join("b.tex");
+        std::fs::write(&file, "").unwrap();
+        std::fs::write(&other, "").unwrap();
+
+        assert!(move_entry_impl(&file, &other).is_err());
     }
 
     #[test]

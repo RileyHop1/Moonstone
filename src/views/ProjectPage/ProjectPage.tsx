@@ -66,6 +66,13 @@ import "./ProjectPage.css";
 export interface ProjectPageProps {
     /** The project being edited. */
     readonly project: ProjectInfo;
+    /**
+     * False while the page is mounted but covered — by settings, say.
+     * It keeps rendering so the open document survives, but stops
+     * claiming the hot bar's editor actions, which would otherwise
+     * edit a document the user cannot see.
+     */
+    readonly isActive?: boolean;
 }
 
 /** The file currently loaded into the editor. */
@@ -109,7 +116,7 @@ function findMainFilePath(tree: FileNode, projectName: string): string | null {
  * @param props - The project to display.
  * @returns The project page element.
  */
-export function ProjectPage({ project }: ProjectPageProps) {
+export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
     const { navigate } = useNavigation();
     const { registerEditor } = useAppActions();
 
@@ -492,10 +499,10 @@ export function ProjectPage({ project }: ProjectPageProps) {
     // Make the hotbar's Save/Undo/Redo/Insert items work while this
     // page is open.
     useEffect(() => {
-        registerEditor(actions);
+        registerEditor(isActive ? actions : null);
 
         return () => registerEditor(null);
-    }, [registerEditor, actions]);
+    }, [registerEditor, actions, isActive]);
 
     const { isDragging, hoverSide, handleProps } = useDockDrag(setDockSide);
 

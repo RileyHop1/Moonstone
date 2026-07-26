@@ -15,21 +15,24 @@ import { ProjectPage } from "./views/ProjectPage";
 import { Settings } from "./views/Settings";
 
 /**
- * Renders the page matching the current navigation state.
+ * Renders the page the user is working in.
  *
- * @param page - The active page descriptor.
+ * This stays mounted while settings is open — settings is a detour,
+ * and unmounting the project page would throw away the open document,
+ * its unsaved edits, undo history and scroll position, then silently
+ * reload from disk on the way back.
+ *
+ * @param page - The page being worked in.
+ * @param isActive - False while settings covers it.
  * @returns The page element.
  */
-function renderPage(page: AppPage) {
+function renderWorkPage(page: ReturnablePage, isActive: boolean) {
     switch (page.kind) {
         case "browser":
             return <ProjectBrowser />;
 
         case "project":
-            return <ProjectPage project={page.project} />;
-
-        case "settings":
-            return <Settings />;
+            return <ProjectPage project={page.project} isActive={isActive} />;
 
         default:
             return assertNever(page);
@@ -61,6 +64,11 @@ export function App() {
         [page, navigate, returnPage],
     );
 
+    // While settings is open the page underneath is the one it was
+    // opened from, and it keeps rendering behind it.
+    const isSettingsOpen = page.kind === "settings";
+    const workPage: ReturnablePage = isSettingsOpen ? returnPage : page;
+
     return (
         <NavigationContext.Provider value={navigation}>
             <SettingsProvider>
@@ -75,7 +83,13 @@ export function App() {
 
                         <GlobalHotBar />
 
-                        {renderPage(page)}
+                        {/* Hidden rather than unmounted, so the work
+                            survives a trip through settings. */}
+                        <div className="app-page" hidden={isSettingsOpen}>
+                            {renderWorkPage(workPage, !isSettingsOpen)}
+                        </div>
+
+                        {isSettingsOpen && <Settings />}
                     </div>
                 </AppActionsProvider>
             </SettingsProvider>

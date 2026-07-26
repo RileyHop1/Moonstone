@@ -83,6 +83,20 @@ html, body {
   height: 100vh;
 }
 
+/* The page being worked in. It stays mounted while settings is open,
+   so the open document and its unsaved edits survive the detour. */
+.app-page {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+/* `hidden` has to beat the flex display above, or the page would stay
+   on screen underneath settings. */
+.app-page[hidden] {
+  display: none;
+}
+
 /* ---- Title bar ---- */
 .titlebar {
   height: 36px;

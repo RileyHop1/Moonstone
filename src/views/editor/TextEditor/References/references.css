@@ -1,0 +1,27 @@
+/* Reference completions in the autocomplete popup.
+   The popup itself is themed with the editor; these rules only cover
+   what reference entries add — an icon and the author/year detail. */
+
+.cm-completionIcon-reference::after {
+  content: "❞";
+  color: var(--accent);
+}
+
+/* Author and year, shown after the citation key. */
+.cm-tooltip-autocomplete .cm-completionDetail {
+  margin-left: 0.6em;
+  color: var(--text-secondary);
+  font-style: normal;
+  font-size: 0.85em;
+}
+
+/* The title, in the panel beside the list. */
+.cm-tooltip-autocomplete .cm-completionInfo {
+  max-width: 22rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-preview);
+  color: var(--text-primary);
+  line-height: 1.4;
+}

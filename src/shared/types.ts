@@ -37,6 +37,27 @@ export interface TemplateInfo {
 }
 
 /**
+ * One citable entry from the project's `.bib` files, as returned by
+ * the `list_references` command.
+ */
+export interface Reference {
+    /** Citation key, as written in `\cite{…}`. */
+    readonly key: string;
+    /** Entry type (`article`, `book`, …), lowercased. */
+    readonly entryType: string;
+    /** Title, or empty when the entry has none. */
+    readonly title: string;
+    /** Authors as written in the entry, one per name. */
+    readonly authors: readonly string[];
+    /** Publication year, or empty when absent. */
+    readonly year: string;
+    /** Absolute path of the `.bib` file the entry came from. */
+    readonly sourcePath: string;
+    /** File name of that `.bib` file, for display. */
+    readonly sourceName: string;
+}
+
+/**
  * One node of a project's file tree, discriminated on `kind` to match
  * the backend's serde `tag = "kind"` serialization.
  */

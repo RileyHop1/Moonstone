@@ -249,6 +249,30 @@ describe("ProjectPage", () => {
         });
     });
 
+    it("loads the project's bibliography when it opens", async () => {
+        mockCommands({ list_project_files: () => TREE, read_file: () => "" });
+        renderWithProviders(<ProjectPage project={PROJECT} />);
+
+        await waitFor(() =>
+            expect(invokeMock).toHaveBeenCalledWith("list_references", {
+                projectPath: "C:/root/demo",
+            }),
+        );
+    });
+
+    it("still opens the project when the bibliography cannot be read", async () => {
+        // Completion simply offers nothing; a bad .bib must not stop
+        // the author from editing.
+        mockCommands({
+            list_project_files: () => TREE,
+            read_file: () => "",
+            list_references: () => Promise.reject("unreadable"),
+        });
+        renderWithProviders(<ProjectPage project={PROJECT} />);
+
+        expect(await screen.findByText("demo.tex")).toBeInTheDocument();
+    });
+
     it("rejects an invalid inline rename before calling the backend", async () => {
         mockCommands({ list_project_files: () => TREE, read_file: () => "" });
         renderWithProviders(<ProjectPage project={PROJECT} />);

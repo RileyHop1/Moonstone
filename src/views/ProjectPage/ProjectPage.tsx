@@ -17,6 +17,7 @@ import {
     createFile,
     deleteEntry,
     listProjectFiles,
+    listReferences,
     moveEntry,
     readFile,
     createImageSourceResolver,
@@ -24,7 +25,14 @@ import {
     renameEntry,
     saveFile,
 } from "../../shared/tauri";
-import type { FileNode, LoadState, ModalMode, ProjectInfo, ViewMode } from "../../shared/types";
+import type {
+    FileNode,
+    LoadState,
+    ModalMode,
+    ProjectInfo,
+    Reference,
+    ViewMode,
+} from "../../shared/types";
 import { useDockDrag } from "../../shared/useDockDrag";
 import type { DockSide } from "../../shared/useDockDrag";
 import { openSearchPanel } from "@codemirror/search";
@@ -44,6 +52,10 @@ import {
     spellCheckCompartment,
     spellCheckExtensionForEnabled,
 } from "../editor/TextEditor/SpellCheck";
+import {
+    referencesCompartment,
+    referencesExtension,
+} from "../editor/TextEditor/References";
 import { SNIPPETS, insertSnippetIntoView } from "../editor/TextEditor/snippets";
 import { FileBrowser } from "./FileBrowser";
 import type { FileOperation } from "./FileBrowser";
@@ -111,6 +123,7 @@ export function ProjectPage({ project }: ProjectPageProps) {
     const [viewMode, setViewMode] = useState<ViewMode>(DEFAULT_VIEW_MODE);
     const [modalMode, setModalMode] = useState<ModalMode>(DEFAULT_MODAL_MODE);
     const [spellCheckEnabled, setSpellCheckEnabled] = useState(DEFAULT_SPELL_CHECK_ENABLED);
+    const [references, setReferences] = useState<readonly Reference[]>([]);
 
     const viewRef = useRef<EditorView | null>(null);
     const statusTimerRef = useRef<number | null>(null);
@@ -174,6 +187,19 @@ export function ProjectPage({ project }: ProjectPageProps) {
         [confirmDiscardChanges, showStatus],
     );
 
+    /**
+     * Re-reads the project's bibliography.
+     *
+     * A missing or unreadable `.bib` file is not worth interrupting the
+     * author over — completion simply offers nothing — so a failure
+     * leaves the list empty rather than raising a status message.
+     */
+    const refreshReferences = useCallback(async (): Promise<void> => {
+        const result = await listReferences(project.path);
+
+        setReferences(result.ok ? result.data : []);
+    }, [project.path]);
+
     /** Re-fetches the project's file tree. */
     const refreshTree = useCallback(async (): Promise<LoadState<FileNode>> => {
         const result = await listProjectFiles(project.path);
@@ -213,6 +239,13 @@ export function ProjectPage({ project }: ProjectPageProps) {
         };
     }, [project.path, project.name, openFileByPath]);
 
+    // The bibliography is read once per project; saving a file reloads
+    // it, so an entry added in the editor is citable straight away.
+    useEffect(() => {
+        void refreshReferences();
+    }, [refreshReferences]);
+
+
     const save = useCallback(async (): Promise<void> => {
         const view = viewRef.current;
         const file = openFileRef.current;
@@ -227,7 +260,11 @@ export function ProjectPage({ project }: ProjectPageProps) {
 
         showStatus({ kind: "info", text: "Saved ✓" });
         setIsDirty(false);
-    }, [showStatus]);
+
+        // The saved file may have been a `.bib`, so the citation list
+        // is refreshed rather than left stale until the project reopens.
+        if (file.path.toLowerCase().endsWith(".bib")) void refreshReferences();
+    }, [showStatus, refreshReferences]);
 
     /**
      * Repoints the open file after an entry it lives under is renamed
@@ -435,6 +472,14 @@ export function ProjectPage({ project }: ProjectPageProps) {
         });
     }, [modalMode]);
 
+    // Hand the editor the current bibliography in place, so references
+    // added while the project is open become citable immediately.
+    useEffect(() => {
+        viewRef.current?.dispatch({
+            effects: referencesCompartment.reconfigure(referencesExtension(references)),
+        });
+    }, [references]);
+
     // Turn spell checking on or off in place.
     useEffect(() => {
         viewRef.current?.dispatch({
@@ -483,6 +528,7 @@ export function ProjectPage({ project }: ProjectPageProps) {
                             initialViewMode={viewMode}
                             initialModalMode={modalMode}
                             initialSpellCheckEnabled={spellCheckEnabled}
+                            initialReferences={references}
                             resolveImageSource={resolveImageSource}
                             openLink={openExternalLink}
                             onViewReady={(view) => {

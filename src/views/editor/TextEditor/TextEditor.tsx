@@ -19,6 +19,8 @@ import { previewCompartment, previewExtensionForMode } from "./viewMode";
 import { modalCompartment, modalExtensionForMode } from "./modalMode";
 import { editorDiagnostics } from "./Diagnostics";
 import { spellCheckCompartment, spellCheckExtensionForEnabled } from "./SpellCheck";
+import { referencesCompartment, referencesExtension } from "./References";
+import type { Reference } from "../../../shared/types";
 import "./TextEditor.css";
 
 /** Props for {@link TextEditor}. */
@@ -31,6 +33,11 @@ export interface TextEditorProps {
     readonly initialModalMode: ModalMode;
     /** Whether spell checking is on at mount. */
     readonly initialSpellCheckEnabled: boolean;
+    /**
+     * References offered for `\cite{…}` at mount; the page reconfigures
+     * the compartment when the project's bibliography changes.
+     */
+    readonly initialReferences: readonly Reference[];
     /**
      * Resolves `\includegraphics` paths to loadable URLs. Omitted,
      * images render as placeholders.
@@ -60,6 +67,7 @@ export function TextEditor({
     initialViewMode,
     initialModalMode,
     initialSpellCheckEnabled,
+    initialReferences,
     resolveImageSource,
     openLink,
     onViewReady,
@@ -78,6 +86,7 @@ export function TextEditor({
     const resolveImageSourceRef = useRef(resolveImageSource);
     const openLinkRef = useRef(openLink);
     const initialSpellCheckRef = useRef(initialSpellCheckEnabled);
+    const initialReferencesRef = useRef(initialReferences);
     onViewReadyRef.current = onViewReady;
     onDocChangedRef.current = onDocChanged;
     onSaveRequestedRef.current = onSaveRequested;
@@ -96,6 +105,14 @@ export function TextEditor({
                     autoCloseTags: true,
                     enableLinting: true,
                     enableTooltips: true,
+                    // The package would otherwise install its own
+                    // `autocompletion({override: […]})`, and `override`
+                    // replaces every other completion source — which
+                    // silently kills reference search. Its LaTeX
+                    // completions are registered through language data
+                    // regardless, so basicSetup's autocompletion still
+                    // offers them alongside ours.
+                    enableAutocomplete: false,
                 }),
                 moonstone,
                 previewCompartment.of(
@@ -108,6 +125,7 @@ export function TextEditor({
                 spellCheckCompartment.of(
                     spellCheckExtensionForEnabled(initialSpellCheckRef.current),
                 ),
+                referencesCompartment.of(referencesExtension(initialReferencesRef.current)),
                 editorDiagnostics(),
                 EditorView.updateListener.of((update) => {
                     if (update.docChanged) onDocChangedRef.current();

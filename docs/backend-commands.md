@@ -49,6 +49,7 @@ frontend's copy matches, so the two cannot drift apart silently.
 | `list_projects` | — | `ProjectInfo[]` | Directories under the root, sorted by name |
 | `create_project` | `name`, `templateId` | `ProjectInfo` | Creates dir + lays down the template's files; template resolved before anything is written |
 | `list_templates` | — | `TemplateInfo[]` | The bundled project templates, in offer order (see [templates](templates.md)) |
+| `list_references` | `projectPath` | `Reference[]` | Every `.bib` entry in the project, merged and key-sorted; unreadable files skipped (see [bibliography](bibliography.md)) |
 | `delete_project` | `projectPath` | `()` | Recycle bin; only directories directly under the root |
 | `rename_project` | `projectPath`, `newName` | `string` (path) | Renames `<old>.tex` → `<new>.tex` too, keeping the main-file convention; refuses an existing name; no-op if unchanged |
 | `list_project_files` | `projectPath` | `FileNode` | Recursive tree; dirs before files, alphabetical; hidden entries skipped; depth-capped |
@@ -68,6 +69,8 @@ frontend's copy matches, so the two cannot drift apart silently.
 struct ProjectInfo { name, path, last_modified /* RFC3339 */, file_count } // camelCase over the wire
 
 struct TemplateInfo { id, name, description, file_count } // camelCase over the wire
+
+struct Reference { key, entry_type, title, authors, year, source_path, source_name }
 
 enum FileNode { // serde tag = "kind" → TS discriminated union
     Directory { name, path, children: Vec<FileNode> },

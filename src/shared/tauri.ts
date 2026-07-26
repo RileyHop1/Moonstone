@@ -8,7 +8,14 @@
 
 import { convertFileSrc, invoke, isTauri } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import type { AppSettings, FileNode, ProjectInfo, Result, TemplateInfo } from "./types";
+import type {
+    AppSettings,
+    FileNode,
+    ProjectInfo,
+    Reference,
+    Result,
+    TemplateInfo,
+} from "./types";
 
 /**
  * Opens a URL in the user's default browser.
@@ -169,6 +176,17 @@ export function createProject(
  */
 export function listTemplates(): Promise<Result<readonly TemplateInfo[]>> {
     return invokeCommand("list_templates", {});
+}
+
+/**
+ * Lists every reference defined in the project's `.bib` files, merged
+ * into one key-sorted list.
+ *
+ * @param projectPath - Absolute path of the project directory.
+ * @returns The project's references.
+ */
+export function listReferences(projectPath: string): Promise<Result<readonly Reference[]>> {
+    return invokeCommand("list_references", { projectPath });
 }
 
 /**

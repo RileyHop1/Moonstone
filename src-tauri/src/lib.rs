@@ -4,6 +4,7 @@
 //! stateless: each resolves the Moonstone projects root per call (see
 //! [`paths`]), so there is no shared mutable state to guard.
 
+mod bibliography;
 mod file_manager;
 mod paths;
 mod project_manager;
@@ -36,6 +37,7 @@ pub fn run() {
             project_manager::delete_project,
             project_manager::rename_project,
             templates::list_templates,
+            bibliography::list_references,
             settings::get_settings,
             settings::save_settings,
         ])

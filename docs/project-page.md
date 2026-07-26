@@ -54,6 +54,12 @@ its own undo history. The page owns dirtiness (set on any doc change,
 cleared on save) and holds the `EditorView` ref so toolbar/hotbar
 actions can drive it.
 
+The page also owns the project's **bibliography**: it calls
+`list_references` when the project opens, hands the list to the editor
+for `\cite{…}` completion, and reloads it after a `.bib` file is saved
+so new entries are citable straight away — see
+[bibliography](bibliography.md).
+
 ## Toolbar
 
 - **Save** (also Ctrl+S) → `save_file`; disabled while clean; shows a

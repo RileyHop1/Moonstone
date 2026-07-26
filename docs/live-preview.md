@@ -27,6 +27,56 @@ to `EditorView.atomicRanges`, so arrow keys hop over widgets) and the
 content marks from formatting commands, which must *not* be atomic or
 the cursor could never enter `\textbf{...}` content.
 
+## Caching and update cost
+
+The block layer runs on selection changes as well as edits, because
+the cursor decides what is revealed. What it does *not* do is rescan:
+`documentScanField` holds the masked text and the results of every
+whole-document scan, and recomputes **only on `docChanged`**. A cursor
+move cannot change where the math is, only which of it is revealed.
+
+`livePreview.test.ts` pins this by reference equality — a cursor move
+must hand back the very same scan object.
+
+Measured on a 2,400-line, 56 KB document:
+
+| | rescanning per move | cached scan |
+|---|---|---|
+| Cursor move | 2.87 ms | **2.09 ms** |
+
+So the scan is real but it is *not* the dominant cost. The remaining
+~2 ms is rebuilding the whole-document decoration set, which has to
+happen because reveal state changed somewhere. Making *that*
+incremental — recomputing only the constructs whose reveal state
+actually flipped — is the next lever if editing large documents ever
+feels heavy, and it is a substantially riskier change than this one.
+
+### Overlap bookkeeping
+
+CodeMirror rejects overlapping replaces within one decoration set, so
+each pass checks what earlier passes claimed. `ClaimedRanges` holds
+those claims **merged and disjoint**, which keeps their ends ascending
+and makes the check a single binary search. Merging is the point: with
+claims sorted only by start, an earlier long claim could still span
+the query, and the check would degrade to a walk back through every
+prior claim — quadratic in the number of rendered constructs.
+
+### Atomic ranges
+
+Block-layer replaces are published to `EditorView.atomicRanges`
+**selectively**, via the `atomic` flag on `addReplace`:
+
+| Replace | Atomic | Why |
+|---|---|---|
+| Heading's hidden `\section{` and `}` | yes | One arrow press crosses them; the cursor still lands on the title text, which is what reveals the heading. |
+| `\item` marker | yes | One press crosses the marker; clicking still reveals the token. |
+| Hidden `\begin`/`\end` tag lines | **no** | Cursor contact with the tag line is the *only* way to reveal it. Atomic would make `\begin{...}` permanently uneditable by keyboard. |
+| Collapsed preamble | **no** | Same: entering it is what expands it. |
+| Tables, math environments | **no** | Same: the cursor must reach the region to reveal its source. |
+
+That distinction is load-bearing and easy to get wrong, so both
+directions are tested — the skips *and* the deliberate non-skips.
+
 ## View modes
 
 The preview participates in three editor view modes, swapped at runtime
@@ -309,7 +359,9 @@ editing. Clicking the table reveals the source, as everywhere else.
   `braces.test.ts`, `findSections.test.ts`, `findFormatting.test.ts`,
   `findListItems.test.ts`, `findRefs.test.ts`, `parseTabular.test.ts`,
   `symbols.test.ts`, `inertRegions.test.ts`, `findGraphics.test.ts`,
-  `mathEnvironments.test.ts`, `imageSourceResolver.test.ts`
+  `mathEnvironments.test.ts`, `imageSourceResolver.test.ts`,
+  `claimedRanges.test.ts`, and `livePreview.test.ts` — the assembly
+  suite, which mounts a real editor and asserts on what it renders
 
 ## Deferred (next passes)
 

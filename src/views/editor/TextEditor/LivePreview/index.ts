@@ -1,4 +1,9 @@
-export { livePreview, MATH_ENVIRONMENTS } from "./livePreview";
+export {
+    ClaimedRanges,
+    documentScanField,
+    livePreview,
+    MATH_ENVIRONMENTS,
+} from "./livePreview";
 export type { ImageSourceResolver, LivePreviewOptions } from "./livePreview";
 export { findGraphicsRanges } from "./findGraphics";
 export type { GraphicsRange } from "./findGraphics";

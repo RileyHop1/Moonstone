@@ -22,15 +22,18 @@ import type { EditorSelection, Extension, Range } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin } from "@codemirror/view";
 import type { DecorationSet, ViewUpdate, WidgetType } from "@codemirror/view";
 import { findMathRanges } from "./findMath";
+import type { MathRange } from "./findMath";
 import { findEnvironments } from "./findEnvironments";
 import type { EnvRange } from "./findEnvironments";
 import { findInertRegions, maskChunk } from "./inertRegions";
 import type { InertRegions } from "./inertRegions";
 import { findFormatRanges } from "./findFormatting";
 import { findListItems } from "./findListItems";
+import type { ListItem } from "./findListItems";
 import { findGraphicsRanges } from "./findGraphics";
 import { findRefRanges } from "./findRefs";
 import { findSections } from "./findSections";
+import type { SectionRange } from "./findSections";
 import { findSymbolRanges } from "./symbols";
 import { parseTabular } from "./parseTabular";
 import {
@@ -122,7 +125,7 @@ function buildInlineDecorations(view: EditorView): InlineDecorationSets {
     const replaces: Range<Decoration>[] = [];
     const marks: Range<Decoration>[] = [];
     const { state } = view;
-    const inertRegions = state.field(inertRegionsField);
+    const { inertRegions } = state.field(documentScanField);
 
     // Visible ranges are expanded to whole lines so a `$...$` pair is
     // never split by a range edge; the clamp keeps expanded ranges
@@ -285,93 +288,219 @@ interface Interval {
 }
 
 /**
- * Where the document's comments and verbatim bodies are — the regions
- * whose contents must never be rendered.
+ * Everything the block layer scans out of the document, plus the two
+ * views of its text.
  *
- * Only the *locations* are cached, not a masked copy of the document.
- * Locating them needs the whole document (a `\begin{verbatim}` above
- * the viewport decides whether the visible lines are literal), but it
- * yields a handful of intervals; each layer then masks just the span
- * it is about to scan, so the inline layer's cost tracks the viewport.
- *
- * Keyed to document changes only: a cursor move cannot change which
- * regions are inert, so this must not recompute on selection.
+ * The block layer renders across the whole file, so its scans are
+ * whole-document by nature. What they are *not* is selection-
+ * dependent: moving the cursor cannot change where the math or the
+ * environments are, only which of them are revealed. Caching the scan
+ * separately is what keeps a cursor move from re-running four regex
+ * passes and rebuilding two full copies of the document.
  */
-const inertRegionsField = StateField.define<InertRegions>({
-    create: (state) => findInertRegions(state.doc.toString()),
+interface DocumentScan {
+    /** The real document text; supplies the content widgets render. */
+    readonly docText: string;
+    /** Masked text; every scan below was run against it. */
+    readonly scanText: string;
+    /** Comment and verbatim regions, for the inline layer's chunks. */
+    readonly inertRegions: InertRegions;
+    readonly math: readonly MathRange[];
+    readonly environments: readonly EnvRange[];
+    readonly sections: readonly SectionRange[];
+    readonly listItems: readonly ListItem[];
+}
 
-    update(regions, transaction) {
-        if (!transaction.docChanged) return regions;
-        return findInertRegions(transaction.newDoc.toString());
+/**
+ * Scans a document once, producing everything both layers need.
+ *
+ * @param docText - The full document text.
+ * @returns The cached scan.
+ */
+function scanDocument(docText: string): DocumentScan {
+    const inertRegions = findInertRegions(docText);
+    const scanText = maskChunk(docText, 0, inertRegions);
+
+    return {
+        docText,
+        scanText,
+        inertRegions,
+        math: findMathRanges(scanText, 0),
+        environments: findEnvironments(scanText),
+        sections: findSections(scanText),
+        listItems: findListItems(scanText),
+    };
+}
+
+/**
+ * The document scan, recomputed only when the document changes.
+ *
+ * Exported so tests can assert that identity: a cursor move must hand
+ * back the very same scan object, or the preview is rescanning the
+ * whole document on every arrow key.
+ */
+export const documentScanField = StateField.define<DocumentScan>({
+    create: (state) => scanDocument(state.doc.toString()),
+
+    update(scan, transaction) {
+        if (!transaction.docChanged) return scan;
+        return scanDocument(transaction.newDoc.toString());
     },
 });
 
 /**
- * Reports whether `[from, to]` intersects any interval in `intervals`.
+ * Regions already consumed by a replacing decoration.
  *
- * @param intervals - The intervals to test against.
- * @param from - Range start.
- * @param to - Range end.
- * @returns True on any intersection.
+ * CodeMirror rejects overlapping replaces within one decoration set,
+ * so every pass checks this before adding its own. Kept sorted so the
+ * check is a binary search rather than a scan of every prior claim —
+ * the passes run over the whole document, so a linear check made the
+ * whole build quadratic in the number of rendered constructs.
  */
-function overlapsAny(intervals: readonly Interval[], from: number, to: number): boolean {
-    return intervals.some((interval) => interval.from <= to && interval.to >= from);
+export class ClaimedRanges {
+    /**
+     * Disjoint and sorted. Overlapping additions are merged, which is
+     * what makes the ends ascending too — and therefore what makes the
+     * overlap query a single binary search instead of a walk back over
+     * earlier claims that might still span the query.
+     */
+    private ranges: Interval[] = [];
+
+    /**
+     * Records a region as claimed, merging it with any it touches.
+     *
+     * @param from - Region start.
+     * @param to - Region end.
+     */
+    add(from: number, to: number): void {
+        const first = this.firstReaching(from);
+
+        let index = first;
+        let mergedFrom = from;
+        let mergedTo = to;
+
+        // Absorb every existing claim this one touches.
+        while (index < this.ranges.length) {
+            const range = this.ranges[index];
+            if (!range || range.from > to) break;
+
+            mergedFrom = Math.min(mergedFrom, range.from);
+            mergedTo = Math.max(mergedTo, range.to);
+            index += 1;
+        }
+
+        this.ranges.splice(first, index - first, { from: mergedFrom, to: mergedTo });
+    }
+
+    /**
+     * Reports whether a region intersects anything already claimed.
+     *
+     * @param from - Region start.
+     * @param to - Region end.
+     * @returns True on any intersection.
+     */
+    overlaps(from: number, to: number): boolean {
+        const candidate = this.ranges[this.firstReaching(from)];
+        return candidate !== undefined && candidate.from <= to;
+    }
+
+    /**
+     * Finds the first claim whose end reaches `position`.
+     *
+     * Relies on the claims being disjoint, so their ends ascend.
+     *
+     * @param position - The position to reach.
+     * @returns The index of that claim, or the array length.
+     */
+    private firstReaching(position: number): number {
+        let low = 0;
+        let high = this.ranges.length;
+
+        while (low < high) {
+            const middle = (low + high) >> 1;
+            if ((this.ranges[middle]?.to ?? 0) < position) low = middle + 1;
+            else high = middle;
+        }
+
+        return low;
+    }
+}
+
+/**
+ * The block layer's output, split so replaces can also be published as
+ * atomic ranges.
+ */
+interface BlockDecorationSets {
+    /** Everything the layer renders. */
+    readonly decorations: DecorationSet;
+    /** The subset arrow keys should skip over. */
+    readonly atomic: DecorationSet;
+}
+
+/**
+ * Working state threaded through the block-layer passes.
+ */
+interface BlockBuild {
+    readonly state: EditorState;
+    readonly scan: DocumentScan;
+    /** Decorations produced so far. */
+    readonly decorations: Range<Decoration>[];
+    /**
+     * Replaces that should be atomic. Whole-line and block replaces are
+     * deliberately excluded: the only way to reveal a hidden tag line is
+     * to put the cursor on it, which atomic ranges would prevent.
+     */
+    readonly atomic: Range<Decoration>[];
+    /** Regions already replaced, which later passes must not overlap. */
+    readonly claimed: ClaimedRanges;
 }
 
 /**
  * Builds the whole-document block decorations: display math widgets,
- * environment boxes, and the collapsed preamble.
+ * environment boxes, headings, list markers and the collapsed preamble.
+ *
+ * Runs on selection changes as well as edits, since the cursor decides
+ * what is revealed — but it reads the cached scan rather than
+ * rescanning, so a cursor move costs decoration building alone.
  *
  * @param state - The editor state.
- * @returns The sorted block-layer decoration set.
+ * @returns The sorted block-layer decoration sets.
  */
-function buildBlockDecorations(state: EditorState): DecorationSet {
-    // Two views of the document: `scanText` is masked and drives every
-    // scan, `docText` is real and supplies the content widgets render.
-    // This layer renders boxes, headings and markers across the whole
-    // file, so unlike the inline layer it masks all of it.
-    const docText = state.doc.toString();
-    const scanText = maskChunk(docText, 0, state.field(inertRegionsField));
-    const decorations: Range<Decoration>[] = [];
-
-    const hiddenMath = collectDisplayMathDecorations(state, docText, scanText, decorations);
-    const envInfo = collectEnvironmentDecorations(
+function buildBlockDecorations(state: EditorState): BlockDecorationSets {
+    const build: BlockBuild = {
         state,
-        docText,
-        scanText,
-        hiddenMath,
-        decorations,
-    );
-    collectHeadingDecorations(state, scanText, hiddenMath, envInfo, decorations);
-    collectListItemDecorations(state, scanText, hiddenMath, envInfo, decorations);
+        scan: state.field(documentScanField),
+        decorations: [],
+        atomic: [],
+        claimed: new ClaimedRanges(),
+    };
 
-    return Decoration.set(decorations, true);
+    collectDisplayMathDecorations(build);
+    collectEnvironmentDecorations(build);
+    collectHeadingDecorations(build);
+    collectListItemDecorations(build);
+
+    return {
+        decorations: Decoration.set(build.decorations, true),
+        atomic: Decoration.set(build.atomic, true),
+    };
 }
 
 /**
  * Adds a replace decoration (widget) for each display math segment the
  * cursor is not touching.
  *
- * @param state - The editor state.
- * @param docText - The real document text, read for widget content.
- * @param scanText - The masked document text, scanned for delimiters.
- * @param decorations - Output list decorations are pushed into.
- * @returns The intervals that were replaced, for overlap avoidance.
+ * @param build - The block-layer working state.
  */
-function collectDisplayMathDecorations(
-    state: EditorState,
-    docText: string,
-    scanText: string,
-    decorations: Range<Decoration>[],
-): readonly Interval[] {
-    const hidden: Interval[] = [];
+function collectDisplayMathDecorations(build: BlockBuild): void {
+    const { state, scan } = build;
 
-    for (const math of findMathRanges(scanText, 0)) {
+    for (const math of scan.math) {
         if (!math.display) continue;
 
         if (isRevealed(state, math.from, math.to)) continue;
 
-        const source = docText.slice(math.innerFrom, math.innerTo);
+        const source = scan.docText.slice(math.innerFrom, math.innerTo);
         const startLine = state.doc.lineAt(math.from);
         const endLine = state.doc.lineAt(math.to);
 
@@ -380,25 +509,15 @@ function collectDisplayMathDecorations(
         // in display style).
         const coversFullLines = math.from === startLine.from && math.to === endLine.to;
 
-        decorations.push(
+        build.decorations.push(
             Decoration.replace({
                 widget: new MathWidget(source, true),
                 block: coversFullLines,
             }).range(math.from, math.to),
         );
 
-        hidden.push({ from: math.from, to: math.to });
+        build.claimed.add(math.from, math.to);
     }
-
-    return hidden;
-}
-
-/** Replaced-region bookkeeping produced by the environment pass. */
-interface EnvironmentDecorationInfo {
-    /** Whole tag lines hidden behind block replaces. */
-    readonly hiddenLines: readonly Interval[];
-    /** Regions fully replaced by widgets (tables, the preamble chip). */
-    readonly replacedEnvRanges: readonly Interval[];
 }
 
 /**
@@ -406,30 +525,16 @@ interface EnvironmentDecorationInfo {
  * hidden `\begin`/`\end` lines, box styling on interior lines, and
  * (for `document`) the collapsed preamble chip.
  *
- * @param state - The editor state.
- * @param docText - The real document text, read for widget content.
- * @param scanText - The masked document text, scanned for tags.
- * @param hiddenMath - Intervals already replaced by display math.
- * @param decorations - Output list decorations are pushed into.
- * @returns The replaced regions, so later passes avoid overlapping
- *   replaces (which CodeMirror rejects within one decoration set).
+ * @param build - The block-layer working state.
  */
-function collectEnvironmentDecorations(
-    state: EditorState,
-    docText: string,
-    scanText: string,
-    hiddenMath: readonly Interval[],
-    decorations: Range<Decoration>[],
-): EnvironmentDecorationInfo {
+function collectEnvironmentDecorations(build: BlockBuild): void {
+    const { state, scan } = build;
+
     // Dedupe hidden lines: nested `\begin`s on one line would otherwise
     // produce overlapping block replaces, which CodeMirror rejects.
     const hiddenLineNumbers = new Set<number>();
 
-    // Environments fully replaced by a widget (tables); anything
-    // nested inside them must not add decorations of its own.
-    const replacedEnvRanges: Interval[] = [];
-
-    for (const env of findEnvironments(scanText)) {
+    for (const env of scan.environments) {
         const beginLine = state.doc.lineAt(env.from);
         const endLine = state.doc.lineAt(env.endFrom);
 
@@ -445,39 +550,22 @@ function collectEnvironmentDecorations(
             isRevealed(state, endLine.from, endLine.to);
         if (tagsRevealed) continue;
 
-        if (overlapsAny(replacedEnvRanges, env.from, env.to)) continue;
+        // Nested inside an environment already replaced wholesale, or
+        // sharing a tag line with a display-math widget: either way an
+        // overlapping replace, which CodeMirror rejects.
+        if (build.claimed.overlaps(env.from, env.to)) continue;
+        if (build.claimed.overlaps(beginLine.from, beginLine.to)) continue;
+        if (build.claimed.overlaps(endLine.from, endLine.to)) continue;
 
-        // Skip environments whose tag lines are already consumed by a
-        // display-math widget — overlapping replaces are not allowed
-        // within one decoration set.
-        const tagsCollide =
-            overlapsAny(hiddenMath, beginLine.from, beginLine.to) ||
-            overlapsAny(hiddenMath, endLine.from, endLine.to);
-        if (tagsCollide) continue;
+        if (tryReplaceEnvironment(build, env)) continue;
 
-        if (
-            tryReplaceEnvironment(decorations, state, docText, env, hiddenMath, replacedEnvRanges)
-        ) {
-            continue;
-        }
+        hideLine(build, hiddenLineNumbers, beginLine.number);
+        hideLine(build, hiddenLineNumbers, endLine.number);
 
-        hideLine(decorations, hiddenLineNumbers, beginLine.number, state);
-        hideLine(decorations, hiddenLineNumbers, endLine.number, state);
+        boxInteriorLines(build.decorations, state, beginLine.number, endLine.number);
 
-        boxInteriorLines(decorations, state, beginLine.number, endLine.number);
-
-        if (env.name === "document") {
-            const preamble = collapsePreamble(decorations, state, beginLine.from);
-            if (preamble) replacedEnvRanges.push(preamble);
-        }
+        if (env.name === "document") collapsePreamble(build, beginLine.from);
     }
-
-    const hiddenLines = [...hiddenLineNumbers].map((lineNumber) => {
-        const line = state.doc.line(lineNumber);
-        return { from: line.from, to: line.to };
-    });
-
-    return { hiddenLines, replacedEnvRanges };
 }
 
 /**
@@ -488,36 +576,30 @@ function collectEnvironmentDecorations(
  * The line class is applied even while the heading is revealed so the
  * text keeps its size during editing (Obsidian-style).
  *
- * @param state - The editor state.
- * @param scanText - The masked document text.
- * @param hiddenMath - Intervals already replaced by display math.
- * @param envInfo - Replaced regions from the environment pass.
- * @param decorations - Output list decorations are pushed into.
+ * @param build - The block-layer working state.
  */
-function collectHeadingDecorations(
-    state: EditorState,
-    scanText: string,
-    hiddenMath: readonly Interval[],
-    envInfo: EnvironmentDecorationInfo,
-    decorations: Range<Decoration>[],
-): void {
-    for (const section of findSections(scanText)) {
+function collectHeadingDecorations(build: BlockBuild): void {
+    const { state } = build;
+
+    for (const section of build.scan.sections) {
         // Headings inside fully replaced regions (tables, preamble,
         // hidden tag lines, display math) must not add decorations —
         // overlapping replaces are rejected within one set.
-        if (overlapsAny(envInfo.replacedEnvRanges, section.from, section.to)) continue;
-        if (overlapsAny(envInfo.hiddenLines, section.from, section.to)) continue;
-        if (overlapsAny(hiddenMath, section.from, section.to)) continue;
+        if (build.claimed.overlaps(section.from, section.to)) continue;
 
         const line = state.doc.lineAt(section.from);
-        decorations.push(
+        build.decorations.push(
             Decoration.line({ class: `cm-heading-${section.level}` }).range(line.from),
         );
 
         if (isRevealed(state, line.from, line.to)) continue;
 
-        decorations.push(Decoration.replace({}).range(section.from, section.contentFrom));
-        decorations.push(Decoration.replace({}).range(section.contentTo, section.to));
+        // Atomic: arrow keys skip the invisible `\section{` and `}`
+        // instead of taking several presses to cross them. The cursor
+        // can still land on the heading's text, which is what reveals
+        // it, so nothing becomes unreachable.
+        addReplace(build, section.from, section.contentFrom, true);
+        addReplace(build, section.contentTo, section.to, true);
     }
 }
 
@@ -528,33 +610,27 @@ function collectHeadingDecorations(
  * keeps the marker rendered, matching the env-box philosophy that
  * editing a body must not un-render its container.
  *
- * @param state - The editor state.
- * @param scanText - The masked document text.
- * @param hiddenMath - Intervals already replaced by display math.
- * @param envInfo - Replaced regions from the environment pass.
- * @param decorations - Output list decorations are pushed into.
+ * @param build - The block-layer working state.
  */
-function collectListItemDecorations(
-    state: EditorState,
-    scanText: string,
-    hiddenMath: readonly Interval[],
-    envInfo: EnvironmentDecorationInfo,
-    decorations: Range<Decoration>[],
-): void {
-    for (const item of findListItems(scanText)) {
+function collectListItemDecorations(build: BlockBuild): void {
+    const { state } = build;
+
+    for (const item of build.scan.listItems) {
         // Items inside fully replaced regions must not add replaces —
         // overlapping replaces are rejected within one set.
-        if (overlapsAny(envInfo.replacedEnvRanges, item.from, item.to)) continue;
-        if (overlapsAny(envInfo.hiddenLines, item.from, item.to)) continue;
-        if (overlapsAny(hiddenMath, item.from, item.to)) continue;
+        if (build.claimed.overlaps(item.from, item.to)) continue;
 
         if (isRevealed(state, item.from, item.to)) continue;
 
-        decorations.push(
-            Decoration.replace({ widget: new ListMarkerWidget(item.marker) }).range(
-                item.from,
-                item.to,
-            ),
+        // Atomic: one arrow press crosses the marker rather than
+        // stepping through the hidden `\item`. Clicking it still
+        // reveals the token.
+        addReplace(
+            build,
+            item.from,
+            item.to,
+            true,
+            new ListMarkerWidget(item.marker),
         );
     }
 }
@@ -622,22 +698,13 @@ function buildEnvironmentWidget(env: EnvRange, docText: string): WidgetType | nu
  * text, or the range collides with a display-math widget — the caller
  * then applies the generic box treatment instead.
  *
- * @param decorations - Output list decorations are pushed into.
- * @param state - The editor state.
- * @param docText - The full document text.
+ * @param build - The block-layer working state.
  * @param env - The environment under consideration.
- * @param hiddenMath - Intervals already replaced by display math.
- * @param replacedEnvRanges - Output list of fully replaced env ranges.
  * @returns True when the environment was replaced by a widget.
  */
-function tryReplaceEnvironment(
-    decorations: Range<Decoration>[],
-    state: EditorState,
-    docText: string,
-    env: EnvRange,
-    hiddenMath: readonly Interval[],
-    replacedEnvRanges: Interval[],
-): boolean {
+function tryReplaceEnvironment(build: BlockBuild, env: EnvRange): boolean {
+    const { state, scan } = build;
+
     // A replaced environment is rendered wholesale, so any cursor
     // contact reveals the source (the generic box then applies while
     // editing inside).
@@ -649,43 +716,73 @@ function tryReplaceEnvironment(
     // The block replace spans whole lines; other content on the tag
     // lines would be swallowed, so bail to the box treatment.
     const tagLinesClean =
-        docText.slice(beginLine.from, env.from).trim() === "" &&
-        docText.slice(env.to, endLine.to).trim() === "";
+        scan.docText.slice(beginLine.from, env.from).trim() === "" &&
+        scan.docText.slice(env.to, endLine.to).trim() === "";
     if (!tagLinesClean) return false;
 
-    if (overlapsAny(hiddenMath, beginLine.from, endLine.to)) return false;
+    if (build.claimed.overlaps(beginLine.from, endLine.to)) return false;
 
     // Built last: the cheap rejections above avoid parsing work.
-    const widget = buildEnvironmentWidget(env, docText);
+    const widget = buildEnvironmentWidget(env, scan.docText);
     if (!widget) return false;
 
-    decorations.push(
-        Decoration.replace({ widget, block: true }).range(beginLine.from, endLine.to),
-    );
-    replacedEnvRanges.push({ from: beginLine.from, to: endLine.to });
+    // Not atomic: the cursor must be able to reach the region to
+    // reveal the source for editing.
+    addReplace(build, beginLine.from, endLine.to, false, widget, true);
 
     return true;
 }
 
 /**
+ * Adds a replacing decoration and records the region as claimed.
+ *
+ * @param build - The block-layer working state.
+ * @param from - Region start.
+ * @param to - Region end.
+ * @param atomic - Whether arrow keys should skip the region. Never set
+ *   for regions whose only reveal path is placing the cursor in them.
+ * @param widget - Widget to render, or undefined to hide the region.
+ * @param block - Whether the replace spans whole lines.
+ */
+function addReplace(
+    build: BlockBuild,
+    from: number,
+    to: number,
+    atomic: boolean,
+    widget?: WidgetType,
+    block = false,
+): void {
+    const decoration = Decoration.replace(
+        widget ? { widget, block } : { block },
+    ).range(from, to);
+
+    build.decorations.push(decoration);
+    if (atomic) build.atomic.push(decoration);
+
+    build.claimed.add(from, to);
+}
+
+/**
  * Replaces a whole line with nothing (hiding it), once per line.
  *
- * @param decorations - Output list decorations are pushed into.
+ * @param build - The block-layer working state.
  * @param hiddenLineNumbers - Lines already hidden.
  * @param lineNumber - The 1-based line to hide.
- * @param state - The editor state.
  */
 function hideLine(
-    decorations: Range<Decoration>[],
+    build: BlockBuild,
     hiddenLineNumbers: Set<number>,
     lineNumber: number,
-    state: EditorState,
 ): void {
     if (hiddenLineNumbers.has(lineNumber)) return;
     hiddenLineNumbers.add(lineNumber);
 
-    const line = state.doc.line(lineNumber);
-    decorations.push(Decoration.replace({ block: true }).range(line.from, line.to));
+    const line = build.state.doc.line(lineNumber);
+
+    // Never atomic: putting the cursor on a hidden tag line is the only
+    // way to reveal it, so skipping over it would make `\begin{...}`
+    // permanently uneditable by keyboard.
+    addReplace(build, line.from, line.to, false, undefined, true);
 }
 
 /**
@@ -718,43 +815,47 @@ function boxInteriorLines(
  * Collapses everything above `\begin{document}` behind a preamble
  * chip, unless the cursor is inside the preamble.
  *
- * @param decorations - Output list decorations are pushed into.
- * @param state - The editor state.
+ * @param build - The block-layer working state.
  * @param documentBeginFrom - Start position of the `\begin{document}` line.
- * @returns The replaced interval, or null when the preamble stays
- *   visible (cursor inside it, or no preamble at all).
  */
-function collapsePreamble(
-    decorations: Range<Decoration>[],
-    state: EditorState,
-    documentBeginFrom: number,
-): Interval | null {
+function collapsePreamble(build: BlockBuild, documentBeginFrom: number): void {
     // No preamble when \begin{document} is the first line.
-    if (documentBeginFrom === 0) return null;
+    if (documentBeginFrom === 0) return;
 
     const preambleTo = documentBeginFrom - 1;
 
-    if (isRevealed(state, 0, preambleTo)) return null;
+    if (isRevealed(build.state, 0, preambleTo)) return;
 
-    decorations.push(
-        Decoration.replace({ widget: new PreambleWidget(), block: true }).range(0, preambleTo),
-    );
-
-    return { from: 0, to: preambleTo };
+    // Not atomic: the cursor must be able to enter the preamble, which
+    // is what expands it for editing.
+    addReplace(build, 0, preambleTo, false, new PreambleWidget(), true);
 }
 
-/** Whole-document field rendering block math, env boxes, and preamble. */
-const blockPreviewField = StateField.define<DecorationSet>({
+/**
+ * Whole-document field rendering block math, env boxes, headings, list
+ * markers and the preamble chip.
+ *
+ * Rebuilds on selection as well as document changes, because the
+ * cursor decides what is revealed — but the underlying scan is cached
+ * in {@link documentScanField}, so a cursor move rebuilds decorations
+ * without rescanning or re-masking the document.
+ */
+const blockPreviewField = StateField.define<BlockDecorationSets>({
     create: buildBlockDecorations,
 
-    update(decorations, transaction) {
+    update(sets, transaction) {
         if (transaction.docChanged || transaction.selection) {
             return buildBlockDecorations(transaction.state);
         }
-        return decorations;
+        return sets;
     },
 
-    provide: (field) => EditorView.decorations.from(field),
+    provide: (field) => [
+        EditorView.decorations.from(field, (sets) => sets.decorations),
+        // Block-layer replaces that arrow keys should skip. Whole-line
+        // replaces are excluded — see `addReplace`.
+        EditorView.atomicRanges.of((view) => view.state.field(field).atomic),
+    ],
 });
 
 /** Options for {@link livePreview}. */
@@ -781,7 +882,7 @@ export function livePreview(options?: LivePreviewOptions): Extension {
     return [
         // Must precede the layers that read it: a StateField's `create`
         // may only access fields initialized before it.
-        inertRegionsField,
+        documentScanField,
         inlineMathPlugin,
         blockPreviewField,
         revealFacet.of(options?.reveal ?? true),

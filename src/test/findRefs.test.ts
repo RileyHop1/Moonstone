@@ -18,13 +18,13 @@ describe("findRefRanges", () => {
         const text = "see \\ref{fig:one}!";
 
         expect(findRefRanges(text, 0, [])).toEqual([
-            { kind: "ref", from: 4, to: 17, keys: ["fig:one"] },
+            { kind: "ref", from: 4, to: 17, keys: ["fig:one"], note: null, target: null },
         ]);
     });
 
     it("applies the document offset", () => {
         expect(findRefRanges("\\ref{a}", 50, [])).toEqual([
-            { kind: "ref", from: 50, to: 57, keys: ["a"] },
+            { kind: "ref", from: 50, to: 57, keys: ["a"], note: null, target: null },
         ]);
     });
 
@@ -35,8 +35,45 @@ describe("findRefRanges", () => {
         ]);
     });
 
-    it("leaves optional-argument citations raw", () => {
-        expect(findRefRanges("\\cite[p.~3]{knuth84}", 0, [])).toEqual([]);
+    it("captures a citation's optional locator", () => {
+        const range = findRefRanges("\\cite[p.~3]{knuth84}", 0, [])[0];
+
+        expect(range?.keys).toEqual(["knuth84"]);
+        expect(range?.note).toBe("p.~3");
+        expect(range?.to).toBe(20);
+    });
+
+    it("recognises natbib citation commands", () => {
+        expect(findRefRanges("\\citep{a}", 0, [])[0]?.kind).toBe("cite");
+        expect(findRefRanges("\\citet{a}", 0, [])[0]?.kind).toBe("cite");
+    });
+
+    it("captures a url target", () => {
+        const range = findRefRanges("\\url{https://example.com}", 0, [])[0];
+
+        expect(range?.kind).toBe("url");
+        expect(range?.target).toBe("https://example.com");
+    });
+
+    it("captures href's target and link text separately", () => {
+        const range = findRefRanges("\\href{https://example.com}{the site}", 0, [])[0];
+
+        expect(range?.kind).toBe("href");
+        expect(range?.target).toBe("https://example.com");
+        expect(range?.note).toBe("the site");
+    });
+
+    it("does not split a url on its commas", () => {
+        const range = findRefRanges("\\url{https://x.com/a,b}", 0, [])[0];
+
+        expect(range?.keys).toEqual(["https://x.com/a,b"]);
+    });
+
+    it("captures a footnote body", () => {
+        const range = findRefRanges("text\\footnote{see later}", 0, [])[0];
+
+        expect(range?.kind).toBe("footnote");
+        expect(range?.keys).toEqual(["see later"]);
     });
 
     it("skips empty and whitespace-only key lists", () => {

@@ -10,7 +10,16 @@
 import { findGroupEnd } from "./braces";
 
 /** The visual style a formatting command applies. */
-export type FormatStyle = "bold" | "italic" | "underline";
+export type FormatStyle =
+    | "bold"
+    | "italic"
+    | "underline"
+    | "mono"
+    | "smallcaps"
+    | "sans"
+    | "strike"
+    | "superscript"
+    | "subscript";
 
 /** One formatting command found in the scanned text. */
 export interface FormatRange {
@@ -32,16 +41,39 @@ interface Interval {
     readonly to: number;
 }
 
-/** Matches the head of a formatting command up to its opening brace. */
-const FORMAT_PATTERN = /\\(textbf|textit|emph|underline)\{/g;
-
-/** Command name → applied style. */
+/**
+ * Command name → applied style.
+ *
+ * `\textsuperscript` precedes `\textsc` in the pattern below purely
+ * because the regex alternation is first-match; the map itself has no
+ * ordering significance.
+ */
 const FORMAT_STYLES: Record<string, FormatStyle> = {
     textbf: "bold",
     textit: "italic",
     emph: "italic",
     underline: "underline",
+    texttt: "mono",
+    textsc: "smallcaps",
+    textsf: "sans",
+    textrm: "sans",
+    sout: "strike",
+    textsuperscript: "superscript",
+    textsubscript: "subscript",
 };
+
+/**
+ * Matches the head of a formatting command up to its opening brace.
+ *
+ * Alternatives are ordered longest-first so `\textsuperscript` is not
+ * matched as `\textsc` followed by stray text.
+ */
+const FORMAT_PATTERN = new RegExp(
+    `\\\\(${Object.keys(FORMAT_STYLES)
+        .sort((left, right) => right.length - left.length)
+        .join("|")})\\{`,
+    "g",
+);
 
 /**
  * Scans text for renderable formatting commands.

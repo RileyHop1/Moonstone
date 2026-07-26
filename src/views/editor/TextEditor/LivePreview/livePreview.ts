@@ -32,6 +32,7 @@ import { findListItems } from "./findListItems";
 import type { ListItem } from "./findListItems";
 import { findGraphicsRanges } from "./findGraphics";
 import { findRefRanges } from "./findRefs";
+import { findTextReplacements } from "./findTextReplacements";
 import { findSections } from "./findSections";
 import type { SectionRange } from "./findSections";
 import { findSymbolRanges } from "./symbols";
@@ -84,6 +85,21 @@ export type ImageSourceResolver = (path: string) => string | null;
 /** Holds the host's image resolver, if it supplied one. */
 const imageResolverFacet = Facet.define<ImageSourceResolver, ImageSourceResolver | null>({
     combine: (values) => values[0] ?? null,
+});
+
+/**
+ * Opens a `\url`/`\href` target outside the editor.
+ *
+ * Injected for the same reason as the image resolver: a desktop shell
+ * and a browser open links differently, and the preview should know
+ * about neither. Without one, link chips render without an open
+ * affordance rather than offering something that cannot work.
+ */
+export type LinkOpener = (url: string) => void;
+
+/** Holds the host's link opener, if it supplied one. */
+const linkOpenerFacet = Facet.define<LinkOpener, LinkOpener | undefined>({
+    combine: (values) => values[0],
 });
 
 /**
@@ -164,14 +180,20 @@ function buildInlineDecorations(view: EditorView): InlineDecorationSets {
         collectFormattingDecorations(state, text, from, mathRanges, replaces, marks);
 
         const refRanges = findRefRanges(text, from, mathRanges);
+        const openLink = state.facet(linkOpenerFacet);
         for (const ref of refRanges) {
             if (isRevealed(state, ref.from, ref.to)) continue;
 
             replaces.push(
-                Decoration.replace({ widget: new RefChipWidget(ref.kind, ref.keys) }).range(
-                    ref.from,
-                    ref.to,
-                ),
+                Decoration.replace({
+                    widget: new RefChipWidget(
+                        ref.kind,
+                        ref.keys,
+                        ref.note,
+                        ref.target,
+                        openLink,
+                    ),
+                }).range(ref.from, ref.to),
             );
         }
 
@@ -190,14 +212,12 @@ function buildInlineDecorations(view: EditorView): InlineDecorationSets {
             );
         }
 
-        // Special characters outside math, reference chips and image
-        // paths (KaTeX renders math; a chip or image already replaces
-        // its whole command).
-        for (const symbol of findSymbolRanges(text, from, [
-            ...mathRanges,
-            ...refRanges,
-            ...graphicsRanges,
-        ])) {
+        // Everything already claimed by a widget: those commands are
+        // replaced wholesale, so their interiors must not be scanned
+        // again. Math is excluded too — KaTeX owns its source.
+        const claimedInline = [...mathRanges, ...refRanges, ...graphicsRanges];
+
+        for (const symbol of findSymbolRanges(text, from, claimedInline)) {
             if (isRevealed(state, symbol.from, symbol.to)) continue;
 
             replaces.push(
@@ -205,6 +225,16 @@ function buildInlineDecorations(view: EditorView): InlineDecorationSets {
                     symbol.from,
                     symbol.to,
                 ),
+            );
+        }
+
+        for (const replacement of findTextReplacements(text, from, claimedInline)) {
+            if (isRevealed(state, replacement.from, replacement.to)) continue;
+
+            replaces.push(
+                Decoration.replace({
+                    widget: new SymbolWidget(replacement.text, "cm-text-replacement"),
+                }).range(replacement.from, replacement.to),
             );
         }
     }
@@ -870,6 +900,11 @@ export interface LivePreviewOptions {
      * (plain browser, tests), images render as placeholders.
      */
     readonly resolveImageSource?: ImageSourceResolver;
+    /**
+     * Opens a `\url`/`\href` target. Omitted, link chips render
+     * without an open affordance.
+     */
+    readonly openLink?: LinkOpener;
 }
 
 /**
@@ -889,5 +924,6 @@ export function livePreview(options?: LivePreviewOptions): Extension {
         ...(options?.resolveImageSource
             ? [imageResolverFacet.of(options.resolveImageSource)]
             : []),
+        ...(options?.openLink ? [linkOpenerFacet.of(options.openLink)] : []),
     ];
 }

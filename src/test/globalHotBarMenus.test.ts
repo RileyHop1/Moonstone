@@ -21,6 +21,8 @@ function makeEditorActions(overrides?: Partial<EditorActions>): EditorActions {
         findReplace: vi.fn(),
         modalMode: "none",
         setModalMode: vi.fn(),
+        spellCheckEnabled: true,
+        setSpellCheckEnabled: vi.fn(),
         ...overrides,
     };
 }

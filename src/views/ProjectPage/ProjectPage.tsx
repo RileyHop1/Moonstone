@@ -18,6 +18,7 @@ import {
     moveEntry,
     readFile,
     createImageSourceResolver,
+    openExternalLink,
     renameEntry,
     saveFile,
 } from "../../shared/tauri";
@@ -36,6 +37,11 @@ import {
     modalCompartment,
     modalExtensionForMode,
 } from "../editor/TextEditor/modalMode";
+import {
+    DEFAULT_SPELL_CHECK_ENABLED,
+    spellCheckCompartment,
+    spellCheckExtensionForEnabled,
+} from "../editor/TextEditor/SpellCheck";
 import { SNIPPETS, insertSnippetIntoView } from "../editor/TextEditor/snippets";
 import { FileBrowser } from "./FileBrowser";
 import type { FileOperation } from "./FileBrowser";
@@ -102,6 +108,7 @@ export function ProjectPage({ project }: ProjectPageProps) {
     const [dialog, setDialog] = useState<FileDialogState | null>(null);
     const [viewMode, setViewMode] = useState<ViewMode>(DEFAULT_VIEW_MODE);
     const [modalMode, setModalMode] = useState<ModalMode>(DEFAULT_MODAL_MODE);
+    const [spellCheckEnabled, setSpellCheckEnabled] = useState(DEFAULT_SPELL_CHECK_ENABLED);
 
     const viewRef = useRef<EditorView | null>(null);
     const statusTimerRef = useRef<number | null>(null);
@@ -382,8 +389,18 @@ export function ProjectPage({ project }: ProjectPageProps) {
             },
             modalMode,
             setModalMode: (mode: ModalMode) => setModalMode(mode),
+            spellCheckEnabled,
+            setSpellCheckEnabled: (enabled: boolean) => setSpellCheckEnabled(enabled),
         }),
-        [save, confirmDiscardChanges, navigate, project.path, viewMode, modalMode],
+        [
+            save,
+            confirmDiscardChanges,
+            navigate,
+            project.path,
+            viewMode,
+            modalMode,
+            spellCheckEnabled,
+        ],
     );
 
     // Image paths in LaTeX are relative to the document, so the
@@ -399,7 +416,7 @@ export function ProjectPage({ project }: ProjectPageProps) {
     useEffect(() => {
         viewRef.current?.dispatch({
             effects: previewCompartment.reconfigure(
-                previewExtensionForMode(viewMode, resolveImageSource),
+                previewExtensionForMode(viewMode, resolveImageSource, openExternalLink),
             ),
         });
     }, [viewMode, resolveImageSource]);
@@ -411,6 +428,15 @@ export function ProjectPage({ project }: ProjectPageProps) {
             effects: modalCompartment.reconfigure(modalExtensionForMode(modalMode)),
         });
     }, [modalMode]);
+
+    // Turn spell checking on or off in place.
+    useEffect(() => {
+        viewRef.current?.dispatch({
+            effects: spellCheckCompartment.reconfigure(
+                spellCheckExtensionForEnabled(spellCheckEnabled),
+            ),
+        });
+    }, [spellCheckEnabled]);
 
     // Make the hotbar's Save/Undo/Redo/Insert items work while this
     // page is open.
@@ -450,7 +476,9 @@ export function ProjectPage({ project }: ProjectPageProps) {
                             initialDoc={openFile.initialDoc}
                             initialViewMode={viewMode}
                             initialModalMode={modalMode}
+                            initialSpellCheckEnabled={spellCheckEnabled}
                             resolveImageSource={resolveImageSource}
+                            openLink={openExternalLink}
                             onViewReady={(view) => {
                                 viewRef.current = view;
                             }}

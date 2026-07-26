@@ -45,6 +45,9 @@ The **View** menu also holds **Vim Mode** and **Helix Mode** toggles
 (mutually exclusive, checkmark on the active one) — optional modal
 editing via the same compartment technique. See `modal-editing.md`.
 
+**Spell Check** sits below them, on by default, again through its own
+compartment. See `spell-check.md`.
+
 ## Find & Replace
 
 The **🔍 Find** button and the Edit menu's **Find & Replace** item both

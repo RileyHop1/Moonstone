@@ -131,6 +131,47 @@
     text-decoration: underline;
 }
 
+.cm-fmt-mono {
+    font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+}
+
+.cm-fmt-smallcaps {
+    font-variant-caps: small-caps;
+}
+
+.cm-fmt-sans {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.cm-fmt-strike {
+    text-decoration: line-through;
+}
+
+/* Super/subscript keep the source's line height: shifting the
+   baseline would make the line taller than the raw text it replaces,
+   and the box would jump when the cursor reveals it. */
+.cm-fmt-superscript,
+.cm-fmt-subscript {
+    font-size: 0.75em;
+    line-height: 0;
+    position: relative;
+}
+
+.cm-fmt-superscript {
+    vertical-align: super;
+}
+
+.cm-fmt-subscript {
+    vertical-align: sub;
+}
+
+/* Text-mode spellings rendered in place: escapes, dashes, quotes,
+   ties and accents. Deliberately unstyled — these are ordinary
+   characters and should read as prose, not as markup. */
+.cm-text-replacement {
+    cursor: text;
+}
+
 /* Section headings: size only — margins would distort the line
    layout inside environment boxes. */
 .cm-heading-1 {
@@ -171,6 +212,20 @@
 .cm-ref-chip:hover {
     color: var(--accent);
     border-color: var(--accent);
+}
+
+/* Open affordance on link chips. Clicking the chip body reveals the
+   source like every other chip; only this follows the link. */
+.cm-ref-chip-open {
+    margin-left: 0.35em;
+    padding-left: 0.35em;
+    border-left: 1px solid var(--border-color);
+    color: var(--accent);
+    cursor: pointer;
+}
+
+.cm-ref-chip-open:hover {
+    text-decoration: underline;
 }
 
 /* Collapsed-preamble chip shown above the document box. */

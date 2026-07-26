@@ -47,6 +47,10 @@ export interface EditorActions {
     readonly modalMode: ModalMode;
     /** Switches the modal editing mode. */
     readonly setModalMode: (mode: ModalMode) => void;
+    /** Whether prose spell checking is on. */
+    readonly spellCheckEnabled: boolean;
+    /** Turns prose spell checking on or off. */
+    readonly setSpellCheckEnabled: (enabled: boolean) => void;
 }
 
 /** Everything pages can currently handle; null means unavailable. */

@@ -4,7 +4,7 @@
  */
 
 /** The kind of reference command found. */
-export type RefKind = "ref" | "eqref" | "cite" | "label";
+export type RefKind = "ref" | "eqref" | "cite" | "label" | "url" | "href" | "footnote";
 
 /** One reference command found in the scanned text. */
 export interface RefRange {
@@ -16,6 +16,13 @@ export interface RefRange {
     readonly to: number;
     /** The referenced keys (`\cite{a,b}` yields two). */
     readonly keys: readonly string[];
+    /**
+     * The optional argument's contents (`\cite[p.3]{k}`), or null. Not
+     * a key — a page locator, or `\href`'s link text.
+     */
+    readonly note: string | null;
+    /** For `url`/`href`, the target address; null otherwise. */
+    readonly target: string | null;
 }
 
 /** A half-open interval used for exclusion. */
@@ -25,19 +32,32 @@ interface Interval {
 }
 
 /**
- * Matches a whole reference command. Keys never contain braces, so no
- * brace matching is needed; optional arguments (`\cite[p.3]{k}`)
- * intentionally fail to match and stay raw.
+ * Matches a whole reference command, with an optional `[...]` argument
+ * and, for `\href`, a second brace group. Arguments never contain
+ * braces, so no brace matching is needed.
  */
-const REF_PATTERN = /\\(ref|eqref|cite|label)\{([^{}\n]*)\}/g;
+const REF_PATTERN =
+    /\\(ref|eqref|citep|citet|cite|label|url|href|footnote)(?:\[([^\]\n]*)\])?\{([^{}\n]*)\}(?:\{([^{}\n]*)\})?/g;
 
 /** Command name → reference kind (narrows the regex capture's type). */
 const REF_KINDS: Record<string, RefKind> = {
     ref: "ref",
     eqref: "eqref",
     cite: "cite",
+    citep: "cite",
+    citet: "cite",
     label: "label",
+    url: "url",
+    href: "href",
+    footnote: "footnote",
 };
+
+/** Kinds whose argument is a single opaque string, not a key list. */
+const SINGLE_ARGUMENT_KINDS: ReadonlySet<RefKind> = new Set([
+    "url",
+    "href",
+    "footnote",
+]);
 
 /**
  * Scans text for renderable reference commands.
@@ -60,9 +80,11 @@ export function findRefRanges(
 
     for (const match of text.matchAll(REF_PATTERN)) {
         const kind = REF_KINDS[match[1] ?? ""];
-        const keyList = match[2];
+        const firstArgument = match[3];
         const matchStart = match.index;
-        if (kind === undefined || keyList === undefined || matchStart === undefined) continue;
+        if (kind === undefined || firstArgument === undefined || matchStart === undefined) {
+            continue;
+        }
 
         // `\\ref` is a line break followed by the word "ref".
         if (matchStart > 0 && text[matchStart - 1] === "\\") continue;
@@ -70,14 +92,45 @@ export function findRefRanges(
         const from = offset + matchStart;
         if (exclude.some((interval) => interval.from <= from && interval.to > from)) continue;
 
-        const keys = keyList
-            .split(",")
-            .map((key) => key.trim())
-            .filter((key) => key.length > 0);
+        const keys = splitKeys(kind, firstArgument);
         if (keys.length === 0) continue;
 
-        ranges.push({ kind, from, to: from + match[0].length, keys });
+        // `\href{url}{text}` puts its link text in the second group;
+        // everything else uses `[...]` for a locator.
+        const secondArgument = match[4];
+        const note = kind === "href" ? (secondArgument ?? null) : (match[2] ?? null);
+
+        ranges.push({
+            kind,
+            from,
+            to: from + match[0].length,
+            keys,
+            note: note === "" ? null : note,
+            target: kind === "url" || kind === "href" ? firstArgument.trim() : null,
+        });
     }
 
     return ranges;
+}
+
+/**
+ * Splits a command's first argument into displayable keys.
+ *
+ * Citation keys are comma-separated; a URL or footnote body is one
+ * opaque string that must not be split on its commas.
+ *
+ * @param kind - The command kind.
+ * @param argument - The raw first argument.
+ * @returns The keys, empty when the argument is blank.
+ */
+function splitKeys(kind: RefKind, argument: string): readonly string[] {
+    if (SINGLE_ARGUMENT_KINDS.has(kind)) {
+        const trimmed = argument.trim();
+        return trimmed.length > 0 ? [trimmed] : [];
+    }
+
+    return argument
+        .split(",")
+        .map((key) => key.trim())
+        .filter((key) => key.length > 0);
 }

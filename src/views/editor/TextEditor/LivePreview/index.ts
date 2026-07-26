@@ -4,7 +4,9 @@ export {
     livePreview,
     MATH_ENVIRONMENTS,
 } from "./livePreview";
-export type { ImageSourceResolver, LivePreviewOptions } from "./livePreview";
+export type { ImageSourceResolver, LinkOpener, LivePreviewOptions } from "./livePreview";
+export { applyTextReplacements, findTextReplacements } from "./findTextReplacements";
+export type { TextReplacement } from "./findTextReplacements";
 export { findGraphicsRanges } from "./findGraphics";
 export type { GraphicsRange } from "./findGraphics";
 export { findMathRanges } from "./findMath";

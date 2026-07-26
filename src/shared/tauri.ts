@@ -7,7 +7,34 @@
  */
 
 import { convertFileSrc, invoke, isTauri } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type { AppSettings, FileNode, ProjectInfo, Result } from "./types";
+
+/**
+ * Opens a URL in the user's default browser.
+ *
+ * Only `http` and `https` are followed: a document is untrusted input,
+ * and `file:` or shell-adjacent schemes must never be handed to the
+ * OS opener on its say-so.
+ *
+ * @param url - The address written in the document.
+ */
+export function openExternalLink(url: string): void {
+    if (!isTauri()) return;
+
+    let parsed: URL;
+    try {
+        parsed = new URL(url);
+    } catch {
+        return;
+    }
+
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
+
+    void openUrl(parsed.href).catch((error: unknown) => {
+        console.error("Could not open link", { url: parsed.href, error });
+    });
+}
 
 /**
  * Builds a resolver that turns an `\includegraphics` path into a URL

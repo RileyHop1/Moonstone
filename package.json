@@ -22,7 +22,9 @@
     "codemirror": "^6.0.2",
     "codemirror-helix": "^0.5.7",
     "codemirror-lang-latex": "^0.2.0",
+    "dictionary-en": "^4.0.0",
     "katex": "^0.16.33",
+    "nspell": "^2.1.5",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },
@@ -31,6 +33,7 @@
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
+    "@types/nspell": "^2.1.6",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.7.0",

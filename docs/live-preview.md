@@ -274,12 +274,37 @@ when the cursor is off the line, two replaces hiding the `\section{`
 prefix and closing `}`. Skipped (raw source): escaped commands,
 unclosed braces, multi-line titles, and empty titles.
 
+## Text-mode spellings
+
+`findTextReplacements.ts` renders the unglamorous, pervasive half of
+LaTeX prose: escaped punctuation (`\&`, `\%`, `\$`, `\_`, `\#`,
+`\{`, `\}`), em and en dashes (`---`, `--`), paired quotes
+(`` `` ``/`''`), ties (`~` → a real non-breaking space) and accents,
+both bare (`\"o`) and braced (`\"{o}`), including the letter-named
+ones (`\c{c}`, `\v{s}`). Accented output is NFC-normalized so it is a
+single precomposed character rather than a combining pair.
+
+It scans left to right rather than by regex alternation, because
+precedence here is positional: `---` must beat `--`, and a backslash
+must consume whatever follows before `~` can be read as a tie. An
+unrecognised command's letters are consumed too, so `\alpha` is never
+mistaken for an accent.
+
+Single quotes are deliberately **not** curled — it would mangle every
+apostrophe in ordinary prose for almost no visible gain.
+
+`applyTextReplacements` exposes the same transform as a plain string
+function, for text a widget renders itself and the decoration pipeline
+therefore never sees: a citation chip's `p.~3` locator, a table cell.
+
 ## Inline formatting
 
-`findFormatting.ts` scans for `\textbf`, `\textit`, `\emph`, and
-`\underline`. The command token and closing brace are hidden by
-replaces while the content stays editable raw text under a
-`cm-fmt-bold/italic/underline` mark. Nesting needs no special
+`findFormatting.ts` scans for `\textbf`, `\textit`, `\emph`,
+`\underline`, `\texttt`, `\textsc`, `\textsf`, `\textrm`, `\sout`,
+`\textsuperscript` and `\textsubscript`. The command token and closing
+brace are hidden by replaces while the content stays editable raw text
+under a `cm-fmt-*` mark. The pattern's alternatives are generated
+longest-first so `\textsuperscript` is not matched as `\textsc`. Nesting needs no special
 handling: `\textbf{\emph{x}}` yields two independent ranges whose
 marks nest and whose hidden tokens never overlap. Content spanning a
 line break bails to raw (visible-range chunks are line-bounded), as do
@@ -295,17 +320,39 @@ follow LaTeX's counters — depth counts *enumerate* nesting only
 (`enumi`…`enumiv`), so `itemize > enumerate` gets `1.`, not `(a)`:
 depth 1 `1.`, depth 2 `(a)`, depth 3 `i.`, deeper `A.`. Indices count
 items per innermost environment, so nested lists restart and the outer
-counter resumes. `\item[custom]` and items outside list environments
-stay raw.
+counter resumes.
+
+`\item[custom]` renders its label in place of the marker, with the
+replaced range covering the whole `\item[...]` so no stray bracket is
+left behind. The label must follow the token on the same line — a
+bracket on the next line belongs to the item's text. An empty label
+falls back to the default marker. Items outside list environments stay
+raw.
 
 ## Reference chips
 
-`findRefs.ts` matches `\ref`, `\eqref`, `\cite`, and `\label` and
-renders them as pill chips (`RefChipWidget`): 🔗 for ref/eqref, 📖 for
-cite, 🏷 for label. `\cite{a,b}` shows both keys. Optional arguments
-(`\cite[p.3]{k}`) intentionally fail the match and stay raw. Chips are
-excluded from the symbol scan so a chip's interior is never
-double-rendered.
+`findRefs.ts` matches `\ref`, `\eqref`, `\cite` (plus natbib's
+`\citep`/`\citet`), `\label`, `\url`, `\href` and `\footnote`, and
+renders them as pill chips (`RefChipWidget`): 🔗 ref/eqref, 📖 cite,
+🏷 label, 🌐 url/href, † footnote. `\cite{a,b}` shows both keys.
+
+Optional arguments are read rather than rejected: `\cite[p.~3]{k}`
+renders as `📖 k, p. 3`, with the locator passed through
+`applyTextReplacements` so it reads as prose. `\href{url}{text}`
+shows its link text, keeping the URL as the target.
+
+Link chips carry an `↗` affordance. Clicking the **chip body** reveals
+the source like every other chip; only the affordance follows the
+link, so opening and editing can never be confused. The chip's
+`ignoreEvent` returns true just for that element. Opening is injected
+as a `LinkOpener` — the preview must not know about Tauri — and
+`openExternalLink` in `shared/tauri.ts` supplies it, refusing anything
+that is not `http`/`https`, since a document is untrusted input.
+Without an opener the affordance is not rendered at all, rather than
+offering a control that cannot work.
+
+Chips are excluded from the symbol and text-replacement scans so a
+chip's interior is never double-rendered.
 
 ## Comments
 
@@ -329,13 +376,22 @@ them — outside math segments and reference chips, and never after a
 ## Tables
 
 `parseTabular.ts` parses a `tabular`/`tabular*` environment's interior
-(strips the column spec and `\hline`, splits rows on `\\` and cells on
-unescaped `&`) into `TabularCell` objects. `\multicolumn{n}{spec}{...}`
+(strips the column spec, `\hline`, and the booktabs rules —
+`\toprule`, `\midrule`, `\bottomrule`, `\cmidrule` with its optional
+trimming argument, `\addlinespace` — then splits rows on `\\` and
+cells on unescaped `&`) into `TabularCell` objects. `\multicolumn{n}{spec}{...}`
 cells carry a column span and alignment (first `l`/`c`/`r` in the
 spec), rendered as `colspan`/`text-align` on the `td`. A successful
 parse renders the whole environment as a theme-styled HTML table
-(`TableWidget`); cells containing `$...$` render their math with
-KaTeX. Anything the parser doesn't understand (`\multirow`, nested
+(`TableWidget`).
+
+Cells render the same constructs as anywhere else — math, formatting
+commands, symbols and text-mode spellings. A table is replaced
+wholesale rather than decorated, so `renderCellContents` cannot reuse
+the decoration pipeline; it reuses the same *scanners* instead, sorts
+their results by position and lets the first match win where they
+overlap. That way a cell means the same thing inside a table as
+outside one. Anything the parser doesn't understand (`\multirow`, nested
 environments, malformed multicolumns, …) returns `null` and the
 environment falls back to the generic box — rendering never breaks
 editing. Clicking the table reveals the source, as everywhere else.
@@ -352,6 +408,7 @@ editing. Clicking the table reveals the source, as everywhere else.
 - `src/views/editor/TextEditor/LivePreview/findListItems.ts` — list-item scanner
 - `src/views/editor/TextEditor/LivePreview/findRefs.ts` — reference scanner
 - `src/views/editor/TextEditor/LivePreview/findGraphics.ts` — `\includegraphics` scanner
+- `src/views/editor/TextEditor/LivePreview/findTextReplacements.ts` — escapes, dashes, quotes, ties, accents
 - `src/views/editor/TextEditor/LivePreview/symbols.ts` — symbol map + scanner
 - `src/views/editor/TextEditor/LivePreview/parseTabular.ts` — table parser
 - `src/views/editor/TextEditor/LivePreview/MathWidget.ts` — all widgets
@@ -360,14 +417,22 @@ editing. Clicking the table reveals the source, as everywhere else.
   `findListItems.test.ts`, `findRefs.test.ts`, `parseTabular.test.ts`,
   `symbols.test.ts`, `inertRegions.test.ts`, `findGraphics.test.ts`,
   `mathEnvironments.test.ts`, `imageSourceResolver.test.ts`,
-  `claimedRanges.test.ts`, and `livePreview.test.ts` — the assembly
-  suite, which mounts a real editor and asserts on what it renders
+  `claimedRanges.test.ts`, `findTextReplacements.test.ts`, and
+  `livePreview.test.ts` — the assembly suite, which mounts a real
+  editor and asserts on what it renders
 
 ## Deferred (next passes)
 
-`\multirow` tables; chips/formatting/symbols inside table cells;
-`\cite[...]`/`\item[...]` optional arguments; `\caption` rendering and
-figure-environment layout; honouring `\includegraphics` options
-(`width`, `scale`, `angle`) rather than ignoring them; resolving
-extension-less image paths, which needs a filesystem probe through the
-backend.
+- **`\multirow`** — still bails the whole parse. Unlike `\multicolumn`
+  it needs state across rows: a spanning cell must suppress a cell in
+  each following row, which the current row-at-a-time parse has no
+  place to record.
+- **Old-style font groups** (`{\bf ...}`, `{\it ...}`) — a different
+  shape from the `\text*` commands, since the scope is the enclosing
+  group rather than a brace argument.
+- **Curled single quotes** — deliberately skipped; see above.
+- **`\caption` and figure-environment layout**, and honouring
+  `\includegraphics` options (`width`, `scale`, `angle`), which are
+  parsed into `GraphicsRange.options` and then ignored.
+- **Extension-less image paths**, which need a filesystem probe
+  through the backend.

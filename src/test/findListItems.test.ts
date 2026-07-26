@@ -59,10 +59,35 @@ describe("findListItems", () => {
         expect(findListItems(doc)).toEqual([{ from: 16, to: 21, marker: "•", depth: 1 }]);
     });
 
-    it("skips items with custom labels", () => {
+    it("renders a custom label in place of the marker", () => {
         const doc = env("itemize", "\\item[custom] one\n\\item two");
 
-        expect(findListItems(doc)).toHaveLength(1);
+        const items = findListItems(doc);
+
+        expect(items).toHaveLength(2);
+        expect(items[0]?.marker).toBe("custom");
+        expect(items[1]?.marker).toBe("•");
+    });
+
+    it("covers the whole custom label so no bracket is left behind", () => {
+        const doc = env("itemize", "\\item[custom] one");
+        const item = findListItems(doc)[0];
+
+        expect(doc.slice(item?.from, item?.to)).toBe("\\item[custom]");
+    });
+
+    it("keeps the default marker for an empty custom label", () => {
+        const doc = env("itemize", "\\item[] one");
+
+        expect(findListItems(doc)[0]?.marker).toBe("•");
+    });
+
+    it("ignores a bracket on the next line", () => {
+        // The label must follow `\item` directly; a bracket further
+        // down belongs to the item's text.
+        const doc = env("itemize", "\\item\n[not a label] one");
+
+        expect(findListItems(doc)[0]?.marker).toBe("•");
     });
 
     it("skips items outside any list environment", () => {

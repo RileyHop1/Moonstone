@@ -44,7 +44,12 @@ export function parseTabular(interior: string): TabularRows | null {
     // Drop `[pos]` and the `{|c|c|}` column spec after \begin{tabular}.
     const body = interior.replace(/^\s*(\[[^\]]*\])?\s*\{[^}]*\}/, "");
 
-    const withoutRules = body.replace(/\\hline/g, "");
+    // `\hline` plus the booktabs rules, which take an optional
+    // trimming argument (`\cmidrule(lr){2-3}`).
+    const withoutRules = body.replace(
+        /\\(hline|toprule|midrule|bottomrule|cmidrule|addlinespace|morecmidrules)\s*(\([^)]*\))?(\[[^\]]*\])?(\{[^}]*\})?/g,
+        "",
+    );
 
     const rows = withoutRules
         .split("\\\\")

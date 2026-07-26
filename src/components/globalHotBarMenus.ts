@@ -126,6 +126,13 @@ function buildViewMenu({ editor }: MenuContext): Menu {
                     : null,
                 checked: editor?.modalMode === "helix",
             },
+            {
+                label: "Spell Check",
+                action: editor
+                    ? () => editor.setSpellCheckEnabled(!editor.spellCheckEnabled)
+                    : null,
+                checked: editor?.spellCheckEnabled ?? false,
+            },
         ],
     };
 }

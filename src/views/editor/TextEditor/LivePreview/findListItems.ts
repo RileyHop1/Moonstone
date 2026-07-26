@@ -54,28 +54,67 @@ export function findListItems(docText: string): readonly ListItem[] {
         const innermost = findInnermostList(listEnvs, matchStart);
         if (!innermost) continue;
 
-        // `\item[custom]` labels are not rendered; the source stays.
-        const nextChar = firstNonSpaceChar(docText, matchStart + match[0].length);
-        if (nextChar === "[") continue;
+        const tokenEnd = matchStart + match[0].length;
+        const custom = matchCustomLabel(docText, tokenEnd);
 
         const index = (countersByEnv.get(innermost) ?? 0) + 1;
         countersByEnv.set(innermost, index);
 
         const depth = countContaining(listEnvs, matchStart);
+
+        // A custom label replaces the marker outright and does not
+        // consume a counter position in LaTeX either — but the counter
+        // is already advanced above, matching how LaTeX still counts
+        // the item for `\ref` purposes.
         const marker =
-            innermost.name === "itemize"
+            custom?.label ??
+            (innermost.name === "itemize"
                 ? bulletForDepth(depth)
-                : enumerateLabel(countEnumerateDepth(listEnvs, matchStart), index);
+                : enumerateLabel(countEnumerateDepth(listEnvs, matchStart), index));
 
         items.push({
             from: matchStart,
-            to: matchStart + match[0].length,
+            to: custom?.to ?? tokenEnd,
             marker,
             depth,
         });
     }
 
     return items;
+}
+
+/** An `\item[...]` custom label and where it ends. */
+interface CustomLabel {
+    /** The label text to render in place of the marker. */
+    readonly label: string;
+    /** Offset just past the closing `]`. */
+    readonly to: number;
+}
+
+/**
+ * Matches an `\item`'s optional label.
+ *
+ * Leading whitespace is spaces and tabs only — `\s` would match a
+ * newline, and a bracket on the following line belongs to the item's
+ * text, not to `\item`.
+ */
+const CUSTOM_LABEL_PATTERN = /^[ \t]*\[([^\]\n]*)\]/;
+
+/**
+ * Reads the optional label following an `\item` token.
+ *
+ * @param docText - The full document text.
+ * @param tokenEnd - Offset just past `\item`.
+ * @returns The label, or null when there is none or it is empty.
+ */
+function matchCustomLabel(docText: string, tokenEnd: number): CustomLabel | null {
+    const match = CUSTOM_LABEL_PATTERN.exec(docText.slice(tokenEnd));
+    if (!match) return null;
+
+    const label = match[1]?.trim();
+    if (!label) return null;
+
+    return { label, to: tokenEnd + match[0].length };
 }
 
 /**
@@ -204,19 +243,3 @@ function toRoman(value: number): string {
     return result;
 }
 
-/**
- * Finds the first non-space character at or after `start`.
- *
- * @param text - The text to scan.
- * @param start - The offset to start from.
- * @returns The character, or null at end of text or after a newline
- *   (a label on the next line belongs to the item text, not `\item`).
- */
-function firstNonSpaceChar(text: string, start: number): string | null {
-    for (let index = start; index < text.length; index++) {
-        const char = text[index];
-        if (char === "\n") return null;
-        if (char !== " " && char !== "\t") return char ?? null;
-    }
-    return null;
-}

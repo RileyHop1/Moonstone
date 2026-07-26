@@ -144,6 +144,47 @@ describe("live preview — inline layer", () => {
     });
 });
 
+describe("live preview — text-mode spellings", () => {
+    it("renders escapes, dashes, quotes and accents in prose", () => {
+        const view = mountPreview("100\\% profit---see ``na\\\"ive'' cases");
+
+        expect(renderedText(view)).toContain("100% profit—see “naïve” cases");
+    });
+
+    it("renders the extended formatting commands", () => {
+        const view = mountPreview("\\texttt{code} \\textsc{caps} \\sout{gone}");
+
+        expect(hasElement(view, ".cm-fmt-mono")).toBe(true);
+        expect(hasElement(view, ".cm-fmt-smallcaps")).toBe(true);
+        expect(hasElement(view, ".cm-fmt-strike")).toBe(true);
+    });
+
+    it("renders a citation's optional locator inside the chip", () => {
+        const view = mountPreview("see \\cite[p.~3]{knuth}");
+
+        expect(hasElement(view, ".cm-ref-chip-cite")).toBe(true);
+        // The locator's tie renders as a non-breaking space, as it
+        // would anywhere else in the document.
+        expect(renderedText(view)).toContain("knuth, p. 3");
+    });
+
+    it("renders a link chip without an open affordance by default", () => {
+        // No opener is injected in tests, so offering to open would be
+        // a control that cannot work.
+        const view = mountPreview("\\url{https://example.com}");
+
+        expect(hasElement(view, ".cm-ref-chip-url")).toBe(true);
+        expect(hasElement(view, ".cm-ref-chip-open")).toBe(false);
+    });
+
+    it("renders a custom list label", () => {
+        const view = mountPreview("\\begin{itemize}\n\\item[Note] body\n\\end{itemize}");
+
+        expect(renderedText(view)).toContain("Note");
+        expect(renderedText(view)).not.toContain("\\item");
+    });
+});
+
 describe("live preview — block layer", () => {
     it("renders display math as a block", () => {
         const view = mountPreview("text\n$$x^2$$\nmore");
@@ -171,6 +212,25 @@ describe("live preview — block layer", () => {
         );
 
         expect(hasElement(view, ".cm-table-widget table")).toBe(true);
+    });
+
+    it("renders formatting and symbols inside table cells", () => {
+        const view = mountPreview(
+            "\\begin{tabular}{ll}\n\\textbf{Bold} & \\alpha \\\\\n\\end{tabular}",
+        );
+
+        expect(hasElement(view, ".cm-table-widget .cm-fmt-bold")).toBe(true);
+        expect(renderedText(view)).toContain("α");
+        expect(renderedText(view)).not.toContain("\\textbf");
+    });
+
+    it("drops booktabs rules from a table", () => {
+        const view = mountPreview(
+            "\\begin{tabular}{ll}\n\\toprule\nA & B \\\\\n\\midrule\nC & D \\\\\n\\bottomrule\n\\end{tabular}",
+        );
+
+        expect(hasElement(view, ".cm-table-widget table")).toBe(true);
+        expect(renderedText(view)).not.toContain("toprule");
     });
 
     it("boxes a generic environment and hides its tags", () => {

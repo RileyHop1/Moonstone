@@ -1,0 +1,29 @@
+/* Spelling underline: a dotted red rule under the word rather than
+   CodeMirror's default warning styling, so a misspelling reads as a
+   spelling hint and not as a LaTeX error. */
+
+.cm-lintRange-warning[class*="cm-lintRange"] {
+    /* Keep the default wavy underline but tint it for spelling. */
+    background-position: left bottom;
+}
+
+.cm-diagnostic-warning {
+    border-left-color: var(--accent);
+}
+
+/* Quick-fix buttons in the lint tooltip. */
+.cm-diagnosticAction {
+    margin-left: 0.4em;
+    padding: 0 0.4em;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-preview);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.cm-diagnosticAction:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}

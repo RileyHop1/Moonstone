@@ -9,7 +9,7 @@
  * editors at once, give each its own compartment instance instead.
  */
 
-import { Compartment, EditorState } from "@codemirror/state";
+import { Compartment, EditorState, Facet } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import type { ViewMode } from "../../../shared/types";
@@ -20,6 +20,16 @@ export const previewCompartment = new Compartment();
 
 /** The mode every editor session starts in. */
 export const DEFAULT_VIEW_MODE: ViewMode = "live";
+
+/**
+ * Publishes the active view mode into editor state. The compartment
+ * swaps extensions, which leaves no record of *which* mode produced
+ * them; this facet makes the choice readable by anything holding a
+ * state (the diagnostic panel today, other consumers later).
+ */
+export const viewModeFacet = Facet.define<ViewMode, ViewMode>({
+    combine: (values) => values[0] ?? DEFAULT_VIEW_MODE,
+});
 
 /**
  * Maps a view mode to the extension the preview compartment should
@@ -36,11 +46,12 @@ export const DEFAULT_VIEW_MODE: ViewMode = "live";
 export function previewExtensionForMode(mode: ViewMode): Extension {
     switch (mode) {
         case "source":
-            return [];
+            return [viewModeFacet.of(mode)];
         case "live":
-            return livePreview();
+            return [viewModeFacet.of(mode), livePreview()];
         case "readonly":
             return [
+                viewModeFacet.of(mode),
                 livePreview({ reveal: false }),
                 EditorState.readOnly.of(true),
                 EditorView.editable.of(false),

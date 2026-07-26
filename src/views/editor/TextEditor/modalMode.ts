@@ -14,7 +14,7 @@
  * editors at once, give each its own compartment instance instead.
  */
 
-import { Compartment } from "@codemirror/state";
+import { Compartment, Facet } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { vim } from "@replit/codemirror-vim";
 import { helix } from "codemirror-helix";
@@ -27,6 +27,15 @@ export const modalCompartment = new Compartment();
 export const DEFAULT_MODAL_MODE: ModalMode = "none";
 
 /**
+ * Publishes the active modal mode into editor state, for the same
+ * reason as `viewModeFacet`: the compartment holds a keymap, not a
+ * record of which mode asked for it.
+ */
+export const modalModeFacet = Facet.define<ModalMode, ModalMode>({
+    combine: (values) => values[0] ?? DEFAULT_MODAL_MODE,
+});
+
+/**
  * Maps the modal mode to the extension the compartment should hold.
  *
  * @param mode - The desired modal editing style.
@@ -35,10 +44,10 @@ export const DEFAULT_MODAL_MODE: ModalMode = "none";
 export function modalExtensionForMode(mode: ModalMode): Extension {
     switch (mode) {
         case "none":
-            return [];
+            return [modalModeFacet.of(mode)];
         case "vim":
-            return vim();
+            return [modalModeFacet.of(mode), vim()];
         case "helix":
-            return helix();
+            return [modalModeFacet.of(mode), helix()];
     }
 }

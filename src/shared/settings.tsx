@@ -8,12 +8,17 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from "react";
 import { getSettings, saveSettings } from "./tauri";
 import type { StoredSettings } from "./tauri";
-import type { AppSettings, Theme } from "./types";
+import type { AppSettings, ModalMode, Theme } from "./types";
+
+/** The modal modes a stored value is allowed to name. */
+const MODAL_MODES: readonly ModalMode[] = ["none", "vim", "helix"];
 
 /** The settings a fresh install starts with (mirrors the backend). */
 export const DEFAULT_SETTINGS: AppSettings = {
     theme: "dark",
     editorFontSize: 14,
+    modalMode: "none",
+    spellCheckEnabled: true,
 };
 
 /** Allowed editor font-size bounds in pixels. */
@@ -66,7 +71,15 @@ export function normalizeSettings(stored: StoredSettings | null | undefined): Ap
         ? Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, Math.round(rawFontSize)))
         : DEFAULT_SETTINGS.editorFontSize;
 
-    return { theme, editorFontSize };
+    const modalMode: ModalMode = MODAL_MODES.includes(stored.modalMode as ModalMode)
+        ? (stored.modalMode as ModalMode)
+        : DEFAULT_SETTINGS.modalMode;
+
+    // Anything that is not an explicit `false` leaves checking on: a
+    // missing or malformed value should not silently disable it.
+    const spellCheckEnabled = stored.spellCheckEnabled !== false;
+
+    return { theme, editorFontSize, modalMode, spellCheckEnabled };
 }
 
 /**

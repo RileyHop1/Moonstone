@@ -11,6 +11,7 @@ import type { NameDialogResult } from "../../components/NameDialog";
 import { DEFAULT_FILE_EXTENSION } from "../../shared/fileTypes";
 import { useNavigation } from "../../shared/navigation";
 import { useAppActions } from "../../shared/appActions";
+import { useSettings } from "../../shared/settings";
 import type { EditorActions, SnippetName } from "../../shared/appActions";
 import {
     createDirectory,
@@ -28,7 +29,6 @@ import {
 import type {
     FileNode,
     LoadState,
-    ModalMode,
     ProjectInfo,
     Reference,
     ViewMode,
@@ -42,13 +42,8 @@ import {
     previewCompartment,
     previewExtensionForMode,
 } from "../editor/TextEditor/viewMode";
+import { modalCompartment, modalExtensionForMode } from "../editor/TextEditor/modalMode";
 import {
-    DEFAULT_MODAL_MODE,
-    modalCompartment,
-    modalExtensionForMode,
-} from "../editor/TextEditor/modalMode";
-import {
-    DEFAULT_SPELL_CHECK_ENABLED,
     spellCheckCompartment,
     spellCheckExtensionForEnabled,
 } from "../editor/TextEditor/SpellCheck";
@@ -121,9 +116,12 @@ export function ProjectPage({ project }: ProjectPageProps) {
     const [statusMessage, setStatusMessage] = useState<StatusMessage | null>(null);
     const [dialog, setDialog] = useState<FileDialogState | null>(null);
     const [viewMode, setViewMode] = useState<ViewMode>(DEFAULT_VIEW_MODE);
-    const [modalMode, setModalMode] = useState<ModalMode>(DEFAULT_MODAL_MODE);
-    const [spellCheckEnabled, setSpellCheckEnabled] = useState(DEFAULT_SPELL_CHECK_ENABLED);
     const [references, setReferences] = useState<readonly Reference[]>([]);
+
+    // Modal editing and spell checking are user preferences, not
+    // per-session editor state, so they come from settings and persist.
+    const { settings } = useSettings();
+    const { modalMode, spellCheckEnabled } = settings;
 
     const viewRef = useRef<EditorView | null>(null);
     const statusTimerRef = useRef<number | null>(null);
@@ -430,20 +428,8 @@ export function ProjectPage({ project }: ProjectPageProps) {
                 openSearchPanel(view);
                 view.focus();
             },
-            modalMode,
-            setModalMode: (mode: ModalMode) => setModalMode(mode),
-            spellCheckEnabled,
-            setSpellCheckEnabled: (enabled: boolean) => setSpellCheckEnabled(enabled),
         }),
-        [
-            save,
-            confirmDiscardChanges,
-            navigate,
-            project.path,
-            viewMode,
-            modalMode,
-            spellCheckEnabled,
-        ],
+        [save, confirmDiscardChanges, navigate, project.path, viewMode],
     );
 
     // Image paths in LaTeX are relative to the document, so the

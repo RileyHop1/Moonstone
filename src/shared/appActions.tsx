@@ -8,7 +8,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import type { ModalMode, ViewMode } from "./types";
+import type { ViewMode } from "./types";
 
 /** Names of the LaTeX snippets the editor can insert at the cursor. */
 export type SnippetName =
@@ -43,14 +43,6 @@ export interface EditorActions {
     readonly setViewMode: (mode: ViewMode) => void;
     /** Opens the find-and-replace search panel. */
     readonly findReplace: () => void;
-    /** The active modal editing mode (none/vim/helix). */
-    readonly modalMode: ModalMode;
-    /** Switches the modal editing mode. */
-    readonly setModalMode: (mode: ModalMode) => void;
-    /** Whether prose spell checking is on. */
-    readonly spellCheckEnabled: boolean;
-    /** Turns prose spell checking on or off. */
-    readonly setSpellCheckEnabled: (enabled: boolean) => void;
 }
 
 /** Everything pages can currently handle; null means unavailable. */

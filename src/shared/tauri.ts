@@ -89,13 +89,15 @@ export function createImageSourceResolver(
 }
 
 /**
- * Settings as the backend stores them: the theme arrives as a plain
- * string and is narrowed to {@link AppSettings} by the settings
- * provider.
+ * Settings as the backend stores them: enum-like values arrive as
+ * plain strings and are narrowed to {@link AppSettings} by the
+ * settings provider.
  */
 export interface StoredSettings {
     readonly theme: string;
     readonly editorFontSize: number;
+    readonly modalMode: string;
+    readonly spellCheckEnabled: boolean;
 }
 
 /**

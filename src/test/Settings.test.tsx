@@ -72,7 +72,12 @@ describe("Settings", () => {
             expect(document.documentElement.dataset.theme).toBe("light");
         });
         expect(invokeMock).toHaveBeenCalledWith("save_settings", {
-            settings: { theme: "light", editorFontSize: 14 },
+            settings: {
+                theme: "light",
+                editorFontSize: 14,
+                modalMode: "none",
+                spellCheckEnabled: true,
+            },
         });
     });
 
@@ -84,7 +89,72 @@ describe("Settings", () => {
 
         await waitFor(() => {
             expect(invokeMock).toHaveBeenCalledWith("save_settings", {
-                settings: { theme: "dark", editorFontSize: 24 },
+                settings: {
+                    theme: "dark",
+                    editorFontSize: 24,
+                    modalMode: "none",
+                    spellCheckEnabled: true,
+                },
+            });
+        });
+    });
+
+    describe("editor preferences", () => {
+        it("persists the chosen edit mode", async () => {
+            renderWithProviders(<Settings />, { kind: "settings" });
+
+            fireEvent.click(screen.getByRole("tab", { name: "Editor" }));
+            fireEvent.click(screen.getByRole("radio", { name: "Vim" }));
+
+            await waitFor(() => {
+                expect(invokeMock).toHaveBeenCalledWith("save_settings", {
+                    settings: {
+                        theme: "dark",
+                        editorFontSize: 14,
+                        modalMode: "vim",
+                        spellCheckEnabled: true,
+                    },
+                });
+            });
+        });
+
+        it("persists spell check being turned off", async () => {
+            renderWithProviders(<Settings />, { kind: "settings" });
+
+            fireEvent.click(screen.getByRole("tab", { name: "Editor" }));
+            fireEvent.click(screen.getByRole("switch", { name: "Spell check" }));
+
+            await waitFor(() => {
+                expect(invokeMock).toHaveBeenCalledWith("save_settings", {
+                    settings: {
+                        theme: "dark",
+                        editorFontSize: 14,
+                        modalMode: "none",
+                        spellCheckEnabled: false,
+                    },
+                });
+            });
+        });
+
+        it("restores a stored edit mode as the active choice", async () => {
+            mockCommands({
+                get_settings: () => ({
+                    theme: "dark",
+                    editorFontSize: 14,
+                    modalMode: "helix",
+                    spellCheckEnabled: true,
+                }),
+                save_settings: () => null,
+            });
+            renderWithProviders(<Settings />, { kind: "settings" });
+
+            fireEvent.click(screen.getByRole("tab", { name: "Editor" }));
+
+            await waitFor(() => {
+                expect(screen.getByRole("radio", { name: "Helix" })).toHaveAttribute(
+                    "aria-checked",
+                    "true",
+                );
             });
         });
     });

@@ -41,12 +41,11 @@ The compartment is a module singleton, which is safe because exactly
 one editor exists at a time (the project page mounts a single keyed
 `TextEditor`, remounted per file).
 
-The **View** menu also holds **Vim Mode** and **Helix Mode** toggles
-(mutually exclusive, checkmark on the active one) — optional modal
-editing via the same compartment technique. See `modal-editing.md`.
-
-**Spell Check** sits below them, on by default, again through its own
-compartment. See `spell-check.md`.
+Edit modes (Vim/Helix) and spell check used to sit in this menu and
+have moved to **Settings → Editor**, where they persist between
+sessions. View modes stayed: they are per-document state you switch
+constantly, not a preference. See `modal-editing.md`, `spell-check.md`
+and `settings.md`.
 
 ## Find & Replace
 

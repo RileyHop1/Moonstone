@@ -19,10 +19,6 @@ function makeEditorActions(overrides?: Partial<EditorActions>): EditorActions {
         viewMode: "live",
         setViewMode: vi.fn(),
         findReplace: vi.fn(),
-        modalMode: "none",
-        setModalMode: vi.fn(),
-        spellCheckEnabled: true,
-        setSpellCheckEnabled: vi.fn(),
         ...overrides,
     };
 }
@@ -38,7 +34,12 @@ function makeContext(editor: EditorActions | null): MenuContext {
         actions: { newProject: vi.fn(), editor },
         editor,
         navigate: vi.fn(),
-        settings: { theme: "dark", editorFontSize: 14 },
+        settings: {
+            theme: "dark",
+            editorFontSize: 14,
+            modalMode: "none",
+            spellCheckEnabled: true,
+        },
         updateSettings: vi.fn(),
     };
 }
@@ -117,48 +118,24 @@ describe("buildMenus", () => {
         expect(findItem(context, "View", "Read Only").checked).toBe(true);
     });
 
-    it("disables the modal-mode items without an editor", () => {
-        expect(findItem(makeContext(null), "View", "Vim Mode").action).toBeNull();
-        expect(findItem(makeContext(null), "View", "Helix Mode").action).toBeNull();
-    });
+    it("keeps preferences off the menus", () => {
+        // Edit modes, spell check and the theme toggle moved to the
+        // settings page; leaving duplicates here would be two places to
+        // change one preference.
+        const context = makeContext(makeEditorActions());
+        const labels = buildMenus(context).flatMap((menu) =>
+            menu.items.map((item) => item.label),
+        );
 
-    it("selects a modal mode from off", () => {
-        const editor = makeEditorActions({ modalMode: "none" });
-        const context = makeContext(editor);
-
-        findItem(context, "View", "Vim Mode").action?.();
-        expect(editor.setModalMode).toHaveBeenCalledWith("vim");
-
-        findItem(context, "View", "Helix Mode").action?.();
-        expect(editor.setModalMode).toHaveBeenCalledWith("helix");
-    });
-
-    it("turns the active modal mode back off", () => {
-        const editor = makeEditorActions({ modalMode: "vim" });
-
-        findItem(makeContext(editor), "View", "Vim Mode").action?.();
-        expect(editor.setModalMode).toHaveBeenCalledWith("none");
-    });
-
-    it("checks only the active modal mode (mutually exclusive)", () => {
-        const context = makeContext(makeEditorActions({ modalMode: "helix" }));
-
-        expect(findItem(context, "View", "Vim Mode").checked).toBe(false);
-        expect(findItem(context, "View", "Helix Mode").checked).toBe(true);
-    });
-
-    it("toggles the theme from the Settings menu", () => {
-        const context = makeContext(null);
-
-        findItem(context, "Settings", "Light/Dark").action?.();
-
-        expect(context.updateSettings).toHaveBeenCalledWith({ theme: "light" });
+        for (const label of ["Vim Mode", "Helix Mode", "Spell Check", "Light/Dark"]) {
+            expect(labels, label).not.toContain(label);
+        }
     });
 
     it("navigates to the settings page", () => {
         const context = makeContext(null);
 
-        findItem(context, "Settings", "Settings Menu").action?.();
+        findItem(context, "Settings", "Open Settings").action?.();
 
         expect(context.navigate).toHaveBeenCalledWith({ kind: "settings" });
     });

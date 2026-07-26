@@ -1,8 +1,9 @@
 # Modal Editing (Vim / Helix)
 
-Optional modal editing in the editor, chosen from the **View** menu:
-**Vim Mode** and **Helix Mode**. They are mutually exclusive — you can
-be in one modal system or none. Off by default.
+Optional modal editing in the editor, chosen in **Settings → Editor →
+Edit mode**: None, Vim or Helix. They are mutually exclusive — you can
+be in one modal system or none. Off by default, and **persisted**, so
+the choice survives restarts.
 
 ## How it works
 
@@ -17,12 +18,12 @@ preserves the document and undo history — no remount.
 - The compartment sits **first** in the editor's extensions array, so
   the modal keymap sees keys before the default bindings. Only one of
   vim/helix is ever active, so there is no keymap conflict.
-- `ProjectPage` owns the `modalMode` session state and dispatches
-  `modalCompartment.reconfigure(...)` when it changes. The mode is
-  exposed through `EditorActions` (`modalMode` + `setModalMode`) so the
-  View menu can drive and reflect it. The two menu items behave as a
-  radio group: selecting one when the other is active switches; clicking
-  the active one turns it off.
+- The mode is a **user preference**, stored in `AppSettings`, not
+  per-session editor state. `ProjectPage` reads it from `useSettings()`
+  and dispatches `modalCompartment.reconfigure(...)` when it changes,
+  so switching applies to the open document immediately without a
+  remount. It is deliberately not in `EditorActions`: there is one
+  place to change it, the settings page.
 
 ### Vim
 

@@ -112,27 +112,6 @@ function buildViewMenu({ editor }: MenuContext): Menu {
                 action: editor ? () => editor.setViewMode("readonly") : null,
                 checked: editor?.viewMode === "readonly",
             },
-            {
-                label: "Vim Mode",
-                action: editor
-                    ? () => editor.setModalMode(editor.modalMode === "vim" ? "none" : "vim")
-                    : null,
-                checked: editor?.modalMode === "vim",
-            },
-            {
-                label: "Helix Mode",
-                action: editor
-                    ? () => editor.setModalMode(editor.modalMode === "helix" ? "none" : "helix")
-                    : null,
-                checked: editor?.modalMode === "helix",
-            },
-            {
-                label: "Spell Check",
-                action: editor
-                    ? () => editor.setSpellCheckEnabled(!editor.spellCheckEnabled)
-                    : null,
-                checked: editor?.spellCheckEnabled ?? false,
-            },
         ],
     };
 }
@@ -143,17 +122,12 @@ function buildViewMenu({ editor }: MenuContext): Menu {
  * @param context - The wiring context.
  * @returns The menu definition.
  */
-function buildSettingsMenu({ navigate, settings, updateSettings }: MenuContext): Menu {
+function buildSettingsMenu({ navigate }: MenuContext): Menu {
     return {
         name: "Settings",
-        items: [
-            {
-                label: "Light/Dark",
-                action: () =>
-                    updateSettings({ theme: settings.theme === "dark" ? "light" : "dark" }),
-            },
-            { label: "Settings Menu", action: () => navigate({ kind: "settings" }) },
-        ],
+        // Preferences live on the settings page, not in this menu, so
+        // there is one place to change any of them.
+        items: [{ label: "Open Settings", action: () => navigate({ kind: "settings" }) }],
     };
 }
 

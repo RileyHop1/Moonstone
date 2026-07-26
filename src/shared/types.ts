@@ -98,6 +98,10 @@ export interface AppSettings {
     readonly theme: Theme;
     /** Editor font size in pixels. */
     readonly editorFontSize: number;
+    /** Modal editing style applied to the editor. */
+    readonly modalMode: ModalMode;
+    /** Whether prose is spell checked. */
+    readonly spellCheckEnabled: boolean;
 }
 
 /**

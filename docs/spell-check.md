@@ -4,7 +4,8 @@ Prose spell checking for LaTeX documents, surfaced through
 CodeMirror's lint machinery so misspellings get the usual underline,
 hover panel and quick fixes rather than a parallel UI of their own.
 
-On by default; toggled from **View → Spell Check**.
+On by default; toggled in **Settings → Editor → Spell check**, and
+persisted between sessions.
 
 ## Why not the browser's spellchecker
 

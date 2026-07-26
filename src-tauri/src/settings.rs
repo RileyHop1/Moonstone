@@ -36,6 +36,12 @@ pub struct AppSettings {
     /// Editor font size in pixels.
     #[serde(default = "default_font_size")]
     pub editor_font_size: u32,
+    /// Modal editing style: `"none"`, `"vim"` or `"helix"`.
+    #[serde(default = "default_modal_mode")]
+    pub modal_mode: String,
+    /// Whether prose is spell checked.
+    #[serde(default = "default_spell_check")]
+    pub spell_check_enabled: bool,
 }
 
 /// The theme a fresh install starts with.
@@ -48,12 +54,24 @@ fn default_font_size() -> u32 {
     14
 }
 
+/// Modal editing is off until the user asks for it.
+fn default_modal_mode() -> String {
+    "none".to_string()
+}
+
+/// Spell checking is on, as in any writing tool.
+fn default_spell_check() -> bool {
+    true
+}
+
 impl Default for AppSettings {
     /// The settings a fresh install starts with.
     fn default() -> Self {
         Self {
             theme: default_theme(),
             editor_font_size: default_font_size(),
+            modal_mode: default_modal_mode(),
+            spell_check_enabled: default_spell_check(),
         }
     }
 }
@@ -195,6 +213,8 @@ mod settings_tests {
         let settings = AppSettings {
             theme: "light".to_string(),
             editor_font_size: 18,
+            modal_mode: "vim".to_string(),
+            spell_check_enabled: false,
         };
 
         save_settings_impl(&path, &settings).unwrap();
@@ -216,6 +236,8 @@ mod settings_tests {
 
         assert_eq!(settings.theme, "light");
         assert_eq!(settings.editor_font_size, default_font_size());
+        assert_eq!(settings.modal_mode, default_modal_mode());
+        assert!(settings.spell_check_enabled);
     }
 
     #[test]

@@ -15,7 +15,7 @@ button and no way to lose a change by navigating away.
 | Section | Settings |
 |---|---|
 | General | Theme |
-| Editor | Font size |
+| Editor | Font size, edit mode, spell check |
 
 Sections are declared in `settingsTabs.ts` as plain data, so adding one
 is a line there plus its panel component. `Settings.tsx` owns only the
@@ -36,6 +36,19 @@ are navigable and testable by role rather than by class name.
   toggle. Also reachable from the hotbar: **Settings > Light/Dark**.
 - **Editor font size** — 10–24 px (clamped), applied through the
   `--editor-font-size` CSS variable.
+- **Edit mode** — None, Vim or Helix. See `modal-editing.md`.
+- **Spell check** — on by default. See `spell-check.md`.
+
+Edit mode and spell check were previously session-only toggles in the
+**View** menu. They are preferences, so they live here and persist;
+duplicating them in a menu would mean two places to change one thing.
+View modes (Source/Live/Read-Only) deliberately stayed in the View menu
+and toolbar — those are per-document state you switch constantly, not a
+preference.
+
+`ProjectPage` reads both from `useSettings()` and reconfigures the
+editor's compartments when they change, so a change applies to the open
+document immediately without losing the document or undo history.
 
 ## How it flows
 

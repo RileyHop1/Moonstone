@@ -1,81 +1,86 @@
 /**
- * Settings page: theme and editor preferences, applied live and
- * persisted through the backend.
+ * Settings page: a sidebar of sections and the panel for the selected
+ * one. Every control applies immediately and is persisted by the
+ * settings provider, so there is no save button.
  */
 
+import { useState } from "react";
 import { useNavigation } from "../../shared/navigation";
-import { useSettings, FONT_SIZE_MAX, FONT_SIZE_MIN } from "../../shared/settings";
-import type { Theme } from "../../shared/types";
+import { assertNever } from "../../shared/types";
+import { EditorTab } from "./EditorTab";
+import { GeneralTab } from "./GeneralTab";
+import { DEFAULT_SETTINGS_TAB, SETTINGS_TABS } from "./settingsTabs";
+import type { SettingsTabId } from "./settingsTabs";
 import "./Settings.css";
 
-/** The selectable themes, in display order. */
-const THEME_OPTIONS: readonly { readonly value: Theme; readonly label: string }[] = [
-    { value: "dark", label: "Dark" },
-    { value: "light", label: "Light" },
-];
+/**
+ * Renders the panel for a section.
+ *
+ * @param tab - The selected section.
+ * @returns That section's controls.
+ */
+function renderPanel(tab: SettingsTabId) {
+    switch (tab) {
+        case "general":
+            return <GeneralTab />;
+
+        case "editor":
+            return <EditorTab />;
+
+        default:
+            return assertNever(tab);
+    }
+}
 
 /**
- * Renders the settings page. Every control applies immediately and is
- * persisted by the settings provider.
+ * Renders the settings page.
  *
  * @returns The settings page element.
  */
 export function Settings() {
     const { navigate } = useNavigation();
-    const { settings, updateSettings } = useSettings();
+    const [activeTab, setActiveTab] = useState<SettingsTabId>(DEFAULT_SETTINGS_TAB);
 
     return (
         <div className="settings-page">
-            <h1 className="settings-title">Settings</h1>
+            <header className="settings-header">
+                <h1 className="settings-title">Settings</h1>
+                <button
+                    type="button"
+                    className="settings-back-button"
+                    onClick={() => navigate({ kind: "browser" })}
+                >
+                    ← Back to projects
+                </button>
+            </header>
 
-            <section className="settings-section">
-                <h2 className="settings-section-title">Appearance</h2>
+            <div className="settings-body">
+                <nav className="settings-sidebar" role="tablist" aria-label="Settings sections">
+                    {SETTINGS_TABS.map((tab) => (
+                        <button
+                            key={tab.id}
+                            type="button"
+                            role="tab"
+                            aria-selected={tab.id === activeTab}
+                            aria-controls={`settings-panel-${tab.id}`}
+                            className={`settings-tab${
+                                tab.id === activeTab ? " settings-tab-active" : ""
+                            }`}
+                            onClick={() => setActiveTab(tab.id)}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                </nav>
 
-                <div className="settings-row">
-                    <span className="settings-label">Theme</span>
-                    <div className="settings-theme-options">
-                        {THEME_OPTIONS.map((option) => (
-                            <button
-                                key={option.value}
-                                type="button"
-                                className={`settings-theme-button${
-                                    settings.theme === option.value
-                                        ? " settings-theme-button-active"
-                                        : ""
-                                }`}
-                                onClick={() => updateSettings({ theme: option.value })}
-                            >
-                                {option.label}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
-                <label className="settings-row">
-                    <span className="settings-label">Editor font size</span>
-                    <input
-                        className="settings-number-input"
-                        type="number"
-                        min={FONT_SIZE_MIN}
-                        max={FONT_SIZE_MAX}
-                        value={settings.editorFontSize}
-                        onChange={(event) => {
-                            const parsed = Number(event.target.value);
-                            if (Number.isNaN(parsed)) return;
-
-                            updateSettings({ editorFontSize: parsed });
-                        }}
-                    />
-                </label>
-            </section>
-
-            <button
-                type="button"
-                className="settings-back-button"
-                onClick={() => navigate({ kind: "browser" })}
-            >
-                Back to projects
-            </button>
+                <section
+                    className="settings-panel"
+                    role="tabpanel"
+                    id={`settings-panel-${activeTab}`}
+                >
+                    {renderPanel(activeTab)}
+                </section>
+            </div>
         </div>
     );
 }

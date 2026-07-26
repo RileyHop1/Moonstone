@@ -1,6 +1,6 @@
 /**
- * Test suite for the settings page: theme switching, font-size
- * clamping, persistence, and navigation.
+ * Test suite for the settings page: section tabs, theme switching,
+ * font-size clamping, persistence, and navigation.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -24,18 +24,49 @@ describe("Settings", () => {
         document.documentElement.dataset.theme = "";
     });
 
-    it("renders the appearance controls", () => {
-        renderWithProviders(<Settings />, { kind: "settings" });
+    describe("sections", () => {
+        it("opens on General", () => {
+            renderWithProviders(<Settings />, { kind: "settings" });
 
-        expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
-        expect(screen.getByRole("button", { name: "Dark" })).toBeInTheDocument();
-        expect(screen.getByRole("button", { name: "Light" })).toBeInTheDocument();
+            expect(screen.getByRole("tab", { name: "General" })).toHaveAttribute(
+                "aria-selected",
+                "true",
+            );
+            expect(screen.getByRole("radio", { name: "Dark" })).toBeInTheDocument();
+        });
+
+        it("shows only the selected section's controls", () => {
+            renderWithProviders(<Settings />, { kind: "settings" });
+
+            // Font size belongs to Editor, so it is not on screen yet.
+            expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+
+            fireEvent.click(screen.getByRole("tab", { name: "Editor" }));
+
+            expect(screen.getByRole("spinbutton")).toBeInTheDocument();
+            expect(screen.queryByRole("radio", { name: "Dark" })).not.toBeInTheDocument();
+        });
+
+        it("moves the selection when another section is picked", () => {
+            renderWithProviders(<Settings />, { kind: "settings" });
+
+            fireEvent.click(screen.getByRole("tab", { name: "Editor" }));
+
+            expect(screen.getByRole("tab", { name: "Editor" })).toHaveAttribute(
+                "aria-selected",
+                "true",
+            );
+            expect(screen.getByRole("tab", { name: "General" })).toHaveAttribute(
+                "aria-selected",
+                "false",
+            );
+        });
     });
 
     it("switches the theme, applies it to the DOM, and persists it", async () => {
         renderWithProviders(<Settings />, { kind: "settings" });
 
-        fireEvent.click(screen.getByRole("button", { name: "Light" }));
+        fireEvent.click(screen.getByRole("radio", { name: "Light" }));
 
         await waitFor(() => {
             expect(document.documentElement.dataset.theme).toBe("light");
@@ -48,6 +79,7 @@ describe("Settings", () => {
     it("clamps the editor font size into its allowed range", async () => {
         renderWithProviders(<Settings />, { kind: "settings" });
 
+        fireEvent.click(screen.getByRole("tab", { name: "Editor" }));
         fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "99" } });
 
         await waitFor(() => {
@@ -60,7 +92,7 @@ describe("Settings", () => {
     it("navigates back to the project browser", () => {
         const { navigateCalls } = renderWithProviders(<Settings />, { kind: "settings" });
 
-        fireEvent.click(screen.getByRole("button", { name: "Back to projects" }));
+        fireEvent.click(screen.getByRole("button", { name: /Back to projects/ }));
 
         expect(navigateCalls).toEqual([{ kind: "browser" }]);
     });

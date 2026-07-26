@@ -22,21 +22,38 @@ use tauri::{
 const SETTINGS_FILE_NAME: &str = "settings.json";
 
 /// User-facing preferences, shaped for the frontend settings page.
+///
+/// Every field carries its own serde default so a settings file written
+/// by an older build still loads: a missing field falls back on its own
+/// rather than discarding the whole file and resetting the user's other
+/// preferences.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     /// Color theme: `"dark"` or `"light"`.
+    #[serde(default = "default_theme")]
     pub theme: String,
     /// Editor font size in pixels.
+    #[serde(default = "default_font_size")]
     pub editor_font_size: u32,
+}
+
+/// The theme a fresh install starts with.
+fn default_theme() -> String {
+    "dark".to_string()
+}
+
+/// The editor font size a fresh install starts with.
+fn default_font_size() -> u32 {
+    14
 }
 
 impl Default for AppSettings {
     /// The settings a fresh install starts with.
     fn default() -> Self {
         Self {
-            theme: "dark".to_string(),
-            editor_font_size: 14,
+            theme: default_theme(),
+            editor_font_size: default_font_size(),
         }
     }
 }
@@ -184,5 +201,31 @@ mod settings_tests {
         let loaded = load_settings_impl(&path);
 
         assert_eq!(loaded, settings);
+    }
+
+    #[test]
+    fn test_load_keeps_known_fields_when_others_are_missing() {
+        // A settings file written by an older build has fewer fields.
+        // Each one defaults on its own, so the preferences the user did
+        // set survive instead of the whole file being discarded.
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, r#"{"theme":"light"}"#).unwrap();
+
+        let settings = load_settings_impl(&path);
+
+        assert_eq!(settings.theme, "light");
+        assert_eq!(settings.editor_font_size, default_font_size());
+    }
+
+    #[test]
+    fn test_load_ignores_fields_it_does_not_know() {
+        // The reverse case: a file written by a newer build, or a
+        // hand-edited one, must not blow away what we can read.
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, r#"{"theme":"light","somethingElse":42}"#).unwrap();
+
+        assert_eq!(load_settings_impl(&path).theme, "light");
     }
 }

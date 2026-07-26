@@ -44,6 +44,71 @@ helper gates every reveal check behind it, so read-only mode simply
 treats all cursor contact as non-touching. When reveal is enabled
 (Live), the granularity table below applies.
 
+## Inert regions (comments and verbatim)
+
+Some regions must never be rendered no matter what they contain: a
+comment like `% costs $5 and $10` is not math, and `\alpha` inside a
+`verbatim` block must stay literal text.
+
+Rather than teach all eight scanners to skip these regions —
+duplicating overlap logic and still missing the scanners that pair
+tokens across the whole document — `inertRegions.ts` **masks** the text
+before anything scans it. Inert characters become spaces, preserving
+total length and every newline position, so offsets found in the
+masked text are valid document positions. The scanners are unchanged
+and unaware: they find nothing where there is nothing to find.
+
+The work is split so cost scales with what is being rendered:
+
+- **`findInertRegions`** locates the regions. This must see the whole
+  document: a `\begin{verbatim}` far above the viewport decides whether
+  the visible lines are literal, and nothing in the visible text itself
+  reveals that. It is a linear scan yielding a handful of intervals,
+  with no large allocation.
+- **`maskChunk`** applies them to one span. Callers mask only what they
+  are about to scan.
+
+`inertRegionsField` caches the intervals — not a masked copy of the
+document — and is keyed to document changes only, since a cursor move
+cannot change which regions are inert. The inline layer then masks
+just its visible chunk, so its cost tracks the viewport rather than
+the document. The block layer masks everything, because it renders
+boxes, headings and markers across the whole file; making *that* scan
+incremental is separate work.
+
+Masking rebuilds text segment-wise: untouched spans between inert
+regions pass through as slices, so a document with a dozen comments
+allocates a couple of dozen segments rather than one array element per
+character.
+
+Two views of the document are therefore in play. **Masked text drives
+every scan; the real document supplies whatever a widget renders** —
+KaTeX sources, table cell contents, and the "are these tag lines
+clean?" check that decides whether a table may be replaced wholesale
+(a trailing comment there means it may not, or the comment would be
+swallowed by the widget).
+
+What gets masked:
+
+- **Comments** — an unescaped `%` through the end of its line. `\%` is
+  a literal percent; `\\%` is a line break followed by a real comment.
+  The newline itself survives.
+- **Literal environments** — the *bodies* of `verbatim`, `verbatim*`,
+  `Verbatim`, `Verbatim*`, `lstlisting`, `minted`, and `alltt`. Only
+  the body: the `\begin`/`\end` tags stay visible so the environment
+  still renders its box.
+- **`\verb` arguments** — the text between the delimiters, which may
+  not span a line.
+
+Comments are resolved first and excluded from the literal scan, so a
+commented-out `\begin{verbatim}` cannot open a literal region and a
+commented `\end{verbatim}` does not close one — the search continues to
+the next real closing tag. (Real LaTeX treats `%` as ordinary text
+inside verbatim and would end the environment there; the divergence is
+confined to that pathological case.) Unclosed literal environments and
+unclosed `\verb` arguments stay raw rather than swallowing the rest of
+the document.
+
 ## Reveal rule
 
 If any selection range touches a rendered region, its decorations are
@@ -134,11 +199,14 @@ double-rendered.
 
 ## Comments
 
-Theme-only: the `t.comment` highlight rule (`moonstoneTheme.ts`) is
-italic at `opacity: 0.6`. A decoration-based pass with cursor reveal
-was considered and rejected — dimmed text is still fully readable and
-editable, so the reveal machinery would add complexity for no editing
-benefit.
+Comment *contents* are excluded from every scanner by the masking pass
+described under [Inert regions](#inert-regions-comments-and-verbatim).
+
+Comment *styling* is theme-only: the `t.comment` highlight rule
+(`moonstoneTheme.ts`) is italic at `opacity: 0.6`. A decoration-based
+pass with cursor reveal was considered and rejected — dimmed text is
+still fully readable and editable, so the reveal machinery would add
+complexity for no editing benefit.
 
 ## Special characters
 
@@ -165,6 +233,7 @@ editing. Clicking the table reveals the source, as everywhere else.
 ## Files
 
 - `src/views/editor/TextEditor/LivePreview/livePreview.ts` — assembly
+- `src/views/editor/TextEditor/LivePreview/inertRegions.ts` — comment/verbatim masking
 - `src/views/editor/TextEditor/LivePreview/braces.ts` — shared brace matcher
 - `src/views/editor/TextEditor/LivePreview/findMath.ts` — math scanner
 - `src/views/editor/TextEditor/LivePreview/findEnvironments.ts` — env scanner
@@ -178,7 +247,7 @@ editing. Clicking the table reveals the source, as everywhere else.
 - Tests: `src/test/findMath.test.ts`, `findEnvironments.test.ts`,
   `braces.test.ts`, `findSections.test.ts`, `findFormatting.test.ts`,
   `findListItems.test.ts`, `findRefs.test.ts`, `parseTabular.test.ts`,
-  `symbols.test.ts`
+  `symbols.test.ts`, `inertRegions.test.ts`
 
 ## Deferred (next passes)
 

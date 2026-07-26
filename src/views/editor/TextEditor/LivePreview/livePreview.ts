@@ -23,6 +23,8 @@ import { Decoration, EditorView, ViewPlugin } from "@codemirror/view";
 import type { DecorationSet, ViewUpdate } from "@codemirror/view";
 import { findMathRanges } from "./findMath";
 import { findEnvironments } from "./findEnvironments";
+import { findInertRegions, maskChunk } from "./inertRegions";
+import type { InertRegions } from "./inertRegions";
 import { findFormatRanges } from "./findFormatting";
 import { findListItems } from "./findListItems";
 import { findRefRanges } from "./findRefs";
@@ -101,6 +103,7 @@ function buildInlineDecorations(view: EditorView): InlineDecorationSets {
     const replaces: Range<Decoration>[] = [];
     const marks: Range<Decoration>[] = [];
     const { state } = view;
+    const inertRegions = state.field(inertRegionsField);
 
     // Visible ranges are expanded to whole lines so a `$...$` pair is
     // never split by a range edge; the clamp keeps expanded ranges
@@ -114,7 +117,11 @@ function buildInlineDecorations(view: EditorView): InlineDecorationSets {
         if (to <= lastProcessedEnd) continue;
         lastProcessedEnd = to;
 
-        const text = state.doc.sliceString(from, to);
+        // Only the visible chunk is masked, so nothing inside a comment
+        // or a verbatim body is ever rendered and the cost tracks the
+        // viewport. Widget content is still read from the real
+        // document below.
+        const text = maskChunk(state.doc.sliceString(from, to), from, inertRegions);
         const mathRanges = findMathRanges(text, from);
 
         for (const math of mathRanges) {
@@ -239,6 +246,28 @@ interface Interval {
 }
 
 /**
+ * Where the document's comments and verbatim bodies are — the regions
+ * whose contents must never be rendered.
+ *
+ * Only the *locations* are cached, not a masked copy of the document.
+ * Locating them needs the whole document (a `\begin{verbatim}` above
+ * the viewport decides whether the visible lines are literal), but it
+ * yields a handful of intervals; each layer then masks just the span
+ * it is about to scan, so the inline layer's cost tracks the viewport.
+ *
+ * Keyed to document changes only: a cursor move cannot change which
+ * regions are inert, so this must not recompute on selection.
+ */
+const inertRegionsField = StateField.define<InertRegions>({
+    create: (state) => findInertRegions(state.doc.toString()),
+
+    update(regions, transaction) {
+        if (!transaction.docChanged) return regions;
+        return findInertRegions(transaction.newDoc.toString());
+    },
+});
+
+/**
  * Reports whether `[from, to]` intersects any interval in `intervals`.
  *
  * @param intervals - The intervals to test against.
@@ -258,13 +287,24 @@ function overlapsAny(intervals: readonly Interval[], from: number, to: number): 
  * @returns The sorted block-layer decoration set.
  */
 function buildBlockDecorations(state: EditorState): DecorationSet {
+    // Two views of the document: `scanText` is masked and drives every
+    // scan, `docText` is real and supplies the content widgets render.
+    // This layer renders boxes, headings and markers across the whole
+    // file, so unlike the inline layer it masks all of it.
     const docText = state.doc.toString();
+    const scanText = maskChunk(docText, 0, state.field(inertRegionsField));
     const decorations: Range<Decoration>[] = [];
 
-    const hiddenMath = collectDisplayMathDecorations(state, docText, decorations);
-    const envInfo = collectEnvironmentDecorations(state, docText, hiddenMath, decorations);
-    collectHeadingDecorations(state, docText, hiddenMath, envInfo, decorations);
-    collectListItemDecorations(state, docText, hiddenMath, envInfo, decorations);
+    const hiddenMath = collectDisplayMathDecorations(state, docText, scanText, decorations);
+    const envInfo = collectEnvironmentDecorations(
+        state,
+        docText,
+        scanText,
+        hiddenMath,
+        decorations,
+    );
+    collectHeadingDecorations(state, scanText, hiddenMath, envInfo, decorations);
+    collectListItemDecorations(state, scanText, hiddenMath, envInfo, decorations);
 
     return Decoration.set(decorations, true);
 }
@@ -274,18 +314,20 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
  * cursor is not touching.
  *
  * @param state - The editor state.
- * @param docText - The full document text.
+ * @param docText - The real document text, read for widget content.
+ * @param scanText - The masked document text, scanned for delimiters.
  * @param decorations - Output list decorations are pushed into.
  * @returns The intervals that were replaced, for overlap avoidance.
  */
 function collectDisplayMathDecorations(
     state: EditorState,
     docText: string,
+    scanText: string,
     decorations: Range<Decoration>[],
 ): readonly Interval[] {
     const hidden: Interval[] = [];
 
-    for (const math of findMathRanges(docText, 0)) {
+    for (const math of findMathRanges(scanText, 0)) {
         if (!math.display) continue;
 
         if (isRevealed(state, math.from, math.to)) continue;
@@ -326,7 +368,8 @@ interface EnvironmentDecorationInfo {
  * (for `document`) the collapsed preamble chip.
  *
  * @param state - The editor state.
- * @param docText - The full document text.
+ * @param docText - The real document text, read for widget content.
+ * @param scanText - The masked document text, scanned for tags.
  * @param hiddenMath - Intervals already replaced by display math.
  * @param decorations - Output list decorations are pushed into.
  * @returns The replaced regions, so later passes avoid overlapping
@@ -335,6 +378,7 @@ interface EnvironmentDecorationInfo {
 function collectEnvironmentDecorations(
     state: EditorState,
     docText: string,
+    scanText: string,
     hiddenMath: readonly Interval[],
     decorations: Range<Decoration>[],
 ): EnvironmentDecorationInfo {
@@ -346,7 +390,7 @@ function collectEnvironmentDecorations(
     // nested inside them must not add decorations of its own.
     const replacedEnvRanges: Interval[] = [];
 
-    for (const env of findEnvironments(docText)) {
+    for (const env of findEnvironments(scanText)) {
         const beginLine = state.doc.lineAt(env.from);
         const endLine = state.doc.lineAt(env.endFrom);
 
@@ -404,19 +448,19 @@ function collectEnvironmentDecorations(
  * text keeps its size during editing (Obsidian-style).
  *
  * @param state - The editor state.
- * @param docText - The full document text.
+ * @param scanText - The masked document text.
  * @param hiddenMath - Intervals already replaced by display math.
  * @param envInfo - Replaced regions from the environment pass.
  * @param decorations - Output list decorations are pushed into.
  */
 function collectHeadingDecorations(
     state: EditorState,
-    docText: string,
+    scanText: string,
     hiddenMath: readonly Interval[],
     envInfo: EnvironmentDecorationInfo,
     decorations: Range<Decoration>[],
 ): void {
-    for (const section of findSections(docText)) {
+    for (const section of findSections(scanText)) {
         // Headings inside fully replaced regions (tables, preamble,
         // hidden tag lines, display math) must not add decorations —
         // overlapping replaces are rejected within one set.
@@ -444,19 +488,19 @@ function collectHeadingDecorations(
  * editing a body must not un-render its container.
  *
  * @param state - The editor state.
- * @param docText - The full document text.
+ * @param scanText - The masked document text.
  * @param hiddenMath - Intervals already replaced by display math.
  * @param envInfo - Replaced regions from the environment pass.
  * @param decorations - Output list decorations are pushed into.
  */
 function collectListItemDecorations(
     state: EditorState,
-    docText: string,
+    scanText: string,
     hiddenMath: readonly Interval[],
     envInfo: EnvironmentDecorationInfo,
     decorations: Range<Decoration>[],
 ): void {
-    for (const item of findListItems(docText)) {
+    for (const item of findListItems(scanText)) {
         // Items inside fully replaced regions must not add replaces —
         // overlapping replaces are rejected within one set.
         if (overlapsAny(envInfo.replacedEnvRanges, item.from, item.to)) continue;
@@ -637,5 +681,12 @@ export interface LivePreviewOptions {
  * @returns The combined inline and block preview layers.
  */
 export function livePreview(options?: LivePreviewOptions): Extension {
-    return [inlineMathPlugin, blockPreviewField, revealFacet.of(options?.reveal ?? true)];
+    return [
+        // Must precede the layers that read it: a StateField's `create`
+        // may only access fields initialized before it.
+        inertRegionsField,
+        inlineMathPlugin,
+        blockPreviewField,
+        revealFacet.of(options?.reveal ?? true),
+    ];
 }

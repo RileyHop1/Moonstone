@@ -16,3 +16,11 @@ export { enumerateLabel, findListItems } from "./findListItems";
 export type { ListItem } from "./findListItems";
 export { findRefRanges } from "./findRefs";
 export type { RefKind, RefRange } from "./findRefs";
+export {
+    findCommentRanges,
+    findInertRegions,
+    findLiteralRanges,
+    maskChunk,
+    maskInertRegions,
+} from "./inertRegions";
+export type { InertRegions, Interval } from "./inertRegions";

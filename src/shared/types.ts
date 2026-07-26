@@ -113,6 +113,8 @@ export interface AppSettings {
     readonly spellCheckEnabled: boolean;
     /** How the gutter numbers lines. */
     readonly lineNumberMode: LineNumberMode;
+    /** Whether the editor's diagnostic overlay is shown. */
+    readonly showDiagnostics: boolean;
 }
 
 /**

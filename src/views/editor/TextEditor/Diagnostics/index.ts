@@ -5,6 +5,7 @@ export {
     isDiagnosticsVisible,
     setDiagnosticsVisible,
 } from "./diagnostics";
+export type { DiagnosticsOptions } from "./diagnostics";
 export { collectDiagnostics } from "./collectDiagnostics";
 export type {
     DiagnosticField,

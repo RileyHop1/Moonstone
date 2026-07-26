@@ -7,7 +7,7 @@
  */
 
 /** Identifier of a settings section. */
-export type SettingsTabId = "general" | "editor";
+export type SettingsTabId = "general" | "editor" | "advanced";
 
 /** One entry in the settings sidebar. */
 export interface SettingsTab {
@@ -21,6 +21,7 @@ export interface SettingsTab {
 export const SETTINGS_TABS: readonly SettingsTab[] = [
     { id: "general", label: "General" },
     { id: "editor", label: "Editor" },
+    { id: "advanced", label: "Advanced" },
 ];
 
 /** The section the page opens on. */

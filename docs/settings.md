@@ -16,6 +16,7 @@ button and no way to lose a change by navigating away.
 |---|---|
 | General | Theme |
 | Editor | Font size, edit mode, line numbers, spell check |
+| Advanced | Show editor diagnostics |
 
 Sections are declared in `settingsTabs.ts` as plain data, so adding one
 is a line there plus its panel component. `Settings.tsx` owns only the
@@ -39,6 +40,10 @@ are navigable and testable by role rather than by class name.
 - **Edit mode** — None, Vim or Helix. See `modal-editing.md`.
 - **Line numbers** — absolute, relative, or mixed. See below.
 - **Spell check** — on by default. See `spell-check.md`.
+- **Show editor diagnostics** — the developer overlay, off by default.
+  It sits under Advanced rather than Editor because it reports on the
+  editor rather than changing how it behaves, and most users never
+  need it. See `diagnostics.md`.
 
 ### Line numbering
 

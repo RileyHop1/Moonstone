@@ -36,6 +36,10 @@ export interface TextEditorProps {
     readonly initialSpellCheckEnabled: boolean;
     /** How lines are numbered at mount. */
     readonly initialLineNumberMode: LineNumberMode;
+    /** Whether the diagnostic overlay is shown at mount. */
+    readonly initialShowDiagnostics: boolean;
+    /** Called when the diagnostics shortcut toggles the overlay. */
+    readonly onDiagnosticsToggled: (visible: boolean) => void;
     /**
      * References offered for `\cite{…}` at mount; the page reconfigures
      * the compartment when the project's bibliography changes.
@@ -71,6 +75,8 @@ export function TextEditor({
     initialModalMode,
     initialSpellCheckEnabled,
     initialLineNumberMode,
+    initialShowDiagnostics,
+    onDiagnosticsToggled,
     initialReferences,
     resolveImageSource,
     openLink,
@@ -91,6 +97,9 @@ export function TextEditor({
     const openLinkRef = useRef(openLink);
     const initialSpellCheckRef = useRef(initialSpellCheckEnabled);
     const initialReferencesRef = useRef(initialReferences);
+    const initialShowDiagnosticsRef = useRef(initialShowDiagnostics);
+    const onDiagnosticsToggledRef = useRef(onDiagnosticsToggled);
+    onDiagnosticsToggledRef.current = onDiagnosticsToggled;
     const initialLineNumbersRef = useRef({
         mode: initialLineNumberMode,
         modalMode: initialModalMode,
@@ -140,7 +149,10 @@ export function TextEditor({
                         initialLineNumbersRef.current.modalMode,
                     ),
                 ),
-                editorDiagnostics(),
+                editorDiagnostics({
+                    initialVisible: initialShowDiagnosticsRef.current,
+                    onVisibilityChange: (visible) => onDiagnosticsToggledRef.current(visible),
+                }),
                 EditorView.updateListener.of((update) => {
                     if (update.docChanged) onDocChangedRef.current();
                 }),

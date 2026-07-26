@@ -45,6 +45,9 @@ pub struct AppSettings {
     /// Line numbering: `"absolute"`, `"relative"` or `"mixed"`.
     #[serde(default = "default_line_number_mode")]
     pub line_number_mode: String,
+    /// Whether the editor's diagnostic overlay is shown.
+    #[serde(default)]
+    pub show_diagnostics: bool,
 }
 
 /// The theme a fresh install starts with.
@@ -81,6 +84,7 @@ impl Default for AppSettings {
             modal_mode: default_modal_mode(),
             spell_check_enabled: default_spell_check(),
             line_number_mode: default_line_number_mode(),
+            show_diagnostics: false,
         }
     }
 }
@@ -225,6 +229,7 @@ mod settings_tests {
             modal_mode: "vim".to_string(),
             spell_check_enabled: false,
             line_number_mode: "relative".to_string(),
+            show_diagnostics: true,
         };
 
         save_settings_impl(&path, &settings).unwrap();
@@ -249,6 +254,7 @@ mod settings_tests {
         assert_eq!(settings.modal_mode, default_modal_mode());
         assert!(settings.spell_check_enabled);
         assert_eq!(settings.line_number_mode, default_line_number_mode());
+        assert!(!settings.show_diagnostics);
     }
 
     #[test]

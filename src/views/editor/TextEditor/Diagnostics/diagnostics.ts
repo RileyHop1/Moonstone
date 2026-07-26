@@ -11,11 +11,9 @@
  * extensions, so a toggleable flag inside the state is both simpler
  * and reachable from a keymap without a round trip through React.
  *
- * TODO (settings pass): expose this through the settings page as a
- * persisted "Show editor diagnostics" preference, driving it via
- * {@link setDiagnosticsVisible}. Until then the keyboard shortcut is
- * the only entry point, which is deliberate — it stays out of the way
- * of ordinary users.
+ * The panel is driven by the persisted **Show editor diagnostics**
+ * preference (Settings → Advanced), with the keyboard shortcut as a
+ * second entry point that keeps that preference in step.
  */
 
 import { StateEffect, StateField } from "@codemirror/state";
@@ -183,21 +181,44 @@ function renderSection(section: DiagnosticReport[number]): HTMLElement {
     return container;
 }
 
+/** How the overlay is set up for one editor. */
+export interface DiagnosticsOptions {
+    /** Whether the panel is shown at mount. Defaults to hidden. */
+    readonly initialVisible?: boolean;
+    /**
+     * Called when the shortcut toggles the panel, so the preference
+     * driving it can be kept in step. Omitted, the shortcut is a
+     * session-only toggle.
+     */
+    readonly onVisibilityChange?: (visible: boolean) => void;
+}
+
 /**
- * The diagnostic overlay extension: hidden state, the panel, and the
- * shortcut that toggles it.
+ * The diagnostic overlay extension: visibility state, the panel, and
+ * the shortcut that toggles it.
  *
+ * The shortcut updates the editor immediately *and* reports the new
+ * value, rather than waiting to be told: the panel responds without a
+ * round trip through React, and the preference still ends up matching
+ * what is on screen.
+ *
+ * @param options - Initial visibility and the change callback.
  * @returns The combined extension.
  */
-export function editorDiagnostics(): Extension {
+export function editorDiagnostics(options: DiagnosticsOptions = {}): Extension {
+    const { initialVisible = DIAGNOSTICS_VISIBLE_BY_DEFAULT, onVisibilityChange } = options;
+
     return [
-        diagnosticsVisibleField,
+        diagnosticsVisibleField.init(() => initialVisible),
         diagnosticPanelPlugin,
         keymap.of([
             {
                 key: DIAGNOSTICS_TOGGLE_KEY,
                 run: (view) => {
-                    setDiagnosticsVisible(view, !isDiagnosticsVisible(view));
+                    const next = !isDiagnosticsVisible(view);
+
+                    setDiagnosticsVisible(view, next);
+                    onVisibilityChange?.(next);
                     return true;
                 },
             },

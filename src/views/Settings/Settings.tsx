@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { useNavigation } from "../../shared/navigation";
 import { assertNever } from "../../shared/types";
+import { AdvancedTab } from "./AdvancedTab";
 import { EditorTab } from "./EditorTab";
 import { GeneralTab } from "./GeneralTab";
 import { DEFAULT_SETTINGS_TAB, SETTINGS_TABS } from "./settingsTabs";
@@ -26,6 +27,9 @@ function renderPanel(tab: SettingsTabId) {
 
         case "editor":
             return <EditorTab />;
+
+        case "advanced":
+            return <AdvancedTab />;
 
         default:
             return assertNever(tab);

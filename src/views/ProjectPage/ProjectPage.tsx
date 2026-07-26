@@ -36,6 +36,7 @@ import type {
 import { useDockDrag } from "../../shared/useDockDrag";
 import type { DockSide } from "../../shared/useDockDrag";
 import { openSearchPanel } from "@codemirror/search";
+import { setDiagnosticsVisible } from "../editor/TextEditor/Diagnostics";
 import { TextEditor } from "../editor/TextEditor";
 import {
     DEFAULT_VIEW_MODE,
@@ -131,8 +132,8 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
 
     // Modal editing and spell checking are user preferences, not
     // per-session editor state, so they come from settings and persist.
-    const { settings } = useSettings();
-    const { modalMode, spellCheckEnabled, lineNumberMode } = settings;
+    const { settings, updateSettings } = useSettings();
+    const { modalMode, spellCheckEnabled, lineNumberMode, showDiagnostics } = settings;
 
     const viewRef = useRef<EditorView | null>(null);
     const statusTimerRef = useRef<number | null>(null);
@@ -487,6 +488,14 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
         });
     }, [lineNumberMode, modalMode]);
 
+    // Show or hide the diagnostic overlay in place.
+    useEffect(() => {
+        const view = viewRef.current;
+        if (!view) return;
+
+        setDiagnosticsVisible(view, showDiagnostics);
+    }, [showDiagnostics]);
+
     // Turn spell checking on or off in place.
     useEffect(() => {
         viewRef.current?.dispatch({
@@ -536,6 +545,10 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
                             initialModalMode={modalMode}
                             initialSpellCheckEnabled={spellCheckEnabled}
                             initialLineNumberMode={lineNumberMode}
+                            initialShowDiagnostics={showDiagnostics}
+                            onDiagnosticsToggled={(visible) =>
+                                updateSettings({ showDiagnostics: visible })
+                            }
                             initialReferences={references}
                             resolveImageSource={resolveImageSource}
                             openLink={openExternalLink}

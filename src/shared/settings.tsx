@@ -23,6 +23,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     modalMode: "none",
     spellCheckEnabled: true,
     lineNumberMode: "absolute",
+    showDiagnostics: false,
 };
 
 /** Allowed editor font-size bounds in pixels. */
@@ -89,7 +90,17 @@ export function normalizeSettings(stored: StoredSettings | null | undefined): Ap
         ? (stored.lineNumberMode as LineNumberMode)
         : DEFAULT_SETTINGS.lineNumberMode;
 
-    return { theme, editorFontSize, modalMode, spellCheckEnabled, lineNumberMode };
+    // Developer-facing and off unless explicitly asked for.
+    const showDiagnostics = stored.showDiagnostics === true;
+
+    return {
+        theme,
+        editorFontSize,
+        modalMode,
+        spellCheckEnabled,
+        lineNumberMode,
+        showDiagnostics,
+    };
 }
 
 /**

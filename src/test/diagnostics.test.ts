@@ -5,7 +5,7 @@
 
 import { describe, it, expect, afterEach } from "vitest";
 import { EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { EditorView, runScopeHandlers } from "@codemirror/view";
 import {
     DIAGNOSTICS_VISIBLE_BY_DEFAULT,
     collectDiagnostics,
@@ -13,7 +13,10 @@ import {
     isDiagnosticsVisible,
     setDiagnosticsVisible,
 } from "../views/editor/TextEditor/Diagnostics";
-import type { DiagnosticReport } from "../views/editor/TextEditor/Diagnostics";
+import type {
+    DiagnosticReport,
+    DiagnosticsOptions,
+} from "../views/editor/TextEditor/Diagnostics";
 import { previewExtensionForMode } from "../views/editor/TextEditor/viewMode";
 import { modalExtensionForMode } from "../views/editor/TextEditor/modalMode";
 
@@ -110,10 +113,14 @@ describe("editorDiagnostics", () => {
      *
      * @returns The mounted view.
      */
-    function mountEditor(): EditorView {
+    function mountEditor(options: DiagnosticsOptions = {}): EditorView {
         const parent = document.createElement("div");
         document.body.appendChild(parent);
-        view = new EditorView({ doc: "hello", extensions: [editorDiagnostics()], parent });
+        view = new EditorView({
+            doc: "hello",
+            extensions: [editorDiagnostics(options)],
+            parent,
+        });
         return view;
     }
 
@@ -166,5 +173,74 @@ describe("editorDiagnostics", () => {
         view = null;
 
         expect(dom.querySelector(".cm-diagnostic-panel")).toBeNull();
+    });
+});
+
+/**
+ * Fires the diagnostics shortcut at an editor.
+ *
+ * @param view - The editor to send the key to.
+ */
+function pressToggleShortcut(view: EditorView): void {
+    // Dispatching a KeyboardEvent does not reach CodeMirror's keymap
+    // under jsdom, so the binding is run the way CodeMirror runs it.
+    const event = new KeyboardEvent("keydown", {
+        key: "D",
+        code: "KeyD",
+        keyCode: 68,
+        ctrlKey: true,
+        shiftKey: true,
+    } as KeyboardEventInit);
+
+    runScopeHandlers(view, event, "editor");
+}
+
+describe("driving diagnostics from the settings preference", () => {
+    let view: EditorView | null = null;
+
+    afterEach(() => {
+        view?.destroy();
+        view = null;
+    });
+
+    /**
+     * Mounts an editor carrying the diagnostic extension.
+     *
+     * @param options - Initial visibility and change callback.
+     * @returns The mounted view.
+     */
+    function mount(options: DiagnosticsOptions): EditorView {
+        const parent = document.createElement("div");
+        document.body.appendChild(parent);
+        view = new EditorView({
+            doc: "hello",
+            extensions: [editorDiagnostics(options)],
+            parent,
+        });
+        return view;
+    }
+
+    it("mounts visible when the preference says so", () => {
+        // Otherwise the panel would flash off before a dispatch turned
+        // it on, every time a file opens.
+        expect(isDiagnosticsVisible(mount({ initialVisible: true }))).toBe(true);
+    });
+
+    it("reports shortcut toggles so the preference can follow", () => {
+        const changes: boolean[] = [];
+        const editor = mount({ initialVisible: false, onVisibilityChange: (v) => changes.push(v) });
+
+        pressToggleShortcut(editor);
+
+        expect(isDiagnosticsVisible(editor)).toBe(true);
+        expect(changes).toEqual([true]);
+    });
+
+    it("still toggles without a callback", () => {
+        const editor = mount({ initialVisible: false });
+
+        pressToggleShortcut(editor);
+
+        expect(isDiagnosticsVisible(editor)).toBe(true);
     });
 });

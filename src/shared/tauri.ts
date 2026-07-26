@@ -99,6 +99,7 @@ export interface StoredSettings {
     readonly modalMode: string;
     readonly spellCheckEnabled: boolean;
     readonly lineNumberMode: string;
+    readonly showDiagnostics: boolean;
 }
 
 /**

@@ -78,6 +78,7 @@ describe("Settings", () => {
                 modalMode: "none",
                 spellCheckEnabled: true,
             lineNumberMode: "absolute",
+            showDiagnostics: false,
             },
         });
     });
@@ -96,6 +97,7 @@ describe("Settings", () => {
                     modalMode: "none",
                     spellCheckEnabled: true,
                 lineNumberMode: "absolute",
+                showDiagnostics: false,
                 },
             });
         });
@@ -116,6 +118,7 @@ describe("Settings", () => {
                         modalMode: "vim",
                         spellCheckEnabled: true,
                     lineNumberMode: "absolute",
+                    showDiagnostics: false,
                     },
                 });
             });
@@ -135,6 +138,7 @@ describe("Settings", () => {
                         modalMode: "none",
                         spellCheckEnabled: false,
                     lineNumberMode: "absolute",
+                    showDiagnostics: false,
                     },
                 });
             });
@@ -173,6 +177,7 @@ describe("Settings", () => {
                         modalMode: "vim",
                         spellCheckEnabled: true,
                         lineNumberMode: "relative",
+                    showDiagnostics: false,
                     },
                 });
             });
@@ -198,6 +203,53 @@ describe("Settings", () => {
                     "aria-checked",
                     "true",
                 );
+            });
+        });
+    });
+
+    describe("advanced", () => {
+        it("offers the diagnostics overlay behind its own section", () => {
+            renderWithProviders(<Settings />, { kind: "settings" });
+
+            // Developer-facing, so it is not on the Editor tab with the
+            // settings people actually use.
+            fireEvent.click(screen.getByRole("tab", { name: "Editor" }));
+            expect(
+                screen.queryByRole("switch", { name: "Show editor diagnostics" }),
+            ).not.toBeInTheDocument();
+
+            fireEvent.click(screen.getByRole("tab", { name: "Advanced" }));
+
+            expect(
+                screen.getByRole("switch", { name: "Show editor diagnostics" }),
+            ).toBeInTheDocument();
+        });
+
+        it("names the keyboard shortcut readably", () => {
+            renderWithProviders(<Settings />, { kind: "settings" });
+
+            fireEvent.click(screen.getByRole("tab", { name: "Advanced" }));
+
+            expect(screen.getByText(/Ctrl\+Shift\+D/)).toBeInTheDocument();
+        });
+
+        it("persists the overlay being turned on", async () => {
+            renderWithProviders(<Settings />, { kind: "settings" });
+
+            fireEvent.click(screen.getByRole("tab", { name: "Advanced" }));
+            fireEvent.click(screen.getByRole("switch", { name: "Show editor diagnostics" }));
+
+            await waitFor(() => {
+                expect(invokeMock).toHaveBeenCalledWith("save_settings", {
+                    settings: {
+                        theme: "dark",
+                        editorFontSize: 14,
+                        modalMode: "none",
+                        spellCheckEnabled: true,
+                        lineNumberMode: "absolute",
+                        showDiagnostics: true,
+                    },
+                });
             });
         });
     });

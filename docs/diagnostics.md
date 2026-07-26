@@ -6,16 +6,24 @@ the UI until someone asks for it.
 
 ## Toggling
 
-`Ctrl+Shift+D` (`Cmd+Shift+D` on macOS) shows and hides the panel.
-That shortcut is currently the only entry point, which is deliberate:
-diagnostics are a testing aid, not a user-facing feature.
+Two entry points, kept in step with each other:
 
-**Wire-up pending.** When the settings page gets its pass, this should
-become a persisted "Show editor diagnostics" preference driving
-`setDiagnosticsVisible(view, visible)`. The extension already exposes
-that function plus `isDiagnosticsVisible(view)` for exactly this
-purpose — no changes to the diagnostics module should be needed, only
-a settings field and a call site. See the TODO in `diagnostics.ts`.
+- **Settings → Advanced → Show editor diagnostics**, persisted like any
+  other preference. It sits under Advanced rather than Editor because
+  it reports on the editor rather than changing how it behaves.
+- **`Ctrl+Shift+D`** (`Cmd+Shift+D` on macOS), for reaching it without
+  leaving the document.
+
+The preference is the source of truth: `ProjectPage` calls
+`setDiagnosticsVisible(view, showDiagnostics)` whenever it changes, and
+the editor mounts with `editorDiagnostics({ initialVisible })` so the
+panel never flashes off before a dispatch turns it on.
+
+The shortcut does **both** — it flips the editor immediately and
+reports the new value through `onVisibilityChange`, which the project
+page writes back to settings. Toggling locally first avoids a round
+trip through React for something meant to feel instant; reporting it
+stops the switch in settings from disagreeing with what is on screen.
 
 ## What it reports
 
@@ -35,8 +43,8 @@ browser:
   an optional viewport range) to a `DiagnosticReport`: a list of titled
   sections, each holding label/value pairs. No DOM, no `EditorView`.
 - **`diagnostics.ts`** — the CodeMirror extension: a `StateField`
-  holding visibility, a `ViewPlugin` rendering the report, and the
-  toggle keymap.
+  holding visibility (seeded per editor with `.init()`), a `ViewPlugin`
+  rendering the report, and the toggle keymap.
 - **`diagnostics.css`** — panel styling, using the app's theme
   variables so it follows light/dark.
 

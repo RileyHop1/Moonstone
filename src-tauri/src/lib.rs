@@ -8,6 +8,7 @@ mod file_manager;
 mod paths;
 mod project_manager;
 mod settings;
+mod templates;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -34,6 +35,7 @@ pub fn run() {
             project_manager::create_project,
             project_manager::delete_project,
             project_manager::rename_project,
+            templates::list_templates,
             settings::get_settings,
             settings::save_settings,
         ])

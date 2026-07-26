@@ -8,7 +8,7 @@
 
 import { convertFileSrc, invoke, isTauri } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import type { AppSettings, FileNode, ProjectInfo, Result } from "./types";
+import type { AppSettings, FileNode, ProjectInfo, Result, TemplateInfo } from "./types";
 
 /**
  * Opens a URL in the user's default browser.
@@ -149,13 +149,26 @@ export function listProjects(): Promise<Result<readonly ProjectInfo[]>> {
 }
 
 /**
- * Creates a new project (directory plus initial `.tex` file).
+ * Creates a new project, seeded from a template.
  *
  * @param name - Name of the new project.
+ * @param templateId - Identifier from {@link listTemplates}.
  * @returns Metadata of the created project.
  */
-export function createProject(name: string): Promise<Result<ProjectInfo>> {
-    return invokeCommand("create_project", { name });
+export function createProject(
+    name: string,
+    templateId: string,
+): Promise<Result<ProjectInfo>> {
+    return invokeCommand("create_project", { name, templateId });
+}
+
+/**
+ * Lists the templates a new project can start from.
+ *
+ * @returns The available templates, in the order they are offered.
+ */
+export function listTemplates(): Promise<Result<readonly TemplateInfo[]>> {
+    return invokeCommand("list_templates", {});
 }
 
 /**

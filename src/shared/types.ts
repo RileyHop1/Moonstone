@@ -22,6 +22,21 @@ export interface ProjectInfo {
 }
 
 /**
+ * A starting point offered by the new-project dialog, as returned by
+ * the `list_templates` command.
+ */
+export interface TemplateInfo {
+    /** Identifier passed back to `create_project`. */
+    readonly id: string;
+    /** Name shown in the dialog. */
+    readonly name: string;
+    /** One line on what the template is for. */
+    readonly description: string;
+    /** How many files the template creates. */
+    readonly fileCount: number;
+}
+
+/**
  * One node of a project's file tree, discriminated on `kind` to match
  * the backend's serde `tag = "kind"` serialization.
  */

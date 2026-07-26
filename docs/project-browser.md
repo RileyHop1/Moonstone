@@ -14,9 +14,10 @@ responsive grid — a page-style icon above each project's name.
   `<project>.tex` main file alongside the directory so the project
   page still auto-opens it.
 - **File > New Project** (or the empty-state button) opens a modal
-  dialog. Names are validated in the frontend and again by the
-  backend, which is the authority.  On success the app navigates
-  straight into the new project.
+  dialog asking for a name and the template to start from — see
+  [templates](templates.md). Names are validated in the frontend and
+  again by the backend, which is the authority. On success the app
+  navigates straight into the new project.
 
 ## Name guards
 
@@ -38,6 +39,7 @@ The frontend never accepts what the backend would refuse.
 - `src/views/ProjectBrowser/ProjectBrowser.tsx` — page + data fetch
 - `src/views/ProjectBrowser/ProjectCard.tsx` — one grid tile
 - `src/views/ProjectBrowser/NewProjectDialog.tsx` — creation modal
+  (name + template picker)
 - `src/shared/nameValidation.ts` — shared name guard
 - `src/shared/fileTypes.ts` — selectable file types (new-file dialog)
 - Tests: `src/test/ProjectBrowser.test.tsx`,

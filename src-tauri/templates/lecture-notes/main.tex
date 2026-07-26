@@ -1,0 +1,73 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{graphicx}
+\usepackage[margin=1in]{geometry}
+\usepackage[hidelinks]{hyperref}
+
+% Numbered environments share the section counter, so Theorem 2.1 is
+% the first theorem of Section 2 — easier to find while reading back.
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+
+\title{{name}}
+\author{Your Name}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+
+\section{Introduction}
+
+What this set of notes covers, and what a reader is assumed to know
+already.
+
+\section{Definitions}
+
+\begin{definition}[Continuity]
+    \label{def:continuity}
+    A function $f : \mathbb{R} \to \mathbb{R}$ is continuous at $a$ if
+    for every $\varepsilon > 0$ there is a $\delta > 0$ such that
+    $|x - a| < \delta$ implies $|f(x) - f(a)| < \varepsilon$.
+\end{definition}
+
+\begin{remark}
+    Notes to yourself belong in a remark, where they are visually
+    separate from the statements you will be examined on.
+\end{remark}
+
+\section{Results}
+
+\begin{theorem}
+    \label{thm:example}
+    State the theorem precisely. Every symbol should already have been
+    defined, as in Definition~\ref{def:continuity}.
+\end{theorem}
+
+\begin{proof}
+    Give the argument. End it with the square, which \texttt{amsthm}
+    places automatically. \qedhere
+\end{proof}
+
+\begin{corollary}
+    A consequence of Theorem~\ref{thm:example} worth naming separately.
+\end{corollary}
+
+\begin{example}
+    A concrete case. Notes without examples are hard to revise from.
+\end{example}
+
+\end{document}

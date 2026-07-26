@@ -1,0 +1,51 @@
+\documentclass[11pt,a4paper,twoside,openright]{book}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage[margin=1.1in]{geometry}
+\usepackage[hidelinks]{hyperref}
+
+% Running heads: chapter on one side, section on the other, which is
+% the convention for two-sided printing.
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[LE]{\leftmark}
+\fancyhead[RO]{\rightmark}
+\fancyfoot[C]{\thepage}
+
+\title{{name}}
+\author{Your Name}
+\date{\today}
+
+\begin{document}
+
+\frontmatter
+
+\maketitle
+
+\chapter*{Preface}
+\addcontentsline{toc}{chapter}{Preface}
+
+Why this book exists, who it is for, and what a reader is assumed to
+know already.
+
+\tableofcontents
+
+\mainmatter
+
+\part{The First Part}
+
+\include{chapters/chapter-one}
+\include{chapters/chapter-two}
+
+\backmatter
+
+\chapter*{Afterword}
+\addcontentsline{toc}{chapter}{Afterword}
+
+Closing remarks, acknowledgements, or where to go next.
+
+\end{document}

@@ -18,12 +18,11 @@ use chrono::{
     Local,
 };
 use tokio::fs;
-use crate::file_manager;
 use crate::paths;
-
-/// LaTeX document template seeded into a new project's initial file.
-/// `{name}` is replaced with the project name.
-const PROJECT_TEMPLATE: &str = "\\documentclass{article}\n\\title{{name}}\n\\author{}\n\\date{\\today}\n\n\\begin{document}\n\\maketitle\n\n\n\n\\end{document}\n";
+use crate::templates::{
+    self,
+    ProjectTemplate,
+};
 
 /// Metadata for one project directory, shaped for the frontend's
 /// project browser grid.
@@ -68,12 +67,14 @@ pub async fn list_projects<R: Runtime>(app: AppHandle<R>) -> Result<Vec<ProjectI
     list_projects_impl(&root)
 }
 
-/// Creates a new project directory (with an initial `.tex` file) under
-/// the Moonstone root.
+/// Creates a new project directory under the Moonstone root, seeded
+/// from a template.
 ///
 /// # Parameters
 ///
 /// * `name` - Name of the new project directory.
+/// * `template_id` - Identifier of the template to seed from, as listed
+///   by `list_templates`.
 ///
 /// # Returns
 ///
@@ -81,16 +82,17 @@ pub async fn list_projects<R: Runtime>(app: AppHandle<R>) -> Result<Vec<ProjectI
 ///
 /// # Errors
 ///
-/// Returns an error if the name is invalid, the project already
-/// exists, or directory/file creation fails.
+/// Returns an error if the name is invalid, the template is unknown,
+/// the project already exists, or directory/file creation fails.
 #[tauri::command]
 pub async fn create_project<R: Runtime>(
     app: AppHandle<R>,
     name: String,
+    template_id: String,
 ) -> Result<ProjectInfo, String> {
     let root = paths::moonstone_root(&app)?;
 
-    create_project_impl(&root, &name).await
+    create_project_impl(&root, &name, &template_id).await
 }
 
 /// Deletes a whole project directory, sending it to the system
@@ -273,12 +275,14 @@ pub fn list_projects_impl(root: &Path) -> Result<Vec<ProjectInfo>, String> {
     Ok(projects)
 }
 
-/// Creates a project directory and returns its metadata.
+/// Creates a project directory from a template and returns its
+/// metadata.
 ///
 /// # Parameters
 ///
 /// * `root` - The Moonstone root directory.
 /// * `name` - Name of the new project.
+/// * `template_id` - Identifier of the template to seed from.
 ///
 /// # Returns
 ///
@@ -286,11 +290,20 @@ pub fn list_projects_impl(root: &Path) -> Result<Vec<ProjectInfo>, String> {
 ///
 /// # Errors
 ///
-/// Returns an error if the name is invalid or creation fails.
-pub async fn create_project_impl(root: &Path, name: &str) -> Result<ProjectInfo, String> {
+/// Returns an error if the name is invalid, the template is unknown, or
+/// creation fails.
+pub async fn create_project_impl(
+    root: &Path,
+    name: &str,
+    template_id: &str,
+) -> Result<ProjectInfo, String> {
     paths::validate_name(name)?;
 
-    Project::new(name.to_string(), root.to_string_lossy().to_string()).await?;
+    // Resolved before anything is written, so an unknown template can
+    // not leave a half-created project behind.
+    let template = templates::find_template(template_id)?;
+
+    Project::new(name.to_string(), root.to_string_lossy().to_string(), template).await?;
 
     build_project_info(&root.join(name))
 }
@@ -337,15 +350,17 @@ fn build_project_info(project_dir: &Path) -> Result<ProjectInfo, String> {
 // public surface for upcoming features (rename, file counting).
 #[allow(dead_code)]
 impl Project {
-    /// Creates a new project directory and an initial `.tex` file inside it.
+    /// Creates a new project directory and seeds it from a template.
     ///
     /// The directory is created at `path/name`. Both timestamps are set
-    /// to the current local time and `amount_of_files` starts at 1.
+    /// to the current local time and `amount_of_files` reflects the
+    /// template's file count.
     ///
     /// # Parameters
     ///
     /// * `name` - Name of the project directory.
     /// * `path` - Parent directory the project is created in.
+    /// * `template` - Template whose files seed the project.
     ///
     /// # Returns
     ///
@@ -355,7 +370,11 @@ impl Project {
     ///
     /// Returns an error if the name is empty, the directory already exists,
     /// or file/directory creation fails.
-    pub async fn new(name: String, path: String) -> Result<Project, String> {
+    pub async fn new(
+        name: String,
+        path: String,
+        template: &ProjectTemplate,
+    ) -> Result<Project, String> {
         if name.is_empty() {
             return Err("Projects must have a name that isn't empty".to_string());
         }
@@ -372,17 +391,14 @@ impl Project {
             .await
             .map_err(|e| e.to_string())?;
 
-        // The start file is a latex file seeded with a basic document
-        // template so new projects open ready to write.
-        let template = PROJECT_TEMPLATE.replace("{name}", &name);
-        file_manager::create_file_with_contents_impl(&full_path, &name, "tex", &template).await?;
+        templates::seed_project(&full_path, &name, template).await?;
 
         Ok(Project {
             name,
             path,
             creation_date,
             last_modification_date,
-            amount_of_files: 1, // Projects start with an initial file
+            amount_of_files: template.files.len() as i32,
         })
     }
 
@@ -535,12 +551,22 @@ mod project_manager_tests {
 
     // --- Project::new tests ---
 
+    /// The simplest template, for tests about project creation itself
+    /// rather than about template contents.
+    ///
+    /// # Returns
+    ///
+    /// The blank template.
+    fn blank_template() -> &'static ProjectTemplate {
+        templates::find_template("blank").unwrap()
+    }
+
     #[tokio::test]
     async fn test_new_rejects_empty_name() {
         let dir = tempdir().unwrap();
         let dir_path = dir.path().to_string_lossy().to_string();
 
-        let result = Project::new("".to_string(), dir_path).await;
+        let result = Project::new("".to_string(), dir_path, blank_template()).await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Projects must have a name that isn't empty");
     }
@@ -550,7 +576,7 @@ mod project_manager_tests {
         let dir = tempdir().unwrap();
         let dir_path = dir.path().to_string_lossy().to_string();
 
-        let result = Project::new("my_project".to_string(), dir_path.clone()).await;
+        let result = Project::new("my_project".to_string(), dir_path.clone(), blank_template()).await;
         assert!(result.is_ok());
 
         let expected_dir = Path::new(&dir_path).join("my_project");
@@ -562,7 +588,9 @@ mod project_manager_tests {
         let dir = tempdir().unwrap();
         let dir_path = dir.path().to_string_lossy().to_string();
 
-        let project = Project::new("my_project".to_string(), dir_path.clone()).await.unwrap();
+        let project = Project::new("my_project".to_string(), dir_path.clone(), blank_template())
+            .await
+            .unwrap();
 
         let tex_file = Path::new(&dir_path).join("my_project").join("my_project.tex");
         assert!(tex_file.exists());
@@ -570,13 +598,28 @@ mod project_manager_tests {
     }
 
     #[tokio::test]
+    async fn test_new_counts_the_files_a_template_lays_down() {
+        let dir = tempdir().unwrap();
+        let dir_path = dir.path().to_string_lossy().to_string();
+        let template = templates::find_template("thesis").unwrap();
+
+        let project = Project::new("my_thesis".to_string(), dir_path, template)
+            .await
+            .unwrap();
+
+        assert_eq!(project.get_amount_of_files(), template.files.len() as i32);
+    }
+
+    #[tokio::test]
     async fn test_new_rejects_duplicate_project() {
         let dir = tempdir().unwrap();
         let dir_path = dir.path().to_string_lossy().to_string();
 
-        Project::new("duplicate".to_string(), dir_path.clone()).await.unwrap();
+        Project::new("duplicate".to_string(), dir_path.clone(), blank_template())
+            .await
+            .unwrap();
 
-        let result = Project::new("duplicate".to_string(), dir_path).await;
+        let result = Project::new("duplicate".to_string(), dir_path, blank_template()).await;
         assert!(result.is_err());
     }
 
@@ -609,7 +652,7 @@ mod project_manager_tests {
     async fn test_create_project_impl_seeds_tex_file() {
         let dir = tempdir().unwrap();
 
-        let info = create_project_impl(dir.path(), "thesis").await.unwrap();
+        let info = create_project_impl(dir.path(), "thesis", "blank").await.unwrap();
 
         assert_eq!(info.name, "thesis");
         assert_eq!(info.file_count, 1);
@@ -620,7 +663,7 @@ mod project_manager_tests {
     async fn test_create_project_seeds_template_with_project_name() {
         let dir = tempdir().unwrap();
 
-        create_project_impl(dir.path(), "thesis").await.unwrap();
+        create_project_impl(dir.path(), "thesis", "blank").await.unwrap();
 
         let contents =
             std::fs::read_to_string(dir.path().join("thesis").join("thesis.tex")).unwrap();
@@ -631,11 +674,35 @@ mod project_manager_tests {
     }
 
     #[tokio::test]
+    async fn test_create_project_impl_lays_down_a_multi_file_template() {
+        let dir = tempdir().unwrap();
+
+        let info = create_project_impl(dir.path(), "my_thesis", "thesis").await.unwrap();
+
+        let project = dir.path().join("my_thesis");
+        assert!(project.join("my_thesis.tex").exists());
+        assert!(project.join("chapters").join("introduction.tex").exists());
+        assert!(project.join("references.bib").exists());
+        // Entries directly inside the project: main file, bibliography
+        // and the chapters directory.
+        assert_eq!(info.file_count, 3);
+    }
+
+    #[tokio::test]
+    async fn test_create_project_impl_rejects_an_unknown_template() {
+        let dir = tempdir().unwrap();
+
+        assert!(create_project_impl(dir.path(), "doomed", "nonexistent").await.is_err());
+        // The template is resolved first, so nothing is left behind.
+        assert!(!dir.path().join("doomed").exists());
+    }
+
+    #[tokio::test]
     async fn test_create_project_impl_rejects_bad_name() {
         let dir = tempdir().unwrap();
 
-        assert!(create_project_impl(dir.path(), "bad/name").await.is_err());
-        assert!(create_project_impl(dir.path(), "").await.is_err());
+        assert!(create_project_impl(dir.path(), "bad/name", "blank").await.is_err());
+        assert!(create_project_impl(dir.path(), "", "blank").await.is_err());
     }
 
     #[test]

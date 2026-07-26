@@ -1,0 +1,70 @@
+\documentclass[12pt,a4paper,oneside]{report}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{setspace}
+\usepackage[margin=1.2in]{geometry}
+\usepackage[hidelinks]{hyperref}
+
+\onehalfspacing
+
+\title{{name}}
+\author{Your Name}
+\date{\today}
+
+\begin{document}
+
+% --- Front matter -------------------------------------------------
+\begin{titlepage}
+    \centering
+    \vspace*{2cm}
+
+    {\LARGE\bfseries {name}\par}
+    \vspace{1.5cm}
+
+    {\Large Your Name\par}
+    \vspace{1cm}
+
+    {\large A thesis submitted in partial fulfilment \\
+     of the requirements for the degree of \\
+     Your Degree\par}
+    \vspace{1.5cm}
+
+    {\large Your Department \\ Your University\par}
+    \vfill
+
+    {\large \today\par}
+\end{titlepage}
+
+\begin{abstract}
+    A single page covering the problem, the approach, the findings, and
+    what they mean. Write it last, even though it is read first.
+\end{abstract}
+
+\tableofcontents
+\listoffigures
+\listoftables
+
+% --- Chapters -----------------------------------------------------
+% Each chapter is its own file: a broken chapter cannot take the whole
+% document down with it, and chapters can be worked on separately.
+\include{chapters/introduction}
+\include{chapters/literature-review}
+\include{chapters/methodology}
+\include{chapters/results}
+\include{chapters/conclusion}
+
+% --- Back matter --------------------------------------------------
+\bibliographystyle{plain}
+\bibliography{references}
+
+\appendix
+\chapter{Supporting Material}
+
+Data, derivations, or code that supports the argument without
+interrupting it.
+
+\end{document}

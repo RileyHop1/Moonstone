@@ -14,6 +14,7 @@ import type { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import type { ViewMode } from "../../../shared/types";
 import { livePreview } from "./LivePreview";
+import type { ImageSourceResolver } from "./LivePreview";
 
 /** Compartment holding whichever preview configuration is active. */
 export const previewCompartment = new Compartment();
@@ -41,18 +42,23 @@ export const viewModeFacet = Facet.define<ViewMode, ViewMode>({
  *   non-editable so the source never shows.
  *
  * @param mode - The desired view mode.
+ * @param resolveImageSource - Turns `\includegraphics` paths into
+ *   loadable URLs; omitted, images render as placeholders.
  * @returns The extension for that mode.
  */
-export function previewExtensionForMode(mode: ViewMode): Extension {
+export function previewExtensionForMode(
+    mode: ViewMode,
+    resolveImageSource?: ImageSourceResolver,
+): Extension {
     switch (mode) {
         case "source":
             return [viewModeFacet.of(mode)];
         case "live":
-            return [viewModeFacet.of(mode), livePreview()];
+            return [viewModeFacet.of(mode), livePreview({ resolveImageSource })];
         case "readonly":
             return [
                 viewModeFacet.of(mode),
-                livePreview({ reveal: false }),
+                livePreview({ reveal: false, resolveImageSource }),
                 EditorState.readOnly.of(true),
                 EditorView.editable.of(false),
             ];

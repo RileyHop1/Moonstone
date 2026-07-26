@@ -17,6 +17,7 @@ import {
     listProjectFiles,
     moveEntry,
     readFile,
+    createImageSourceResolver,
     renameEntry,
     saveFile,
 } from "../../shared/tauri";
@@ -385,14 +386,23 @@ export function ProjectPage({ project }: ProjectPageProps) {
         [save, confirmDiscardChanges, navigate, project.path, viewMode, modalMode],
     );
 
+    // Image paths in LaTeX are relative to the document, so the
+    // resolver is rebuilt whenever a different file opens.
+    const resolveImageSource = useMemo(
+        () => createImageSourceResolver(openFile?.path ?? null),
+        [openFile?.path],
+    );
+
     // Swap the preview configuration in place when the mode changes,
     // preserving the document and undo history (a remount would lose
     // both). No-ops when no file is open yet.
     useEffect(() => {
         viewRef.current?.dispatch({
-            effects: previewCompartment.reconfigure(previewExtensionForMode(viewMode)),
+            effects: previewCompartment.reconfigure(
+                previewExtensionForMode(viewMode, resolveImageSource),
+            ),
         });
-    }, [viewMode]);
+    }, [viewMode, resolveImageSource]);
 
     // Swap the modal keymap (vim/helix/none) in place, preserving
     // document and undo history.
@@ -440,6 +450,7 @@ export function ProjectPage({ project }: ProjectPageProps) {
                             initialDoc={openFile.initialDoc}
                             initialViewMode={viewMode}
                             initialModalMode={modalMode}
+                            resolveImageSource={resolveImageSource}
                             onViewReady={(view) => {
                                 viewRef.current = view;
                             }}

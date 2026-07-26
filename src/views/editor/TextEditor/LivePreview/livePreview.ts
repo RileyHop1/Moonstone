@@ -20,18 +20,21 @@
 import { EditorState, Facet, StateField } from "@codemirror/state";
 import type { EditorSelection, Extension, Range } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin } from "@codemirror/view";
-import type { DecorationSet, ViewUpdate } from "@codemirror/view";
+import type { DecorationSet, ViewUpdate, WidgetType } from "@codemirror/view";
 import { findMathRanges } from "./findMath";
 import { findEnvironments } from "./findEnvironments";
+import type { EnvRange } from "./findEnvironments";
 import { findInertRegions, maskChunk } from "./inertRegions";
 import type { InertRegions } from "./inertRegions";
 import { findFormatRanges } from "./findFormatting";
 import { findListItems } from "./findListItems";
+import { findGraphicsRanges } from "./findGraphics";
 import { findRefRanges } from "./findRefs";
 import { findSections } from "./findSections";
 import { findSymbolRanges } from "./symbols";
 import { parseTabular } from "./parseTabular";
 import {
+    GraphicsWidget,
     ListMarkerWidget,
     MathWidget,
     PreambleWidget,
@@ -62,6 +65,22 @@ function selectionTouches(selection: EditorSelection, from: number, to: number):
  */
 const revealFacet = Facet.define<boolean, boolean>({
     combine: (values) => values[0] ?? true,
+});
+
+/**
+ * Turns an image path as written in LaTeX into a URL the webview can
+ * load, or null when it cannot be resolved.
+ *
+ * Injected rather than imported so the preview stays independent of
+ * Tauri: the host knows where the document lives and which protocol
+ * serves local files, and the preview only needs the answer. Without
+ * one (plain browser, tests) images render as placeholders.
+ */
+export type ImageSourceResolver = (path: string) => string | null;
+
+/** Holds the host's image resolver, if it supplied one. */
+const imageResolverFacet = Facet.define<ImageSourceResolver, ImageSourceResolver | null>({
+    combine: (values) => values[0] ?? null,
 });
 
 /**
@@ -153,9 +172,29 @@ function buildInlineDecorations(view: EditorView): InlineDecorationSets {
             );
         }
 
-        // Special characters outside math and reference chips (KaTeX
-        // renders math; a chip already replaces its whole command).
-        for (const symbol of findSymbolRanges(text, from, [...mathRanges, ...refRanges])) {
+        const graphicsRanges = findGraphicsRanges(text, from, mathRanges);
+        for (const graphics of graphicsRanges) {
+            if (isRevealed(state, graphics.from, graphics.to)) continue;
+
+            const resolveImageSource = state.facet(imageResolverFacet);
+            replaces.push(
+                Decoration.replace({
+                    widget: new GraphicsWidget(
+                        graphics.path,
+                        resolveImageSource?.(graphics.path) ?? null,
+                    ),
+                }).range(graphics.from, graphics.to),
+            );
+        }
+
+        // Special characters outside math, reference chips and image
+        // paths (KaTeX renders math; a chip or image already replaces
+        // its whole command).
+        for (const symbol of findSymbolRanges(text, from, [
+            ...mathRanges,
+            ...refRanges,
+            ...graphicsRanges,
+        ])) {
             if (isRevealed(state, symbol.from, symbol.to)) continue;
 
             replaces.push(
@@ -416,7 +455,9 @@ function collectEnvironmentDecorations(
             overlapsAny(hiddenMath, endLine.from, endLine.to);
         if (tagsCollide) continue;
 
-        if (tryReplaceTabular(decorations, state, docText, env, hiddenMath, replacedEnvRanges)) {
+        if (
+            tryReplaceEnvironment(decorations, state, docText, env, hiddenMath, replacedEnvRanges)
+        ) {
             continue;
         }
 
@@ -519,13 +560,67 @@ function collectListItemDecorations(
 }
 
 /**
- * Replaces a `tabular` environment with a rendered table widget when
- * possible.
+ * Environments handed to KaTeX as display math.
  *
- * Falls back (returns false) when the environment is not a tabular,
- * its content cannot be parsed, its tag lines share content with
- * other text, or the range collides with a display-math widget — the
- * caller then applies the generic box treatment instead.
+ * Only *outer* display-math environments are listed. Inner ones
+ * (`split`, `matrix`, `array`, …) are not valid on their own and
+ * appear inside these, so they render as part of the whole — KaTeX
+ * receives the environment tags too, which is what drives its
+ * alignment and equation numbering.
+ *
+ * The list is exactly what KaTeX implements, verified by rendering
+ * each one: `multline`, `flalign`, `eqnarray` and `displaymath` are
+ * absent because KaTeX rejects them outright ("No such environment"),
+ * and an error-styled widget is worse than the generic box.
+ */
+export const MATH_ENVIRONMENTS: ReadonlySet<string> = new Set([
+    "equation",
+    "equation*",
+    "align",
+    "align*",
+    "alignat",
+    "alignat*",
+    "gather",
+    "gather*",
+    "cases",
+    "dcases",
+    "rcases",
+    "aligned",
+    "alignedat",
+    "gathered",
+    "split",
+]);
+
+/**
+ * Builds the widget that should stand in for a whole environment, or
+ * null when the environment has no special rendering and should fall
+ * back to the generic box.
+ *
+ * @param env - The environment under consideration.
+ * @param docText - The real document text.
+ * @returns The widget to render, or null to use the box treatment.
+ */
+function buildEnvironmentWidget(env: EnvRange, docText: string): WidgetType | null {
+    if (env.name === "tabular" || env.name === "tabular*") {
+        const parsed = parseTabular(docText.slice(env.beginTo, env.endFrom));
+        return parsed ? new TableWidget(parsed) : null;
+    }
+
+    if (MATH_ENVIRONMENTS.has(env.name)) {
+        return new MathWidget(docText.slice(env.from, env.to), true);
+    }
+
+    return null;
+}
+
+/**
+ * Replaces a whole environment with a rendered block widget when it
+ * has one and occupies its lines cleanly.
+ *
+ * Falls back (returns false) when the environment has no widget, its
+ * content cannot be rendered, its tag lines share content with other
+ * text, or the range collides with a display-math widget — the caller
+ * then applies the generic box treatment instead.
  *
  * @param decorations - Output list decorations are pushed into.
  * @param state - The editor state.
@@ -533,24 +628,20 @@ function collectListItemDecorations(
  * @param env - The environment under consideration.
  * @param hiddenMath - Intervals already replaced by display math.
  * @param replacedEnvRanges - Output list of fully replaced env ranges.
- * @returns True when the environment was replaced by a table.
+ * @returns True when the environment was replaced by a widget.
  */
-function tryReplaceTabular(
+function tryReplaceEnvironment(
     decorations: Range<Decoration>[],
     state: EditorState,
     docText: string,
-    env: { readonly name: string; readonly from: number; readonly to: number; readonly beginTo: number; readonly endFrom: number },
+    env: EnvRange,
     hiddenMath: readonly Interval[],
     replacedEnvRanges: Interval[],
 ): boolean {
-    if (env.name !== "tabular" && env.name !== "tabular*") return false;
-
-    // A table is replaced wholesale, so any cursor contact reveals the
-    // source (the generic box then applies while editing inside).
+    // A replaced environment is rendered wholesale, so any cursor
+    // contact reveals the source (the generic box then applies while
+    // editing inside).
     if (isRevealed(state, env.from, env.to)) return false;
-
-    const parsed = parseTabular(docText.slice(env.beginTo, env.endFrom));
-    if (!parsed) return false;
 
     const beginLine = state.doc.lineAt(env.from);
     const endLine = state.doc.lineAt(env.endFrom);
@@ -564,11 +655,12 @@ function tryReplaceTabular(
 
     if (overlapsAny(hiddenMath, beginLine.from, endLine.to)) return false;
 
+    // Built last: the cheap rejections above avoid parsing work.
+    const widget = buildEnvironmentWidget(env, docText);
+    if (!widget) return false;
+
     decorations.push(
-        Decoration.replace({ widget: new TableWidget(parsed), block: true }).range(
-            beginLine.from,
-            endLine.to,
-        ),
+        Decoration.replace({ widget, block: true }).range(beginLine.from, endLine.to),
     );
     replacedEnvRanges.push({ from: beginLine.from, to: endLine.to });
 
@@ -672,6 +764,11 @@ export interface LivePreviewOptions {
      * Read-only mode passes false so everything stays rendered.
      */
     readonly reveal?: boolean;
+    /**
+     * Resolves `\includegraphics` paths to loadable URLs. Omitted
+     * (plain browser, tests), images render as placeholders.
+     */
+    readonly resolveImageSource?: ImageSourceResolver;
 }
 
 /**
@@ -688,5 +785,8 @@ export function livePreview(options?: LivePreviewOptions): Extension {
         inlineMathPlugin,
         blockPreviewField,
         revealFacet.of(options?.reveal ?? true),
+        ...(options?.resolveImageSource
+            ? [imageResolverFacet.of(options.resolveImageSource)]
+            : []),
     ];
 }

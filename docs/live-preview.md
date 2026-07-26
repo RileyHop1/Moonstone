@@ -133,6 +133,66 @@ lines, and unclosed delimiters yield nothing — so half-typed math stays
 visible. `MathWidget` renders with KaTeX (`throwOnError: false`);
 invalid input falls back to the raw source in an error style.
 
+## Math environments
+
+`equation`, `align`, `gather` and friends are handed to KaTeX as
+display math instead of getting the generic box — displayed equations
+are the main reason to want live rendering, so a box full of raw
+source was the biggest hole in the preview.
+
+The **whole** environment including its `\begin`/`\end` tags goes to
+KaTeX, because that is what drives its alignment and equation
+numbering: `\begin{equation}` renders with a right-aligned `(1)`, and
+`align` numbers each row.
+
+The list is exactly what KaTeX implements, verified by rendering each
+one (`mathEnvironments.test.ts` pins this):
+
+> `equation`, `equation*`, `align`, `align*`, `alignat`, `alignat*`,
+> `gather`, `gather*`, `cases`, `dcases`, `rcases`, `aligned`,
+> `alignedat`, `gathered`, `split`
+
+`multline`, `flalign`, `eqnarray` and `displaymath` are deliberately
+**absent** — KaTeX rejects them with "No such environment", and an
+error-styled widget in place of the author's equation is worse than
+the box, which stays perfectly editable. Inner environments (`split`,
+`matrix`, `array`, …) render as part of whichever outer environment
+contains them.
+
+Table and math environments share one code path:
+`tryReplaceEnvironment` handles the reveal check, the "do the tag
+lines hold other content?" check and the block replace, while
+`buildEnvironmentWidget` decides *what* to render. Adding another
+whole-environment renderer means adding a branch there and nothing
+else.
+
+## Images
+
+`\includegraphics[options]{path}` renders the actual image, inline,
+bounded to 20rem tall so a large figure cannot push the editor around.
+
+The preview cannot resolve paths itself — it does not know where the
+document lives, and must not depend on Tauri — so the host injects an
+`ImageSourceResolver` through `livePreview({ resolveImageSource })`.
+`createImageSourceResolver` (in `shared/tauri.ts`) builds one from the
+open file's path, resolving relative paths against the document's own
+directory as LaTeX does, and `convertFileSrc` turns the result into an
+`asset://` URL. `tauri.conf.json` enables the asset protocol scoped to
+`$DOCUMENT/Moonstone/**`, so the webview can read project files and
+nothing else.
+
+Three cases render a labelled placeholder rather than an image, so the
+author always sees *what* was referenced:
+
+| Case | Shown |
+|---|---|
+| Path escapes the project with `..`, or no document is open | `🖼 path` |
+| Path has no file extension (LaTeX would probe for one; that needs filesystem access) | `🖼 path` |
+| Image fails to load — missing file, outside the asset scope | `⚠ path` |
+
+Without a resolver at all (plain browser, tests) every image is a
+placeholder, which keeps the preview usable outside Tauri.
+
 ## Environments
 
 `findEnvironments.ts` pairs `\begin{...}`/`\end{...}` with a stack
@@ -241,16 +301,21 @@ editing. Clicking the table reveals the source, as everywhere else.
 - `src/views/editor/TextEditor/LivePreview/findFormatting.ts` — formatting scanner
 - `src/views/editor/TextEditor/LivePreview/findListItems.ts` — list-item scanner
 - `src/views/editor/TextEditor/LivePreview/findRefs.ts` — reference scanner
+- `src/views/editor/TextEditor/LivePreview/findGraphics.ts` — `\includegraphics` scanner
 - `src/views/editor/TextEditor/LivePreview/symbols.ts` — symbol map + scanner
 - `src/views/editor/TextEditor/LivePreview/parseTabular.ts` — table parser
 - `src/views/editor/TextEditor/LivePreview/MathWidget.ts` — all widgets
 - Tests: `src/test/findMath.test.ts`, `findEnvironments.test.ts`,
   `braces.test.ts`, `findSections.test.ts`, `findFormatting.test.ts`,
   `findListItems.test.ts`, `findRefs.test.ts`, `parseTabular.test.ts`,
-  `symbols.test.ts`, `inertRegions.test.ts`
+  `symbols.test.ts`, `inertRegions.test.ts`, `findGraphics.test.ts`,
+  `mathEnvironments.test.ts`, `imageSourceResolver.test.ts`
 
 ## Deferred (next passes)
 
 `\multirow` tables; chips/formatting/symbols inside table cells;
-`\cite[...]`/`\item[...]` optional arguments; figures/graphics
-placeholders; richer per-environment rendering.
+`\cite[...]`/`\item[...]` optional arguments; `\caption` rendering and
+figure-environment layout; honouring `\includegraphics` options
+(`width`, `scale`, `angle`) rather than ignoring them; resolving
+extension-less image paths, which needs a filesystem probe through the
+backend.

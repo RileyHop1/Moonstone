@@ -6,8 +6,53 @@
  * handle failures through the type system rather than try/catch.
  */
 
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke, isTauri } from "@tauri-apps/api/core";
 import type { AppSettings, FileNode, ProjectInfo, Result } from "./types";
+
+/**
+ * Builds a resolver that turns an `\includegraphics` path into a URL
+ * the webview can load, for images sitting beside a given document.
+ *
+ * Relative paths resolve against the document's own directory, as
+ * LaTeX does. Returns null — meaning "show a placeholder" — outside
+ * Tauri, when no document is open, or for a path that tries to escape
+ * its project with `..`. The asset protocol's scope is the real
+ * boundary; this is a cheap first check.
+ *
+ * Paths must carry a file extension. LaTeX lets authors omit it and
+ * probes for one, which would require filesystem access here; those
+ * render as placeholders instead.
+ *
+ * @param documentPath - Absolute path of the open document, or null.
+ * @returns A resolver producing a loadable URL, or null when it cannot.
+ */
+export function createImageSourceResolver(
+    documentPath: string | null,
+): (imagePath: string) => string | null {
+    if (!isTauri() || documentPath === null) return () => null;
+
+    const separator = documentPath.includes("\\") ? "\\" : "/";
+    const documentDirectory = documentPath.slice(
+        0,
+        Math.max(documentPath.lastIndexOf("/"), documentPath.lastIndexOf("\\")),
+    );
+
+    return (imagePath: string): string | null => {
+        const segments = imagePath.split(/[/\\]/);
+        if (segments.includes("..")) return null;
+
+        // No extension means LaTeX would go looking for one; we cannot.
+        const fileName = segments[segments.length - 1] ?? "";
+        if (!fileName.includes(".")) return null;
+
+        const isAbsolute = /^([a-zA-Z]:[\\/]|[\\/])/.test(imagePath);
+        const fullPath = isAbsolute
+            ? imagePath
+            : `${documentDirectory}${separator}${segments.join(separator)}`;
+
+        return convertFileSrc(fullPath);
+    };
+}
 
 /**
  * Settings as the backend stores them: the theme arrives as a plain

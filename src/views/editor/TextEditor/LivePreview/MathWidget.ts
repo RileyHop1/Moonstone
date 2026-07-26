@@ -315,6 +315,87 @@ export class RefChipWidget extends WidgetType {
 }
 
 /**
+ * Inline widget rendering an `\includegraphics` command.
+ *
+ * Shows the image itself when the host supplied a resolver that can
+ * turn the LaTeX path into a loadable URL, and a labelled placeholder
+ * otherwise — an unresolvable path (missing file, no project context,
+ * plain browser) must still show the author *what* was referenced.
+ */
+export class GraphicsWidget extends WidgetType {
+    /**
+     * @param path - The image path as written in the source.
+     * @param source - Loadable URL for the image, or null.
+     */
+    constructor(
+        private readonly path: string,
+        private readonly source: string | null,
+    ) {
+        super();
+    }
+
+    /**
+     * Compares widgets so unchanged images are not re-rendered.
+     *
+     * @param other - The widget to compare against.
+     * @returns True when both render the same image.
+     */
+    override eq(other: GraphicsWidget): boolean {
+        return other.path === this.path && other.source === this.source;
+    }
+
+    /**
+     * Renders the image, or a placeholder chip.
+     *
+     * @returns The image or placeholder element.
+     */
+    override toDOM(): HTMLElement {
+        if (this.source === null) return this.renderPlaceholder("🖼", this.path);
+
+        const container = document.createElement("span");
+        container.className = "cm-graphics";
+
+        const image = document.createElement("img");
+        image.src = this.source;
+        // The path is author-supplied text, so it goes in as an
+        // attribute value only — never interpreted as markup.
+        image.alt = this.path;
+
+        // A broken path must not leave an empty box with no
+        // explanation of what failed to load.
+        image.addEventListener("error", () => {
+            container.replaceWith(this.renderPlaceholder("⚠", this.path));
+        });
+
+        container.appendChild(image);
+        return container;
+    }
+
+    /**
+     * Builds the stand-in shown when an image cannot be displayed.
+     *
+     * @param icon - Leading glyph.
+     * @param label - Text to show, normally the path.
+     * @returns The placeholder element.
+     */
+    private renderPlaceholder(icon: string, label: string): HTMLElement {
+        const chip = document.createElement("span");
+        chip.className = "cm-graphics-placeholder";
+        chip.textContent = `${icon} ${label}`;
+        return chip;
+    }
+
+    /**
+     * Lets clicks through so clicking the image reveals the command.
+     *
+     * @returns Always false.
+     */
+    override ignoreEvent(): boolean {
+        return false;
+    }
+}
+
+/**
  * Block widget standing in for the hidden document preamble.
  * Clicking it moves the cursor into the preamble, revealing it.
  */

@@ -14,6 +14,7 @@ import { Prec } from "@codemirror/state";
 import { latex } from "codemirror-lang-latex";
 import type { ModalMode, ViewMode } from "../../../shared/types";
 import { moonstone } from "./moonstoneTheme";
+import type { ImageSourceResolver } from "./LivePreview";
 import { previewCompartment, previewExtensionForMode } from "./viewMode";
 import { modalCompartment, modalExtensionForMode } from "./modalMode";
 import { editorDiagnostics } from "./Diagnostics";
@@ -27,6 +28,11 @@ export interface TextEditorProps {
     readonly initialViewMode: ViewMode;
     /** Modal editing mode at mount (compartment reconfigures later). */
     readonly initialModalMode: ModalMode;
+    /**
+     * Resolves `\includegraphics` paths to loadable URLs. Omitted,
+     * images render as placeholders.
+     */
+    readonly resolveImageSource?: ImageSourceResolver;
     /** Receives the created EditorView so the parent can drive it. */
     readonly onViewReady: (view: EditorView) => void;
     /** Called whenever the document changes (parent tracks dirtiness). */
@@ -45,6 +51,7 @@ export function TextEditor({
     initialDoc,
     initialViewMode,
     initialModalMode,
+    resolveImageSource,
     onViewReady,
     onDocChanged,
     onSaveRequested,
@@ -58,6 +65,7 @@ export function TextEditor({
     const onSaveRequestedRef = useRef(onSaveRequested);
     const initialViewModeRef = useRef(initialViewMode);
     const initialModalModeRef = useRef(initialModalMode);
+    const resolveImageSourceRef = useRef(resolveImageSource);
     onViewReadyRef.current = onViewReady;
     onDocChangedRef.current = onDocChanged;
     onSaveRequestedRef.current = onSaveRequested;
@@ -78,7 +86,12 @@ export function TextEditor({
                     enableTooltips: true,
                 }),
                 moonstone,
-                previewCompartment.of(previewExtensionForMode(initialViewModeRef.current)),
+                previewCompartment.of(
+                    previewExtensionForMode(
+                        initialViewModeRef.current,
+                        resolveImageSourceRef.current,
+                    ),
+                ),
                 editorDiagnostics(),
                 EditorView.updateListener.of((update) => {
                     if (update.docChanged) onDocChangedRef.current();

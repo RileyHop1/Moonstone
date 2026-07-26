@@ -31,6 +31,36 @@
     padding: 0 2px;
 }
 
+/* Image rendered in place of \includegraphics. */
+.cm-graphics {
+    display: inline-block;
+    max-width: 100%;
+    cursor: text;
+}
+
+.cm-graphics img {
+    display: block;
+    /* Bounded so a large figure cannot push the editor around; the
+       author is editing source, not laying out a page. */
+    max-width: 100%;
+    max-height: 20rem;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-preview);
+}
+
+/* Stand-in when an image path cannot be resolved or fails to load. */
+.cm-graphics-placeholder {
+    display: inline-block;
+    padding: 0 0.375rem;
+    border: 1px dashed var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-preview);
+    color: var(--text-secondary);
+    font-size: 0.9em;
+    cursor: text;
+}
+
 /* Special character rendered in place of its command (\alpha → α). */
 .cm-symbol {
     padding: 0 1px;

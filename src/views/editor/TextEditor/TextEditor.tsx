@@ -20,7 +20,8 @@ import { modalCompartment, modalExtensionForMode } from "./modalMode";
 import { editorDiagnostics } from "./Diagnostics";
 import { spellCheckCompartment, spellCheckExtensionForEnabled } from "./SpellCheck";
 import { referencesCompartment, referencesExtension } from "./References";
-import type { Reference } from "../../../shared/types";
+import { lineNumbersCompartment, lineNumbersExtensionForMode } from "./LineNumbers";
+import type { LineNumberMode, Reference } from "../../../shared/types";
 import "./TextEditor.css";
 
 /** Props for {@link TextEditor}. */
@@ -33,6 +34,8 @@ export interface TextEditorProps {
     readonly initialModalMode: ModalMode;
     /** Whether spell checking is on at mount. */
     readonly initialSpellCheckEnabled: boolean;
+    /** How lines are numbered at mount. */
+    readonly initialLineNumberMode: LineNumberMode;
     /**
      * References offered for `\cite{…}` at mount; the page reconfigures
      * the compartment when the project's bibliography changes.
@@ -67,6 +70,7 @@ export function TextEditor({
     initialViewMode,
     initialModalMode,
     initialSpellCheckEnabled,
+    initialLineNumberMode,
     initialReferences,
     resolveImageSource,
     openLink,
@@ -87,6 +91,10 @@ export function TextEditor({
     const openLinkRef = useRef(openLink);
     const initialSpellCheckRef = useRef(initialSpellCheckEnabled);
     const initialReferencesRef = useRef(initialReferences);
+    const initialLineNumbersRef = useRef({
+        mode: initialLineNumberMode,
+        modalMode: initialModalMode,
+    });
     onViewReadyRef.current = onViewReady;
     onDocChangedRef.current = onDocChanged;
     onSaveRequestedRef.current = onSaveRequested;
@@ -126,6 +134,12 @@ export function TextEditor({
                     spellCheckExtensionForEnabled(initialSpellCheckRef.current),
                 ),
                 referencesCompartment.of(referencesExtension(initialReferencesRef.current)),
+                lineNumbersCompartment.of(
+                    lineNumbersExtensionForMode(
+                        initialLineNumbersRef.current.mode,
+                        initialLineNumbersRef.current.modalMode,
+                    ),
+                ),
                 editorDiagnostics(),
                 EditorView.updateListener.of((update) => {
                     if (update.docChanged) onDocChangedRef.current();

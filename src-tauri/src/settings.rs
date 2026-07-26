@@ -42,6 +42,9 @@ pub struct AppSettings {
     /// Whether prose is spell checked.
     #[serde(default = "default_spell_check")]
     pub spell_check_enabled: bool,
+    /// Line numbering: `"absolute"`, `"relative"` or `"mixed"`.
+    #[serde(default = "default_line_number_mode")]
+    pub line_number_mode: String,
 }
 
 /// The theme a fresh install starts with.
@@ -64,6 +67,11 @@ fn default_spell_check() -> bool {
     true
 }
 
+/// Plain absolute line numbers, as most editors show.
+fn default_line_number_mode() -> String {
+    "absolute".to_string()
+}
+
 impl Default for AppSettings {
     /// The settings a fresh install starts with.
     fn default() -> Self {
@@ -72,6 +80,7 @@ impl Default for AppSettings {
             editor_font_size: default_font_size(),
             modal_mode: default_modal_mode(),
             spell_check_enabled: default_spell_check(),
+            line_number_mode: default_line_number_mode(),
         }
     }
 }
@@ -215,6 +224,7 @@ mod settings_tests {
             editor_font_size: 18,
             modal_mode: "vim".to_string(),
             spell_check_enabled: false,
+            line_number_mode: "relative".to_string(),
         };
 
         save_settings_impl(&path, &settings).unwrap();
@@ -238,6 +248,7 @@ mod settings_tests {
         assert_eq!(settings.editor_font_size, default_font_size());
         assert_eq!(settings.modal_mode, default_modal_mode());
         assert!(settings.spell_check_enabled);
+        assert_eq!(settings.line_number_mode, default_line_number_mode());
     }
 
     #[test]

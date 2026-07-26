@@ -51,6 +51,10 @@ import {
     referencesCompartment,
     referencesExtension,
 } from "../editor/TextEditor/References";
+import {
+    lineNumbersCompartment,
+    lineNumbersExtensionForMode,
+} from "../editor/TextEditor/LineNumbers";
 import { SNIPPETS, insertSnippetIntoView } from "../editor/TextEditor/snippets";
 import { FileBrowser } from "./FileBrowser";
 import type { FileOperation } from "./FileBrowser";
@@ -121,7 +125,7 @@ export function ProjectPage({ project }: ProjectPageProps) {
     // Modal editing and spell checking are user preferences, not
     // per-session editor state, so they come from settings and persist.
     const { settings } = useSettings();
-    const { modalMode, spellCheckEnabled } = settings;
+    const { modalMode, spellCheckEnabled, lineNumberMode } = settings;
 
     const viewRef = useRef<EditorView | null>(null);
     const statusTimerRef = useRef<number | null>(null);
@@ -466,6 +470,16 @@ export function ProjectPage({ project }: ProjectPageProps) {
         });
     }, [references]);
 
+    // Line numbering follows both its own setting and the modal mode,
+    // since "mixed" is defined in terms of the modal editor's state.
+    useEffect(() => {
+        viewRef.current?.dispatch({
+            effects: lineNumbersCompartment.reconfigure(
+                lineNumbersExtensionForMode(lineNumberMode, modalMode),
+            ),
+        });
+    }, [lineNumberMode, modalMode]);
+
     // Turn spell checking on or off in place.
     useEffect(() => {
         viewRef.current?.dispatch({
@@ -514,6 +528,7 @@ export function ProjectPage({ project }: ProjectPageProps) {
                             initialViewMode={viewMode}
                             initialModalMode={modalMode}
                             initialSpellCheckEnabled={spellCheckEnabled}
+                            initialLineNumberMode={lineNumberMode}
                             initialReferences={references}
                             resolveImageSource={resolveImageSource}
                             openLink={openExternalLink}

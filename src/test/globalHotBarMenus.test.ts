@@ -39,6 +39,7 @@ function makeContext(editor: EditorActions | null): MenuContext {
             editorFontSize: 14,
             modalMode: "none",
             spellCheckEnabled: true,
+            lineNumberMode: "absolute",
         },
         updateSettings: vi.fn(),
     };

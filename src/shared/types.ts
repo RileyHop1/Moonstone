@@ -93,6 +93,15 @@ export type ViewMode = "source" | "live" | "readonly";
  */
 export type ModalMode = "none" | "vim" | "helix";
 
+/**
+ * How the gutter numbers lines:
+ * - `absolute` — the line's own number.
+ * - `relative` — distance from the cursor, which the cursor's own line
+ *   still shows absolutely.
+ * - `mixed` — absolute while inserting text, relative otherwise.
+ */
+export type LineNumberMode = "absolute" | "relative" | "mixed";
+
 /** User preferences persisted by the backend. */
 export interface AppSettings {
     readonly theme: Theme;
@@ -102,6 +111,8 @@ export interface AppSettings {
     readonly modalMode: ModalMode;
     /** Whether prose is spell checked. */
     readonly spellCheckEnabled: boolean;
+    /** How the gutter numbers lines. */
+    readonly lineNumberMode: LineNumberMode;
 }
 
 /**

@@ -27,6 +27,20 @@ export const modalCompartment = new Compartment();
 export const DEFAULT_MODAL_MODE: ModalMode = "none";
 
 /**
+ * Helix configuration.
+ *
+ * A bar cursor while inserting is worth asking for twice over: it is
+ * the usual signal that typing will insert rather than command, and it
+ * is the only way to tell Helix's mode apart from outside the package.
+ * Helix keeps a block cursor in every other mode, and only maintains
+ * the class that says so when the insert shape is a bar — which is
+ * what line numbering reads to implement its "mixed" mode.
+ */
+const HELIX_OPTIONS = {
+    config: { "editor.cursor-shape.insert": "bar" },
+} as const;
+
+/**
  * Publishes the active modal mode into editor state, for the same
  * reason as `viewModeFacet`: the compartment holds a keymap, not a
  * record of which mode asked for it.
@@ -48,6 +62,6 @@ export function modalExtensionForMode(mode: ModalMode): Extension {
         case "vim":
             return [modalModeFacet.of(mode), vim()];
         case "helix":
-            return [modalModeFacet.of(mode), helix()];
+            return [modalModeFacet.of(mode), helix(HELIX_OPTIONS)];
     }
 }

@@ -42,10 +42,18 @@ early-stage — functional but incomplete — hence "experimental". Its
 block cursor and status/command panels are themed (`.cm-hx-cursor`,
 `.hx-status-panel`, `.hx-command-panel`).
 
+Helix is configured with `"editor.cursor-shape.insert": "bar"`, so the
+cursor becomes a bar while inserting rather than staying a block. That
+is the usual signal that typing will insert rather than command — and
+it is load-bearing for mixed line numbering, because the package only
+maintains its `cm-hx-block-cursor` class when the insert shape is a
+bar, and that class is the only thing it publishes about its mode. See
+`settings.md`.
+
 ## Scope and interactions
 
-- **Session-only.** The mode resets to off each launch; nothing is
-  persisted to `settings.rs`.
+- **Persisted.** The mode is a user preference in `settings.rs`, set
+  in **Settings → Editor → Edit mode**, and survives restarts.
 - **Saving.** `Ctrl+S` still saves in every mode. Vim's `:w`/`:q` and
   Helix's project-context commands are **not** wired to the Tauri
   save/exit actions.

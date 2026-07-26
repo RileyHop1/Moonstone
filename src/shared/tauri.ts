@@ -98,6 +98,7 @@ export interface StoredSettings {
     readonly editorFontSize: number;
     readonly modalMode: string;
     readonly spellCheckEnabled: boolean;
+    readonly lineNumberMode: string;
 }
 
 /**

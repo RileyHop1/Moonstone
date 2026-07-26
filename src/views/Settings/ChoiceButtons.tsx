@@ -21,6 +21,11 @@ export interface ChoiceButtonsProps<T extends string> {
     readonly value: T;
     /** Called with the newly chosen value. */
     readonly onChange: (value: T) => void;
+    /**
+     * Greys the group out and refuses input, for a setting that does
+     * nothing until some other setting is changed first.
+     */
+    readonly disabled?: boolean;
 }
 
 /**
@@ -34,6 +39,7 @@ export function ChoiceButtons<T extends string>({
     choices,
     value,
     onChange,
+    disabled = false,
 }: ChoiceButtonsProps<T>) {
     return (
         <div className="settings-choices" role="radiogroup" aria-label={label}>
@@ -43,6 +49,7 @@ export function ChoiceButtons<T extends string>({
                     type="button"
                     role="radio"
                     aria-checked={choice.value === value}
+                    disabled={disabled}
                     className={`settings-choice${
                         choice.value === value ? " settings-choice-active" : ""
                     }`}

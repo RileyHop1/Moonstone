@@ -4,7 +4,7 @@
  */
 
 import { FONT_SIZE_MAX, FONT_SIZE_MIN, useSettings } from "../../shared/settings";
-import type { ModalMode } from "../../shared/types";
+import type { LineNumberMode, ModalMode } from "../../shared/types";
 import { ChoiceButtons } from "./ChoiceButtons";
 import { SettingsRow } from "./SettingsRow";
 import { ToggleSwitch } from "./ToggleSwitch";
@@ -16,6 +16,16 @@ const MODAL_MODE_CHOICES: readonly { readonly value: ModalMode; readonly label: 
     { value: "helix", label: "Helix" },
 ];
 
+/** The line-numbering modes, in display order. */
+const LINE_NUMBER_CHOICES: readonly {
+    readonly value: LineNumberMode;
+    readonly label: string;
+}[] = [
+    { value: "absolute", label: "Absolute" },
+    { value: "relative", label: "Relative" },
+    { value: "mixed", label: "Mixed" },
+];
+
 /**
  * Renders the editor settings panel.
  *
@@ -23,6 +33,10 @@ const MODAL_MODE_CHOICES: readonly { readonly value: ModalMode; readonly label: 
  */
 export function EditorTab() {
     const { settings, updateSettings } = useSettings();
+
+    // Line numbering that counts from the cursor only earns its place
+    // under modal editing, so the control follows the edit mode.
+    const isModalEditing = settings.modalMode !== "none";
 
     return (
         <>
@@ -55,6 +69,23 @@ export function EditorTab() {
                     choices={MODAL_MODE_CHOICES}
                     value={settings.modalMode}
                     onChange={(modalMode) => updateSettings({ modalMode })}
+                />
+            </SettingsRow>
+
+            <SettingsRow
+                label="Line numbers"
+                description={
+                    isModalEditing
+                        ? "Relative counts from the cursor; mixed goes absolute while inserting."
+                        : "Needs Vim or Helix — counting from the cursor is for modal motions."
+                }
+            >
+                <ChoiceButtons
+                    label="Line numbers"
+                    choices={LINE_NUMBER_CHOICES}
+                    value={settings.lineNumberMode}
+                    onChange={(lineNumberMode) => updateSettings({ lineNumberMode })}
+                    disabled={!isModalEditing}
                 />
             </SettingsRow>
 

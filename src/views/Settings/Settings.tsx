@@ -38,8 +38,13 @@ function renderPanel(tab: SettingsTabId) {
  * @returns The settings page element.
  */
 export function Settings() {
-    const { navigate } = useNavigation();
+    const { navigate, returnPage } = useNavigation();
     const [activeTab, setActiveTab] = useState<SettingsTabId>(DEFAULT_SETTINGS_TAB);
+
+    // Settings is a detour, not a destination: leaving returns to the
+    // work it was opened from, and says so.
+    const backLabel =
+        returnPage.kind === "project" ? returnPage.project.name : "projects";
 
     return (
         <div className="settings-page">
@@ -48,9 +53,9 @@ export function Settings() {
                 <button
                     type="button"
                     className="settings-back-button"
-                    onClick={() => navigate({ kind: "browser" })}
+                    onClick={() => navigate(returnPage)}
                 >
-                    ← Back to projects
+                    ← Back to {backLabel}
                 </button>
             </header>
 

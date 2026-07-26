@@ -15,7 +15,7 @@ button and no way to lose a change by navigating away.
 | Section | Settings |
 |---|---|
 | General | Theme |
-| Editor | Font size, edit mode, spell check |
+| Editor | Font size, edit mode, line numbers, spell check |
 
 Sections are declared in `settingsTabs.ts` as plain data, so adding one
 is a line there plus its panel component. `Settings.tsx` owns only the
@@ -37,7 +37,63 @@ are navigable and testable by role rather than by class name.
 - **Editor font size** — 10–24 px (clamped), applied through the
   `--editor-font-size` CSS variable.
 - **Edit mode** — None, Vim or Helix. See `modal-editing.md`.
+- **Line numbers** — absolute, relative, or mixed. See below.
 - **Spell check** — on by default. See `spell-check.md`.
+
+### Line numbering
+
+- **Absolute** — each line's own number, as most editors show.
+- **Relative** — distance from the cursor, for jumping (`5j`, `d3k`).
+  The cursor's own line keeps its absolute number: a zero there says
+  nothing, whereas the real number is what you need to jump to or cite
+  a line.
+- **Mixed** — absolute while inserting text, where numbers are for
+  reading, and relative otherwise, where they are for moving.
+
+**The whole setting is gated on modal editing.** Counting from the
+cursor exists to serve motions like `5j` and `d3k`, so with edit mode
+set to None the control is disabled — and the editor ignores the stored
+value rather than clearing it, so turning Vim or Helix back on restores
+the numbering that was chosen. Gating the UI without gating the
+behaviour would leave a disabled control that was still doing
+something.
+
+The implementation is worth knowing about, because the obvious approach
+does not work. `basicSetup` already installs a line-number gutter, and
+`lineNumbers({formatNumber})` overrides its formatting — but the
+built-in gutter only re-renders when its **config** changes, not on
+selection, so relative numbers would be correct on the first paint and
+then frozen as the cursor moved.
+
+Instead, `LineNumbers/lineNumbers.ts` supplies **markers** through the
+public `lineNumberMarkers` facet, which that same gutter renders in
+place of the plain numbers. Because the facet is computed from the
+state (`["doc", "selection", insertModeField]`), the gutter re-renders
+whenever the cursor moves — declaratively, with no dispatching and no
+frame of lag. Absolute mode contributes no markers at all, so it costs
+nothing per keystroke.
+
+Insert-mode tracking (`LineNumbers/insertMode.ts`) exists because
+neither modal package puts its mode in the editor state. Vim exposes
+its state through `getCM(view)`. Helix publishes nothing, so its block
+cursor stands in — it shows a block in every mode except insert, which
+is exactly the distinction mixed mode draws. A small view plugin
+mirrors whichever signal applies into a state field for the facet to
+read.
+
+Two details that are easy to get wrong, both found by testing this in
+the app rather than in isolation:
+
+- **Helix only maintains that cursor class when its insert cursor is a
+  bar**, which is not its default. `modalMode.ts` therefore starts
+  Helix with `"editor.cursor-shape.insert": "bar"` — worth doing twice
+  over, since a bar cursor while inserting is also the usual signal
+  that typing will insert rather than command.
+- **The field is seeded with `.init()`, not left to its default.** A
+  modal editor always starts in normal mode, and every compartment
+  reconfigure re-runs `create`. Letting the watcher correct the start
+  value made numbering depend on whether the modal package had
+  attached itself yet, which is a race.
 
 Edit mode and spell check were previously session-only toggles in the
 **View** menu. They are preferences, so they live here and persist;

@@ -3,10 +3,10 @@
  * switch.
  */
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import GlobalHotBar from "./components/GlobalHotBar";
-import { NavigationContext } from "./shared/navigation";
-import type { AppPage, NavigationValue } from "./shared/navigation";
+import { NavigationContext, returnPageFor } from "./shared/navigation";
+import type { AppPage, NavigationValue, ReturnablePage } from "./shared/navigation";
 import { AppActionsProvider } from "./shared/appActions";
 import { SettingsProvider } from "./shared/settings";
 import { assertNever } from "./shared/types";
@@ -44,8 +44,22 @@ function renderPage(page: AppPage) {
  */
 export function App() {
     const [page, setPage] = useState<AppPage>({ kind: "browser" });
+    const [returnPage, setReturnPage] = useState<ReturnablePage>({ kind: "browser" });
 
-    const navigation = useMemo<NavigationValue>(() => ({ page, navigate: setPage }), [page]);
+    // Opening settings records where it was opened from, so leaving it
+    // goes back rather than dumping the user at the project browser.
+    const navigate = useCallback(
+        (destination: AppPage): void => {
+            setReturnPage((remembered) => returnPageFor(destination, page, remembered));
+            setPage(destination);
+        },
+        [page],
+    );
+
+    const navigation = useMemo<NavigationValue>(
+        () => ({ page, navigate, returnPage }),
+        [page, navigate, returnPage],
+    );
 
     return (
         <NavigationContext.Provider value={navigation}>

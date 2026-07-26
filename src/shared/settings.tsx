@@ -8,10 +8,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from "react";
 import { getSettings, saveSettings } from "./tauri";
 import type { StoredSettings } from "./tauri";
-import type { AppSettings, ModalMode, Theme } from "./types";
+import type { AppSettings, LineNumberMode, ModalMode, Theme } from "./types";
 
 /** The modal modes a stored value is allowed to name. */
 const MODAL_MODES: readonly ModalMode[] = ["none", "vim", "helix"];
+
+/** The line-numbering modes a stored value is allowed to name. */
+const LINE_NUMBER_MODES: readonly LineNumberMode[] = ["absolute", "relative", "mixed"];
 
 /** The settings a fresh install starts with (mirrors the backend). */
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -19,6 +22,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     editorFontSize: 14,
     modalMode: "none",
     spellCheckEnabled: true,
+    lineNumberMode: "absolute",
 };
 
 /** Allowed editor font-size bounds in pixels. */
@@ -79,7 +83,13 @@ export function normalizeSettings(stored: StoredSettings | null | undefined): Ap
     // missing or malformed value should not silently disable it.
     const spellCheckEnabled = stored.spellCheckEnabled !== false;
 
-    return { theme, editorFontSize, modalMode, spellCheckEnabled };
+    const lineNumberMode: LineNumberMode = LINE_NUMBER_MODES.includes(
+        stored.lineNumberMode as LineNumberMode,
+    )
+        ? (stored.lineNumberMode as LineNumberMode)
+        : DEFAULT_SETTINGS.lineNumberMode;
+
+    return { theme, editorFontSize, modalMode, spellCheckEnabled, lineNumberMode };
 }
 
 /**

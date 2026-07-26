@@ -124,6 +124,16 @@
     font-weight: 600;
 }
 
+/* A setting that does nothing until another one is changed first. */
+.settings-choice:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.settings-choice:disabled:hover {
+    border-color: var(--border-color);
+}
+
 /* On/off switch: the checkbox itself is hidden but still focusable,
    so keyboard and screen-reader behaviour comes for free. */
 .settings-switch {
@@ -192,6 +202,11 @@
 }
 
 .settings-back-button {
+    /* The label carries the project's name, which can be long. */
+    max-width: 20rem;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
     padding: 0.5rem 1.25rem;
     border: 1px solid var(--border-color);
     border-radius: 6px;

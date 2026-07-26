@@ -77,6 +77,7 @@ describe("Settings", () => {
                 editorFontSize: 14,
                 modalMode: "none",
                 spellCheckEnabled: true,
+            lineNumberMode: "absolute",
             },
         });
     });
@@ -94,6 +95,7 @@ describe("Settings", () => {
                     editorFontSize: 24,
                     modalMode: "none",
                     spellCheckEnabled: true,
+                lineNumberMode: "absolute",
                 },
             });
         });
@@ -113,6 +115,7 @@ describe("Settings", () => {
                         editorFontSize: 14,
                         modalMode: "vim",
                         spellCheckEnabled: true,
+                    lineNumberMode: "absolute",
                     },
                 });
             });
@@ -131,6 +134,45 @@ describe("Settings", () => {
                         editorFontSize: 14,
                         modalMode: "none",
                         spellCheckEnabled: false,
+                    lineNumberMode: "absolute",
+                    },
+                });
+            });
+        });
+
+        it("gates line numbering on modal editing being on", async () => {
+            // Counting from the cursor is for Vim/Helix motions, so the
+            // control does nothing useful with edit mode set to None.
+            renderWithProviders(<Settings />, { kind: "settings" });
+
+            fireEvent.click(screen.getByRole("tab", { name: "Editor" }));
+
+            expect(screen.getByRole("radio", { name: "Relative" })).toBeDisabled();
+            expect(screen.getByText(/Needs Vim or Helix/)).toBeInTheDocument();
+
+            fireEvent.click(screen.getByRole("radio", { name: "Vim" }));
+
+            await waitFor(() => {
+                expect(screen.getByRole("radio", { name: "Relative" })).toBeEnabled();
+            });
+        });
+
+        it("persists the chosen line numbering", async () => {
+            renderWithProviders(<Settings />, { kind: "settings" });
+
+            fireEvent.click(screen.getByRole("tab", { name: "Editor" }));
+            // Line numbering is only offered under modal editing.
+            fireEvent.click(screen.getByRole("radio", { name: "Vim" }));
+            fireEvent.click(screen.getByRole("radio", { name: "Relative" }));
+
+            await waitFor(() => {
+                expect(invokeMock).toHaveBeenCalledWith("save_settings", {
+                    settings: {
+                        theme: "dark",
+                        editorFontSize: 14,
+                        modalMode: "vim",
+                        spellCheckEnabled: true,
+                        lineNumberMode: "relative",
                     },
                 });
             });
@@ -143,6 +185,7 @@ describe("Settings", () => {
                     editorFontSize: 14,
                     modalMode: "helix",
                     spellCheckEnabled: true,
+                    lineNumberMode: "absolute",
                 }),
                 save_settings: () => null,
             });
@@ -159,11 +202,34 @@ describe("Settings", () => {
         });
     });
 
-    it("navigates back to the project browser", () => {
-        const { navigateCalls } = renderWithProviders(<Settings />, { kind: "settings" });
+    describe("leaving", () => {
+        it("returns to the project browser when opened from it", () => {
+            const { navigateCalls } = renderWithProviders(<Settings />, { kind: "settings" });
 
-        fireEvent.click(screen.getByRole("button", { name: /Back to projects/ }));
+            fireEvent.click(screen.getByRole("button", { name: /Back to projects/ }));
 
-        expect(navigateCalls).toEqual([{ kind: "browser" }]);
+            expect(navigateCalls).toEqual([{ kind: "browser" }]);
+        });
+
+        it("returns to the project it was opened from", () => {
+            // Otherwise changing a setting mid-edit costs the user a
+            // trip out to the browser and back into their project.
+            const project = {
+                name: "thesis",
+                path: "C:/root/thesis",
+                lastModified: "2026-07-01T12:00:00+00:00",
+                fileCount: 3,
+            };
+
+            const { navigateCalls } = renderWithProviders(
+                <Settings />,
+                { kind: "settings" },
+                { kind: "project", project },
+            );
+
+            fireEvent.click(screen.getByRole("button", { name: /Back to thesis/ }));
+
+            expect(navigateCalls).toEqual([{ kind: "project", project }]);
+        });
     });
 });

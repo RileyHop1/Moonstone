@@ -26,6 +26,19 @@ const ROOT_DIR_NAME: &str = "Moonstone";
 /// they are path separators or reserved on Windows.
 const FORBIDDEN_NAME_CHARS: [char; 9] = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
 
+/// Device names Windows reserves at every directory level. Creating
+/// one fails in ways that look nothing like a naming problem, so they
+/// are rejected up front on every platform — a project should not
+/// become unopenable simply because it was made on Linux.
+const RESERVED_DEVICE_NAMES: [&str; 22] = [
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",
+    "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+];
+
+/// Longest name accepted. Most filesystems cap a single component at
+/// 255 bytes; the margin leaves room for an extension.
+const MAX_NAME_BYTES: usize = 200;
+
 /// Resolves `~/Documents/Moonstone`, creating the directory if it does
 /// not exist yet.
 ///
@@ -113,11 +126,20 @@ pub fn ensure_within_root(root: &Path, candidate: &Path) -> Result<PathBuf, Stri
 ///
 /// # Errors
 ///
-/// Returns an error if the name is empty or whitespace, contains a
-/// path separator or Windows-reserved character, or is a dot-name.
+/// Returns an error if the name is empty or whitespace, too long,
+/// contains a path separator, Windows-reserved character or control
+/// character, is a dot-name, ends with a dot or space, or collides
+/// with a Windows device name.
 pub fn validate_name(name: &str) -> Result<(), String> {
     if name.trim().is_empty() {
         return Err("Name can't be empty".to_string());
+    }
+
+    if name.len() > MAX_NAME_BYTES {
+        return Err(format!(
+            "Name can't be longer than {} characters",
+            MAX_NAME_BYTES
+        ));
     }
 
     if name.contains(FORBIDDEN_NAME_CHARS) {
@@ -127,13 +149,49 @@ pub fn validate_name(name: &str) -> Result<(), String> {
         ));
     }
 
+    // Invisible in the UI, rejected by most filesystems: a name with
+    // one of these looks fine and fails inexplicably.
+    if name.chars().any(char::is_control) {
+        return Err("Name can't contain control characters".to_string());
+    }
+
     // Dot-names are either traversal (".", "..") or hidden files,
     // neither of which Moonstone manages.
     if name.starts_with('.') {
         return Err("Name can't start with a dot".to_string());
     }
 
+    // Windows silently strips these, so `report.` is stored as
+    // `report` and every later lookup by the original name misses.
+    if name.ends_with('.') || name.ends_with(' ') {
+        return Err("Name can't end with a dot or a space".to_string());
+    }
+
+    if is_reserved_device_name(name) {
+        return Err(format!("{} is a reserved name on Windows", name));
+    }
+
     Ok(())
+}
+
+/// Reports whether a name collides with a Windows device name.
+///
+/// The comparison ignores case and any extension, matching how Windows
+/// resolves them: `con.tex` is as reserved as `CON`.
+///
+/// # Parameters
+///
+/// * `name` - The candidate name.
+///
+/// # Returns
+///
+/// `true` when the name is reserved.
+fn is_reserved_device_name(name: &str) -> bool {
+    let stem = name.split('.').next().unwrap_or(name);
+
+    RESERVED_DEVICE_NAMES
+        .iter()
+        .any(|reserved| stem.eq_ignore_ascii_case(reserved))
 }
 
 /// Canonicalizes a path, tolerating a final component that does not
@@ -239,5 +297,49 @@ mod paths_tests {
         assert!(validate_name(".").is_err());
         assert!(validate_name("..").is_err());
         assert!(validate_name(".hidden").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_accepts_names_with_spaces_and_dots_inside() {
+        assert!(validate_name("Welcome to Moonstone").is_ok());
+        assert!(validate_name("chapter 1.2 draft").is_ok());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_trailing_dot_or_space() {
+        // Windows silently strips these, so the stored name would not
+        // match what the user typed.
+        assert!(validate_name("report.").is_err());
+        assert!(validate_name("report ").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_control_characters() {
+        assert!(validate_name("re\tport").is_err());
+        assert!(validate_name("re\nport").is_err());
+        assert!(validate_name("re\u{0}port").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_windows_device_names() {
+        assert!(validate_name("CON").is_err());
+        assert!(validate_name("nul").is_err());
+        assert!(validate_name("Com1").is_err());
+        assert!(validate_name("LPT9").is_err());
+        // Reserved regardless of extension, as Windows resolves it.
+        assert!(validate_name("con.tex").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_allows_device_name_as_a_prefix() {
+        // Only an exact stem match is reserved.
+        assert!(validate_name("console").is_ok());
+        assert!(validate_name("nullable").is_ok());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_overlong_names() {
+        assert!(validate_name(&"a".repeat(MAX_NAME_BYTES)).is_ok());
+        assert!(validate_name(&"a".repeat(MAX_NAME_BYTES + 1)).is_err());
     }
 }

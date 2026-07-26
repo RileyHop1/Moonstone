@@ -19,10 +19,15 @@ directories offer New File / New Folder / Rename / Delete, files offer
 Rename / Delete. Deletes are confirmed and go to the **recycle bin**
 (never permanent).
 
+- **New file:** the dialog asks only for a name; the extension comes
+  from a **File type** dropdown (`src/shared/fileTypes.ts`), defaulting
+  to `.tex`, and the resulting filename is previewed under the field so
+  it is never a surprise. A folder's dialog omits the picker.
 - **Inline rename:** "Rename" edits the name in place in the tree
-  (`RenameInput`) — Enter commits, Escape/blur cancels, invalid names
-  show the backend error on the field. Keeps a file's `.tex` extension
-  when the new name has no dot.
+  (`RenameInput`) — Enter commits, Escape/blur cancels. Invalid names
+  are caught by the shared guard before any round trip and shown on the
+  field; backend errors surface the same way. Keeps a file's `.tex`
+  extension when the new name has no dot.
 - **Drag-to-move:** drag a file or folder onto a directory row (or the
   empty body, which targets the project root) to move it — the new Rust
   `move_entry` command. The UI and backend both reject moving a folder

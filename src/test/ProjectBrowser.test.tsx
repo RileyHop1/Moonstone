@@ -121,6 +121,48 @@ describe("ProjectBrowser", () => {
         });
     });
 
+    it("renames a project via the context menu", async () => {
+        mockCommands({
+            list_projects: () => PROJECTS,
+            rename_project: () => "C:/root/dissertation",
+        });
+
+        renderWithProviders(<ProjectBrowser />);
+
+        fireEvent.contextMenu(await screen.findByText("thesis"));
+        fireEvent.click(screen.getByText("Rename"));
+
+        // The dialog opens seeded with the current name.
+        const input = screen.getByPlaceholderText("Project name");
+        expect(input).toHaveValue("thesis");
+
+        fireEvent.change(input, { target: { value: "dissertation" } });
+        fireEvent.submit(screen.getByRole("button", { name: "Rename" }).closest("form")!);
+
+        await waitFor(() => {
+            expect(invokeMock).toHaveBeenCalledWith("rename_project", {
+                projectPath: "C:/root/thesis",
+                newName: "dissertation",
+            });
+        });
+    });
+
+    it("rejects an invalid project rename before calling the backend", async () => {
+        mockCommands({ list_projects: () => PROJECTS });
+
+        renderWithProviders(<ProjectBrowser />);
+
+        fireEvent.contextMenu(await screen.findByText("thesis"));
+        fireEvent.click(screen.getByText("Rename"));
+        fireEvent.change(screen.getByPlaceholderText("Project name"), {
+            target: { value: "a/b" },
+        });
+        fireEvent.submit(screen.getByRole("button", { name: "Rename" }).closest("form")!);
+
+        expect(await screen.findByText(/can't contain/)).toBeInTheDocument();
+        expect(invokeMock).not.toHaveBeenCalledWith("rename_project", expect.anything());
+    });
+
     it("does not delete when the confirmation is declined", async () => {
         vi.spyOn(window, "confirm").mockReturnValue(false);
         mockCommands({ list_projects: () => PROJECTS });

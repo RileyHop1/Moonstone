@@ -162,6 +162,70 @@ describe("ProjectPage", () => {
         });
     });
 
+    it("creates a file with the chosen extension", async () => {
+        mockCommands({
+            list_project_files: () => EMPTY_TREE,
+            create_file: () => "C:/root/demo/refs.bib",
+        });
+        renderWithProviders(<ProjectPage project={PROJECT} />);
+        await screen.findByText("This project is empty.");
+
+        fireEvent.click(screen.getByTitle("New file"));
+        fireEvent.change(screen.getByPlaceholderText("File name"), {
+            target: { value: "refs" },
+        });
+        fireEvent.change(screen.getByLabelText("File type"), {
+            target: { value: "bib" },
+        });
+        fireEvent.submit(screen.getByRole("button", { name: "Create" }).closest("form")!);
+
+        await waitFor(() => {
+            expect(invokeMock).toHaveBeenCalledWith("create_file", {
+                parentDirectory: "C:/root/demo",
+                fileName: "refs",
+                fileExtension: "bib",
+            });
+        });
+    });
+
+    it("previews the filename that will be created", async () => {
+        mockCommands({ list_project_files: () => EMPTY_TREE });
+        renderWithProviders(<ProjectPage project={PROJECT} />);
+        await screen.findByText("This project is empty.");
+
+        fireEvent.click(screen.getByTitle("New file"));
+        fireEvent.change(screen.getByPlaceholderText("File name"), {
+            target: { value: "notes" },
+        });
+
+        expect(screen.getByText("notes.tex")).toBeInTheDocument();
+    });
+
+    it("offers no file type when creating a folder", async () => {
+        mockCommands({ list_project_files: () => EMPTY_TREE });
+        renderWithProviders(<ProjectPage project={PROJECT} />);
+        await screen.findByText("This project is empty.");
+
+        fireEvent.click(screen.getByTitle("New folder"));
+
+        expect(screen.queryByLabelText("File type")).not.toBeInTheDocument();
+    });
+
+    it("rejects an invalid file name before calling the backend", async () => {
+        mockCommands({ list_project_files: () => EMPTY_TREE });
+        renderWithProviders(<ProjectPage project={PROJECT} />);
+        await screen.findByText("This project is empty.");
+
+        fireEvent.click(screen.getByTitle("New file"));
+        fireEvent.change(screen.getByPlaceholderText("File name"), {
+            target: { value: "CON" },
+        });
+        fireEvent.submit(screen.getByRole("button", { name: "Create" }).closest("form")!);
+
+        await screen.findByText(/reserved name on Windows/);
+        expect(invokeMock).not.toHaveBeenCalledWith("create_file", expect.anything());
+    });
+
     it("renames a file inline via the context menu", async () => {
         mockCommands({
             list_project_files: () => TREE,
@@ -183,6 +247,26 @@ describe("ProjectPage", () => {
                 newName: "renamed",
             });
         });
+    });
+
+    it("rejects an invalid inline rename before calling the backend", async () => {
+        mockCommands({ list_project_files: () => TREE, read_file: () => "" });
+        renderWithProviders(<ProjectPage project={PROJECT} />);
+
+        fireEvent.contextMenu(await screen.findByText("demo.tex"));
+        fireEvent.click(screen.getByText("Rename"));
+
+        const input = screen.getByDisplayValue("demo.tex");
+        fireEvent.change(input, { target: { value: "a/b.tex" } });
+        fireEvent.keyDown(input, { key: "Enter" });
+
+        await waitFor(() => {
+            expect(screen.getByDisplayValue("a/b.tex")).toHaveAttribute(
+                "title",
+                expect.stringContaining("can't contain"),
+            );
+        });
+        expect(invokeMock).not.toHaveBeenCalledWith("rename_entry", expect.anything());
     });
 
     it("moves a file onto a folder via drag-and-drop", async () => {

@@ -9,9 +9,11 @@
 import { useCallback, useEffect, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { ContextMenu } from "../../components/ContextMenu";
+import { NameDialog } from "../../components/NameDialog";
+import type { NameDialogResult } from "../../components/NameDialog";
 import { useNavigation } from "../../shared/navigation";
 import { useAppActions } from "../../shared/appActions";
-import { deleteProject, listProjects } from "../../shared/tauri";
+import { deleteProject, listProjects, renameProject } from "../../shared/tauri";
 import { assertNever } from "../../shared/types";
 import type { LoadState, ProjectInfo } from "../../shared/types";
 import { ProjectCard } from "./ProjectCard";
@@ -39,6 +41,7 @@ export function ProjectBrowser() {
     });
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [menu, setMenu] = useState<MenuState | null>(null);
+    const [renaming, setRenaming] = useState<ProjectInfo | null>(null);
 
     const loadProjects = useCallback(async (): Promise<void> => {
         setProjects({ status: "loading" });
@@ -94,6 +97,26 @@ export function ProjectBrowser() {
     }, []);
 
     /**
+     * Renames the project the rename dialog is open for.
+     *
+     * @param result - The validated name from the dialog.
+     * @returns An inline error message, or null on success.
+     */
+    const handleRenameProject = useCallback(
+        async ({ name }: NameDialogResult): Promise<string | null> => {
+            if (!renaming) return null;
+
+            const result = await renameProject(renaming.path, name);
+            if (!result.ok) return result.error;
+
+            setRenaming(null);
+            void loadProjects();
+            return null;
+        },
+        [renaming, loadProjects],
+    );
+
+    /**
      * Confirms and deletes a project, then reloads the grid.
      */
     const handleDeleteProject = useCallback(
@@ -137,12 +160,27 @@ export function ProjectBrowser() {
                     y={menu.y}
                     items={[
                         {
+                            label: "Rename",
+                            onClick: () => setRenaming(menu.project),
+                        },
+                        {
                             label: "Delete",
                             danger: true,
                             onClick: () => void handleDeleteProject(menu.project),
                         },
                     ]}
                     onClose={() => setMenu(null)}
+                />
+            )}
+
+            {renaming && (
+                <NameDialog
+                    title="Rename Project"
+                    placeholder="Project name"
+                    submitLabel="Rename"
+                    initialValue={renaming.name}
+                    onSubmit={handleRenameProject}
+                    onCancel={() => setRenaming(null)}
                 />
             )}
         </div>

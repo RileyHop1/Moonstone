@@ -33,6 +33,7 @@ pub fn run() {
             project_manager::list_projects,
             project_manager::create_project,
             project_manager::delete_project,
+            project_manager::rename_project,
             settings::get_settings,
             settings::save_settings,
         ])

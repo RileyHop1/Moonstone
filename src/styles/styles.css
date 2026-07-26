@@ -156,6 +156,46 @@ html, body {
   color: var(--error-color);
 }
 
+/* Labelled control beneath the name input (e.g. the file type). */
+.dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.dialog-field-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.dialog-select {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  outline: none;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.dialog-select:focus {
+  border-color: var(--accent);
+}
+
+/* Shows the filename that will be created, so the chosen extension
+   is never a surprise after the fact. */
+.dialog-preview {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.dialog-preview code {
+  color: var(--text-primary);
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+}
+
 .dialog-buttons {
   display: flex;
   justify-content: flex-end;

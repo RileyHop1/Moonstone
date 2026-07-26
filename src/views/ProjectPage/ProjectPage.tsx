@@ -7,6 +7,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
 import { redo, undo } from "@codemirror/commands";
 import { NameDialog } from "../../components/NameDialog";
+import type { NameDialogResult } from "../../components/NameDialog";
+import { DEFAULT_FILE_EXTENSION } from "../../shared/fileTypes";
 import { useNavigation } from "../../shared/navigation";
 import { useAppActions } from "../../shared/appActions";
 import type { EditorActions, SnippetName } from "../../shared/appActions";
@@ -323,12 +325,16 @@ export function ProjectPage({ project }: ProjectPageProps) {
      * @returns An inline error message, or null on success.
      */
     const handleDialogSubmit = useCallback(
-        async (name: string): Promise<string | null> => {
+        async ({ name, extension }: NameDialogResult): Promise<string | null> => {
             if (!dialog) return null;
 
             switch (dialog.kind) {
                 case "newFile": {
-                    const result = await createFile(dialog.parentDir, name);
+                    const result = await createFile(
+                        dialog.parentDir,
+                        name,
+                        extension ?? DEFAULT_FILE_EXTENSION,
+                    );
                     if (!result.ok) return result.error;
                     break;
                 }
@@ -496,6 +502,7 @@ export function ProjectPage({ project }: ProjectPageProps) {
                     title={dialogTitle(dialog)}
                     placeholder={dialog.kind === "newFolder" ? "Folder name" : "File name"}
                     submitLabel="Create"
+                    withFileType={dialog.kind === "newFile"}
                     onSubmit={handleDialogSubmit}
                     onCancel={() => setDialog(null)}
                 />

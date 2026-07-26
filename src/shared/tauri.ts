@@ -204,14 +204,34 @@ export function saveFile(filePath: string, contents: string): Promise<Result<nul
  *
  * @param parentDirectory - Directory to create the file in.
  * @param fileName - Bare file name without extension.
+ * @param fileExtension - Extension without the dot; the backend
+ *   rejects anything it cannot also open and save.
  * @returns The full path of the created file.
  */
-export function createFile(parentDirectory: string, fileName: string): Promise<Result<string>> {
+export function createFile(
+    parentDirectory: string,
+    fileName: string,
+    fileExtension: string,
+): Promise<Result<string>> {
     return invokeCommand("create_file", {
         parentDirectory,
         fileName,
-        fileExtension: "tex",
+        fileExtension,
     });
+}
+
+/**
+ * Renames a project, keeping its `<project>.tex` main file in step.
+ *
+ * @param projectPath - Path of the project directory.
+ * @param newName - The new project name.
+ * @returns The renamed project's path.
+ */
+export function renameProject(
+    projectPath: string,
+    newName: string,
+): Promise<Result<string>> {
+    return invokeCommand("rename_project", { projectPath, newName });
 }
 
 /**

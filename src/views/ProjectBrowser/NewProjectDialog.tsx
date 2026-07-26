@@ -4,6 +4,7 @@
  */
 
 import { NameDialog } from "../../components/NameDialog";
+import type { NameDialogResult } from "../../components/NameDialog";
 import { createProject } from "../../shared/tauri";
 import type { ProjectInfo } from "../../shared/types";
 
@@ -26,10 +27,10 @@ export function NewProjectDialog({ onCreated, onCancel }: NewProjectDialogProps)
     /**
      * Asks the backend to create the project.
      *
-     * @param name - The validated project name.
+     * @param result - The validated name from the dialog.
      * @returns An inline error message, or null on success.
      */
-    async function handleSubmit(name: string): Promise<string | null> {
+    async function handleSubmit({ name }: NameDialogResult): Promise<string | null> {
         const result = await createProject(name);
 
         if (!result.ok) return result.error;

@@ -11,12 +11,36 @@ created on demand) via `paths::moonstone_root` and validates each
 user-supplied path with `paths::ensure_within_root`: raw `..`
 components are rejected up front, then both root and candidate are
 canonicalized and compared — a request can never read or write outside
-the projects directory. Names pass `paths::validate_name` (non-empty,
-no separators/reserved characters, no leading dot). Only `.tex` files
-may be read or written.
+the projects directory.
 
 Commands are thin wrappers over pure `_impl` functions, which the unit
 tests exercise against temp directories.
+
+## Name and extension rules
+
+Every command that creates or renames validates the name through
+`paths::validate_name`; every command that creates, reads or saves a
+file validates its extension through `file_manager::validate_extension`.
+The frontend mirrors both so mistakes surface next to the input rather
+than as a command failure — the backend stays the authority.
+
+A name is rejected when it is empty or whitespace, longer than 200
+characters, contains `/ \ : * ? " < > |` or a control character,
+starts with a dot, ends with a dot or a space, or matches a Windows
+device name (`CON`, `NUL`, `COM1`–`LPT9`, with or without an
+extension). The Windows-specific rules apply on every platform: a
+project should not become unopenable because it was created on Linux.
+
+Extensions are limited to the **text** formats a LaTeX project is
+authored from — `tex`, `ltx`, `bib`, `cls`, `sty`, `bst`, `dtx`,
+`ins`, `def`, `cfg`, `tikz`, `txt`, `md`, `csv`. Compiled output and
+binary assets are deliberately absent: the editor would corrupt them
+on save. `read_file`, `save_file` and `create_file` share the check,
+so whatever can be created can also be opened and saved — a type that
+could be created but not saved would be a broken feature.
+
+`nameValidation.test.ts` parses the Rust list and asserts the
+frontend's copy matches, so the two cannot drift apart silently.
 
 ## Command table
 
@@ -25,10 +49,11 @@ tests exercise against temp directories.
 | `list_projects` | — | `ProjectInfo[]` | Directories under the root, sorted by name |
 | `create_project` | `name` | `ProjectInfo` | Creates dir + seeds `<name>.tex` with a document template |
 | `delete_project` | `projectPath` | `()` | Recycle bin; only directories directly under the root |
+| `rename_project` | `projectPath`, `newName` | `string` (path) | Renames `<old>.tex` → `<new>.tex` too, keeping the main-file convention; refuses an existing name; no-op if unchanged |
 | `list_project_files` | `projectPath` | `FileNode` | Recursive tree; dirs before files, alphabetical; hidden entries skipped; depth-capped |
-| `read_file` | `filePath` | `string` | `.tex` only |
-| `save_file` | `filePath`, `contents` | `()` | `.tex` only; overwrites |
-| `create_file` | `parentDirectory`, `fileName`, `fileExtension` | `string` (path) | Refuses overwrite; `.tex` only |
+| `read_file` | `filePath` | `string` | Editable extensions only |
+| `save_file` | `filePath`, `contents` | `()` | Editable extensions only; overwrites |
+| `create_file` | `parentDirectory`, `fileName`, `fileExtension` | `string` (path) | Refuses overwrite; editable extensions only |
 | `create_directory` | `parentDirectory`, `dirName` | `string` (path) | Emits `directory-created` event |
 | `rename_entry` | `path`, `newName` | `string` (path) | Files keep `.tex`; refuses overwrite |
 | `move_entry` | `sourcePath`, `destinationDir` | `string` (path) | Refuses overwrite, self/descendant, and whole projects; no-op if already there |

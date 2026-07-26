@@ -22,6 +22,32 @@ use crate::paths;
 /// against symlink cycles and runaway nesting.
 const MAX_TREE_DEPTH: u32 = 32;
 
+/// Extensions Moonstone will create, open and save.
+///
+/// Deliberately limited to the *text* formats a LaTeX project is
+/// authored from. Compiled output (`pdf`, `aux`, `log`) and binary
+/// assets are intentionally absent: the editor would corrupt them on
+/// save, and this list is what `read_file`/`save_file` enforce, not
+/// just what the new-file dialog offers.
+///
+/// Keep in sync with `FILE_EXTENSIONS` in `src/shared/fileTypes.ts`.
+const EDITABLE_EXTENSIONS: [&str; 14] = [
+    "tex",   // documents
+    "ltx",   // alternative document extension
+    "bib",   // bibliography databases
+    "cls",   // document classes
+    "sty",   // packages
+    "bst",   // bibliography styles
+    "dtx",   // documented package sources
+    "ins",   // package installers
+    "def",   // package definitions
+    "cfg",   // package configuration
+    "tikz",  // standalone TikZ pictures
+    "txt",   // plain notes
+    "md",    // markdown notes
+    "csv",   // table and plot data
+];
+
 /// One node of a project's file tree.
 ///
 /// Serialized with a `kind` tag so the frontend receives a
@@ -594,9 +620,9 @@ pub async fn save_file_impl(file: &Path, contents: &str) -> Result<(), String> {
 ///
 /// `true` if the extension is valid, `false` otherwise.
 fn validate_extension(extension: &str) -> bool {
-    // For now it'll just be tex, but if other files are
-    // allowed later down the line extension will be easier.
-    matches!(extension, "tex")
+    EDITABLE_EXTENSIONS
+        .iter()
+        .any(|allowed| extension.eq_ignore_ascii_case(allowed))
 }
 
 /// Errors unless `file` has a `.tex` extension.
@@ -713,6 +739,58 @@ mod file_manager_tests {
     fn test_validate_extension() {
         assert!(validate_extension("tex"));
         assert!(!validate_extension("pdf"));
+    }
+
+    #[test]
+    fn test_validate_extension_accepts_every_editable_type() {
+        for extension in EDITABLE_EXTENSIONS {
+            assert!(validate_extension(extension), "{} should be editable", extension);
+        }
+    }
+
+    #[test]
+    fn test_validate_extension_is_case_insensitive() {
+        assert!(validate_extension("TEX"));
+        assert!(validate_extension("Bib"));
+    }
+
+    #[test]
+    fn test_validate_extension_rejects_generated_and_binary_files() {
+        // These would be corrupted by an editor save, so they must not
+        // be creatable, readable or writable.
+        for extension in ["pdf", "aux", "log", "synctex", "png", "exe", ""] {
+            assert!(!validate_extension(extension), "{} should be refused", extension);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create_file_impl_creates_a_bib_file() {
+        let dir = tempdir().unwrap();
+
+        let path = create_file_impl(dir.path(), "refs", "bib").await.unwrap();
+
+        assert!(Path::new(&path).exists());
+        assert!(path.ends_with("refs.bib"));
+    }
+
+    #[tokio::test]
+    async fn test_create_file_impl_rejects_a_reserved_name() {
+        let dir = tempdir().unwrap();
+
+        assert!(create_file_impl(dir.path(), "CON", "tex").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_save_and_read_round_trip_for_a_non_tex_type() {
+        // Creating a .bib the editor could not then save would be a
+        // broken feature, so the round trip is what matters.
+        let dir = tempdir().unwrap();
+        let path = create_file_impl(dir.path(), "refs", "bib").await.unwrap();
+        let file = Path::new(&path);
+
+        save_file_impl(file, "@book{a}").await.unwrap();
+
+        assert_eq!(read_file_impl(file).await.unwrap(), "@book{a}");
     }
 
     #[tokio::test]

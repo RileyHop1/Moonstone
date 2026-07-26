@@ -122,6 +122,94 @@ pub async fn delete_project<R: Runtime>(
     trash::delete(&project).map_err(|e| e.to_string())
 }
 
+/// Renames a project directory, keeping its main file in step.
+///
+/// A project's main file is `<project>.tex` by convention — that is
+/// what the project page auto-opens — so renaming the directory alone
+/// would quietly break it. The file is renamed alongside when it
+/// exists; a project whose main file is named otherwise is left as is.
+///
+/// # Parameters
+///
+/// * `project_path` - Path of the project directory to rename.
+/// * `new_name` - The new project name.
+///
+/// # Returns
+///
+/// The full path of the renamed project directory.
+///
+/// # Errors
+///
+/// Returns an error if the path escapes the Moonstone root, is not a
+/// project directory, the name is invalid, a project of that name
+/// already exists, or the rename fails.
+#[tauri::command]
+pub async fn rename_project<R: Runtime>(
+    app: AppHandle<R>,
+    project_path: String,
+    new_name: String,
+) -> Result<String, String> {
+    let root = paths::moonstone_root(&app)?;
+    let project = paths::ensure_within_root(&root, Path::new(&project_path))?;
+
+    ensure_is_project(&root, &project)?;
+
+    rename_project_impl(&project, &new_name).await
+}
+
+/// Renames a project directory and its matching main file.
+///
+/// # Parameters
+///
+/// * `project` - The project directory (already validated).
+/// * `new_name` - The new project name.
+///
+/// # Returns
+///
+/// The full path of the renamed directory.
+///
+/// # Errors
+///
+/// Returns an error if the name is invalid, the target already
+/// exists, or a rename fails.
+pub async fn rename_project_impl(project: &Path, new_name: &str) -> Result<String, String> {
+    paths::validate_name(new_name)?;
+
+    let old_name = project
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .ok_or_else(|| "The project has no name".to_string())?;
+
+    if old_name == new_name {
+        return Ok(project.to_string_lossy().to_string());
+    }
+
+    let parent = project
+        .parent()
+        .ok_or_else(|| "The project has no parent directory".to_string())?;
+    let target = parent.join(new_name);
+
+    if target.exists() {
+        return Err(format!("Project {} already exists", new_name));
+    }
+
+    // The main file is renamed first: if the directory moved first and
+    // this failed, the project would be left renamed but broken, which
+    // is harder to recover from than not having renamed at all.
+    let main_file = project.join(format!("{}.tex", old_name));
+    if main_file.is_file() {
+        fs::rename(&main_file, project.join(format!("{}.tex", new_name)))
+            .await
+            .map_err(|e| format!("Could not rename the main file: {}", e))?;
+    }
+
+    fs::rename(project, &target)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(target.to_string_lossy().to_string())
+}
+
 /// Errors unless `candidate` is a project directory: a directory
 /// sitting directly under the Moonstone root.
 ///
@@ -334,6 +422,99 @@ impl Project {
     }
 }
 
+
+#[cfg(test)]
+mod rename_project_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    /// Creates a project directory with its conventional main file.
+    ///
+    /// # Parameters
+    ///
+    /// * `root` - Directory to create the project in.
+    /// * `name` - Project name.
+    ///
+    /// # Returns
+    ///
+    /// The project directory's path.
+    async fn seed_project(root: &Path, name: &str) -> std::path::PathBuf {
+        let project = root.join(name);
+        fs::create_dir_all(&project).await.unwrap();
+        fs::write(project.join(format!("{}.tex", name)), "body")
+            .await
+            .unwrap();
+        project
+    }
+
+    #[tokio::test]
+    async fn test_rename_project_renames_directory_and_main_file() {
+        let dir = tempdir().unwrap();
+        let project = seed_project(dir.path(), "old").await;
+
+        let renamed = rename_project_impl(&project, "new").await.unwrap();
+
+        assert!(!project.exists());
+        assert!(Path::new(&renamed).join("new.tex").exists());
+        // The old main file must not survive under its old name.
+        assert!(!Path::new(&renamed).join("old.tex").exists());
+    }
+
+    #[tokio::test]
+    async fn test_rename_project_keeps_other_files() {
+        let dir = tempdir().unwrap();
+        let project = seed_project(dir.path(), "old").await;
+        fs::write(project.join("refs.bib"), "@book{a}").await.unwrap();
+
+        let renamed = rename_project_impl(&project, "new").await.unwrap();
+
+        assert!(Path::new(&renamed).join("refs.bib").exists());
+    }
+
+    #[tokio::test]
+    async fn test_rename_project_without_a_matching_main_file() {
+        let dir = tempdir().unwrap();
+        let project = dir.path().join("old");
+        fs::create_dir_all(&project).await.unwrap();
+        fs::write(project.join("paper.tex"), "body").await.unwrap();
+
+        let renamed = rename_project_impl(&project, "new").await.unwrap();
+
+        assert!(Path::new(&renamed).join("paper.tex").exists());
+    }
+
+    #[tokio::test]
+    async fn test_rename_project_refuses_an_existing_name() {
+        let dir = tempdir().unwrap();
+        let project = seed_project(dir.path(), "old").await;
+        seed_project(dir.path(), "taken").await;
+
+        assert!(rename_project_impl(&project, "taken").await.is_err());
+        // The failed rename must leave the project untouched.
+        assert!(project.join("old.tex").exists());
+    }
+
+    #[tokio::test]
+    async fn test_rename_project_rejects_an_invalid_name() {
+        let dir = tempdir().unwrap();
+        let project = seed_project(dir.path(), "old").await;
+
+        assert!(rename_project_impl(&project, "a/b").await.is_err());
+        assert!(rename_project_impl(&project, "CON").await.is_err());
+        assert!(rename_project_impl(&project, "  ").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_rename_project_to_the_same_name_is_a_no_op() {
+        let dir = tempdir().unwrap();
+        let project = seed_project(dir.path(), "same").await;
+
+        let renamed = rename_project_impl(&project, "same").await.unwrap();
+
+        assert_eq!(renamed, project.to_string_lossy());
+        assert!(project.join("same.tex").exists());
+    }
+}
 
 #[cfg(test)]
 mod project_manager_tests {

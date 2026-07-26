@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { validateEntryName } from "../../../shared/nameValidation";
 
 /** Props for {@link RenameInput}. */
 export interface RenameInputProps {
@@ -48,6 +49,14 @@ export function RenameInput({ initialValue, onCommit, onExit }: RenameInputProps
 
         if (value.trim() === "" || value === initialValue) {
             onExit();
+            return;
+        }
+
+        // Checked here as well as in the dialog so every place a name
+        // is typed reports the same rule, without a round trip.
+        const validationError = validateEntryName(value.trim());
+        if (validationError) {
+            setError(validationError);
             return;
         }
 

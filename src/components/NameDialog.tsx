@@ -5,29 +5,18 @@
 
 import { useState } from "react";
 import type { FormEvent } from "react";
+import { DEFAULT_FILE_EXTENSION, FILE_TYPES } from "../shared/fileTypes";
+import { validateEntryName } from "../shared/nameValidation";
 
-/** Characters rejected in names (path separators / Windows-reserved). */
-const FORBIDDEN_NAME_CHARS = /[/\\:*?"<>|]/;
-
-/**
- * Validates a candidate name.
- *
- * Mirrors the backend's `validate_name` so most mistakes are caught
- * before a round trip; the backend remains the authority.
- *
- * @param name - The candidate name.
- * @returns An error message, or null when the name is acceptable.
- */
-export function validateEntryName(name: string): string | null {
-    if (name.trim().length === 0) return "Name can't be empty";
-
-    if (FORBIDDEN_NAME_CHARS.test(name)) {
-        return 'Name can\'t contain / \\ : * ? " < > |';
-    }
-
-    if (name.startsWith(".")) return "Name can't start with a dot";
-
-    return null;
+/** What the dialog submits. */
+export interface NameDialogResult {
+    /** The validated name, trimmed. */
+    readonly name: string;
+    /**
+     * Chosen extension without the dot, or null when the dialog is
+     * not offering a file type (projects, folders, renames).
+     */
+    readonly extension: string | null;
 }
 
 /** Props for {@link NameDialog}. */
@@ -41,10 +30,17 @@ export interface NameDialogProps {
     /** Value the input starts with (e.g. the current name on rename). */
     readonly initialValue?: string;
     /**
-     * Called with the validated name; resolve with an error message to
-     * show it inline, or null on success (the caller closes the dialog).
+     * Show a file-type picker beside the name. The user then types
+     * only the name — the extension is chosen, never typed, so it
+     * cannot be misspelled or omitted.
      */
-    readonly onSubmit: (name: string) => Promise<string | null>;
+    readonly withFileType?: boolean;
+    /**
+     * Called with the validated result; resolve with an error message
+     * to show it inline, or null on success (the caller closes the
+     * dialog).
+     */
+    readonly onSubmit: (result: NameDialogResult) => Promise<string | null>;
     /** Called when the user dismisses the dialog. */
     readonly onCancel: () => void;
 }
@@ -60,10 +56,12 @@ export function NameDialog({
     placeholder,
     submitLabel,
     initialValue = "",
+    withFileType = false,
     onSubmit,
     onCancel,
 }: NameDialogProps) {
     const [name, setName] = useState(initialValue);
+    const [extension, setExtension] = useState(DEFAULT_FILE_EXTENSION);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -75,14 +73,19 @@ export function NameDialog({
     async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
         event.preventDefault();
 
-        const validationError = validateEntryName(name);
+        const trimmed = name.trim();
+
+        const validationError = validateEntryName(trimmed);
         if (validationError) {
             setErrorMessage(validationError);
             return;
         }
 
         setIsSubmitting(true);
-        const submitError = await onSubmit(name.trim());
+        const submitError = await onSubmit({
+            name: trimmed,
+            extension: withFileType ? extension : null,
+        });
         setIsSubmitting(false);
 
         if (submitError) setErrorMessage(submitError);
@@ -109,6 +112,31 @@ export function NameDialog({
                         setErrorMessage(null);
                     }}
                 />
+
+                {withFileType && (
+                    <label className="dialog-field">
+                        <span className="dialog-field-label">File type</span>
+                        <select
+                            className="dialog-select"
+                            value={extension}
+                            onChange={(event) => setExtension(event.target.value)}
+                        >
+                            {FILE_TYPES.map((type) => (
+                                <option key={type.extension} value={type.extension}>
+                                    {type.label}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                )}
+
+                {withFileType && name.trim() && !validateEntryName(name.trim()) && (
+                    // Show the resulting filename, so the extension is
+                    // never a surprise after the fact.
+                    <p className="dialog-preview">
+                        Creates <code>{`${name.trim()}.${extension}`}</code>
+                    </p>
+                )}
 
                 {errorMessage && <p className="dialog-error">{errorMessage}</p>}
 

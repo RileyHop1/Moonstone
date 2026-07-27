@@ -77,6 +77,35 @@ Block-layer replaces are published to `EditorView.atomicRanges`
 That distinction is load-bearing and easy to get wrong, so both
 directions are tested — the skips *and* the deliberate non-skips.
 
+### Reveal is frozen while dragging a selection
+
+Selecting across a block used to be impossible: the selection would
+collapse to a line or two. The cause was reveal itself. Hiding a
+block's `\begin`/`\end` lines is what makes it a block, so a drag
+growing into one un-hid those lines *mid-gesture* — the content below
+shifted down, the pointer ended up over a different line than the one
+it was travelling toward, and the selection ended wherever it landed.
+Dragging outside a block was unaffected, because revealing inline
+commands swaps text without changing how many lines there are. That is
+exactly the "works outside a block, breaks inside one" symptom.
+
+`pointerSelection.ts` holds the reveal decision still for the length of
+the gesture: the selection as of `pointerdown` is what `isRevealed`
+reads until the button comes up, so the layout cannot move under the
+pointer. On release, reveal returns to the live selection and the block
+opens as usual.
+
+Two details matter:
+
+- It listens for **`pointerdown`, not `mousedown`**. Pointer events
+  fire first, so the captured selection is the one from *before* the
+  click. Capturing after CodeMirror has moved the cursor would freeze
+  reveal at a cursor already inside the block — which reveals it, the
+  very thing being avoided.
+- Both layers rebuild on the transaction that **ends** the gesture,
+  which carries no selection change of its own; without that the frozen
+  reveal would outlive the drag.
+
 ## View modes
 
 The preview participates in three editor view modes, swapped at runtime

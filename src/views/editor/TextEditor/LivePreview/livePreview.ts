@@ -21,6 +21,12 @@ import { EditorState, Facet, StateField } from "@codemirror/state";
 import type { EditorSelection, Extension, Range } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin } from "@codemirror/view";
 import type { DecorationSet, ViewUpdate, WidgetType } from "@codemirror/view";
+import {
+    pointerSelectionTracker,
+    revealSelection,
+    togglesPointerSelection,
+    updateTogglesPointerSelection,
+} from "./pointerSelection";
 import { findMathRanges } from "./findMath";
 import type { MathRange } from "./findMath";
 import { findEnvironments } from "./findEnvironments";
@@ -113,8 +119,10 @@ const linkOpenerFacet = Facet.define<LinkOpener, LinkOpener | undefined>({
  */
 function isRevealed(state: EditorState, from: number, to: number): boolean {
     if (!state.facet(revealFacet)) return false;
-    const { selection } = state;
-    return selectionTouches(selection, from, to);
+
+    // Frozen while a drag-selection is in progress, so revealing a
+    // block cannot shift the lines out from under the pointer.
+    return selectionTouches(revealSelection(state), from, to);
 }
 
 /**
@@ -292,7 +300,12 @@ const inlineMathPlugin = ViewPlugin.fromClass(
         }
 
         update(update: ViewUpdate) {
-            if (update.docChanged || update.selectionSet || update.viewportChanged) {
+            if (
+                update.docChanged ||
+                update.selectionSet ||
+                update.viewportChanged ||
+                updateTogglesPointerSelection(update)
+            ) {
                 const sets = buildInlineDecorations(update.view);
                 this.decorations = sets.decorations;
                 this.atomic = sets.atomic;
@@ -874,7 +887,13 @@ const blockPreviewField = StateField.define<BlockDecorationSets>({
     create: buildBlockDecorations,
 
     update(sets, transaction) {
-        if (transaction.docChanged || transaction.selection) {
+        if (
+            transaction.docChanged ||
+            transaction.selection ||
+            // The transaction ending a drag carries no selection, but
+            // hands reveal back to the live one.
+            togglesPointerSelection(transaction)
+        ) {
             return buildBlockDecorations(transaction.state);
         }
         return sets;
@@ -918,6 +937,7 @@ export function livePreview(options?: LivePreviewOptions): Extension {
         // Must precede the layers that read it: a StateField's `create`
         // may only access fields initialized before it.
         documentScanField,
+        pointerSelectionTracker(),
         inlineMathPlugin,
         blockPreviewField,
         revealFacet.of(options?.reveal ?? true),

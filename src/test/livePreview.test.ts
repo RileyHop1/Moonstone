@@ -463,3 +463,74 @@ describe("live preview — updates", () => {
         expect(hasElement(view, ".cm-inline-math")).toBe(true);
     });
 });
+
+describe("live preview — selecting across a block", () => {
+    /** An environment whose tag lines the preview hides. */
+    const DOC = [
+        "before",
+        String.raw`\begin{itemize}`,
+        String.raw`\item one`,
+        String.raw`\item two`,
+        String.raw`\end{itemize}`,
+        "after",
+    ].join("\n");
+
+    /** The tag lines that make the box a box. */
+    const BEGIN_TAG = String.raw`\begin{itemize}`;
+    const END_TAG = String.raw`\end{itemize}`;
+
+    /**
+     * Presses the primary mouse button inside the editor.
+     *
+     * @param view - The mounted view.
+     */
+    function pressMouse(view: EditorView): void {
+        // `pointerdown`, matching what the preview listens for: it
+        // fires before the browser's mousedown, which is what lets the
+        // pre-click selection be captured.
+        view.contentDOM.dispatchEvent(
+            new PointerEvent("pointerdown", { button: 0, isPrimary: true, bubbles: true }),
+        );
+    }
+
+    /** Releases the button, wherever the pointer ended up. */
+    function releaseMouse(): void {
+        window.dispatchEvent(
+            new PointerEvent("pointerup", { button: 0, isPrimary: true, bubbles: true }),
+        );
+    }
+
+    it("keeps the block's tag lines hidden while a drag grows into it", () => {
+        // The bug this guards: revealing mid-drag un-hides the tag
+        // lines, everything below shifts down, and the pointer ends up
+        // over a different line — so the selection collapses to one.
+        const view = mountPreview(DOC, { cursor: 0 });
+        expect(renderedText(view)).not.toContain(BEGIN_TAG);
+
+        pressMouse(view);
+        view.dispatch({ selection: EditorSelection.single(0, DOC.length) });
+
+        expect(renderedText(view)).not.toContain(BEGIN_TAG);
+        expect(renderedText(view)).not.toContain(END_TAG);
+    });
+
+    it("reveals once the drag finishes", () => {
+        const view = mountPreview(DOC, { cursor: 0 });
+
+        pressMouse(view);
+        view.dispatch({ selection: EditorSelection.single(0, DOC.length) });
+        releaseMouse();
+
+        expect(renderedText(view)).toContain(BEGIN_TAG);
+    });
+
+    it("still reveals for an ordinary selection change", () => {
+        // Keyboard selection never had the problem, so it must keep
+        // behaving exactly as before.
+        const view = mountPreview(DOC, { cursor: 0 });
+
+        view.dispatch({ selection: EditorSelection.single(0, DOC.length) });
+
+        expect(renderedText(view)).toContain(BEGIN_TAG);
+    });
+});

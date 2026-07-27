@@ -11,6 +11,7 @@ import { findFormatRanges } from "./findFormatting";
 import type { FormatRange } from "./findFormatting";
 import { findSymbolRanges } from "./symbols";
 import { applyTextReplacements, findTextReplacements } from "./findTextReplacements";
+import { findRefRanges } from "./findRefs";
 import type { RefKind } from "./findRefs";
 import type { TabularRows } from "./parseTabular";
 
@@ -199,13 +200,23 @@ export class TableWidget extends WidgetType {
  */
 function renderCellContents(cell: HTMLElement, source: string): void {
     const mathRanges = findMathRanges(source, 0);
-    const formatRanges = findFormatRanges(source, 0, mathRanges);
-    const claimed = [...mathRanges, ...formatRanges];
+    const refRanges = findRefRanges(source, 0, mathRanges);
+    const formatRanges = findFormatRanges(source, 0, [...mathRanges, ...refRanges]);
+    const claimed = [...mathRanges, ...refRanges, ...formatRanges];
     const symbolRanges = findSymbolRanges(source, 0, claimed);
     const textRanges = findTextReplacements(source, 0, claimed);
 
     const pieces = [
         ...mathRanges.map((range) => ({ range, render: () => renderMath(source, range) })),
+        // Chips render inside a cell exactly as they do outside one —
+        // a citation in a table is still a citation. No opener is
+        // passed: a link inside a rendered table is not clickable, and
+        // offering an affordance that does nothing would be worse.
+        ...refRanges.map((range) => ({
+            range,
+            render: () =>
+                new RefChipWidget(range.kind, range.keys, range.note, range.target).toDOM(),
+        })),
         ...formatRanges.map((range) => ({
             range,
             render: () => renderFormatted(source, range),

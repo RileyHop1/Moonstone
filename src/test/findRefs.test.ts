@@ -48,6 +48,40 @@ describe("findRefRanges", () => {
         expect(findRefRanges("\\citet{a}", 0, [])[0]?.kind).toBe("cite");
     });
 
+    it("recognises the wider cite family", () => {
+        // These differ in how the bibliography renders them, not in
+        // what the argument means, so the preview treats them alike.
+        for (const command of [
+            "nocite",
+            "citeauthor",
+            "citeyear",
+            "citealt",
+            "parencite",
+            "textcite",
+            "autocite",
+            "footcite",
+            "Textcite",
+        ]) {
+            expect(findRefRanges(`\\${command}{a}`, 0, [])[0]?.kind, command).toBe("cite");
+        }
+    });
+
+    it("takes the postnote when biblatex passes two optional arguments", () => {
+        // `\citep[see][p.~3]{k}` — the prenote comes first, but the
+        // page reference is what a reader wants in the chip.
+        const range = findRefRanges("\\citep[see][p.~3]{knuth}", 0, [])[0];
+
+        expect(range?.keys).toEqual(["knuth"]);
+        expect(range?.note).toBe("p.~3");
+    });
+
+    it("ignores commands that are not references", () => {
+        // The pattern matches any command with a braced argument, so
+        // the kind map is what keeps `\textbf{x}` out of the chips.
+        expect(findRefRanges("\\textbf{bold}", 0, [])).toEqual([]);
+        expect(findRefRanges("\\section{Intro}", 0, [])).toEqual([]);
+    });
+
     it("captures a url target", () => {
         const range = findRefRanges("\\url{https://example.com}", 0, [])[0];
 

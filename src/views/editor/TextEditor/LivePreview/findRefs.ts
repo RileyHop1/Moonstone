@@ -32,24 +32,48 @@ interface Interval {
 }
 
 /**
- * Matches a whole reference command, with an optional `[...]` argument
- * and, for `\href`, a second brace group. Arguments never contain
- * braces, so no brace matching is needed.
+ * Matches any command with a braced argument; {@link REF_KINDS} then
+ * decides whether it is one we render. Up to two optional `[...]`
+ * arguments are allowed — biblatex takes a prenote and a postnote, as
+ * in `\citep[see][p.~3]{key}` — plus, for `\href`, a second brace
+ * group. Arguments never contain braces, so no brace matching is
+ * needed.
  */
 const REF_PATTERN =
-    /\\(ref|eqref|citep|citet|cite|label|url|href|footnote)(?:\[([^\]\n]*)\])?\{([^{}\n]*)\}(?:\{([^{}\n]*)\})?/g;
+    /\\([a-zA-Z]+)(?:\[([^\]\n]*)\])?(?:\[([^\]\n]*)\])?\{([^{}\n]*)\}(?:\{([^{}\n]*)\})?/g;
 
 /** Command name → reference kind (narrows the regex capture's type). */
 const REF_KINDS: Record<string, RefKind> = {
     ref: "ref",
     eqref: "eqref",
-    cite: "cite",
-    citep: "cite",
-    citet: "cite",
     label: "label",
     url: "url",
     href: "href",
     footnote: "footnote",
+
+    // The cite family. LaTeX and biblatex between them offer a long
+    // list of spellings for "cite this"; they differ in how the
+    // bibliography renders them, not in what the argument means, so
+    // the preview treats them alike.
+    cite: "cite",
+    Cite: "cite",
+    citep: "cite",
+    citet: "cite",
+    citealt: "cite",
+    citealp: "cite",
+    citeauthor: "cite",
+    citeyear: "cite",
+    citeyearpar: "cite",
+    nocite: "cite",
+    parencite: "cite",
+    Parencite: "cite",
+    textcite: "cite",
+    Textcite: "cite",
+    autocite: "cite",
+    Autocite: "cite",
+    footcite: "cite",
+    smartcite: "cite",
+    supercite: "cite",
 };
 
 /** Kinds whose argument is a single opaque string, not a key list. */
@@ -80,7 +104,7 @@ export function findRefRanges(
 
     for (const match of text.matchAll(REF_PATTERN)) {
         const kind = REF_KINDS[match[1] ?? ""];
-        const firstArgument = match[3];
+        const firstArgument = match[4];
         const matchStart = match.index;
         if (kind === undefined || firstArgument === undefined || matchStart === undefined) {
             continue;
@@ -95,10 +119,13 @@ export function findRefRanges(
         const keys = splitKeys(kind, firstArgument);
         if (keys.length === 0) continue;
 
-        // `\href{url}{text}` puts its link text in the second group;
-        // everything else uses `[...]` for a locator.
-        const secondArgument = match[4];
-        const note = kind === "href" ? (secondArgument ?? null) : (match[2] ?? null);
+        // `\href{url}{text}` puts its link text in the second brace
+        // group; everything else uses `[...]` for a locator. With two
+        // optional arguments the second is the postnote — the page
+        // reference a reader actually wants to see.
+        const secondBraceGroup = match[5];
+        const locator = match[3] ?? match[2] ?? null;
+        const note = kind === "href" ? (secondBraceGroup ?? null) : locator;
 
         ranges.push({
             kind,

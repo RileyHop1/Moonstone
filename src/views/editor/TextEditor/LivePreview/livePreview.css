@@ -174,19 +174,31 @@
 
 /* Section headings: size only — margins would distort the line
    layout inside environment boxes. */
+/* Headings need air above them far more than below: the gap is what
+   separates a section from the paragraph that ended the last one.
+   Padding rather than margin, because CodeMirror measures line heights
+   and collapsing margins would confuse that — and `!important`
+   because the base theme's `.cm-line` padding otherwise wins, the same
+   reason `.cm-env-line` below needs it. */
 .cm-heading-1 {
     font-size: 1.5em;
     font-weight: 700;
+    padding-top: 0.8em !important;
+    padding-bottom: 0.15em !important;
 }
 
 .cm-heading-2 {
     font-size: 1.3em;
     font-weight: 700;
+    padding-top: 0.7em !important;
+    padding-bottom: 0.1em !important;
 }
 
 .cm-heading-3 {
     font-size: 1.15em;
     font-weight: 700;
+    padding-top: 0.6em !important;
+    padding-bottom: 0.1em !important;
 }
 
 /* List-item marker rendered in place of \item. */

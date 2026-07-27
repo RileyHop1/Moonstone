@@ -464,6 +464,43 @@ describe("live preview — updates", () => {
     });
 });
 
+describe("live preview — table cells", () => {
+    /**
+     * A two-column table whose first cell holds the given source.
+     *
+     * @param cell - The first cell's LaTeX source.
+     * @returns The document text.
+     */
+    function tableWith(cell: string): string {
+        return [
+            String.raw`\begin{tabular}{ll}`,
+            `${cell} & second ${String.raw`\\`}`,
+            String.raw`\end{tabular}`,
+        ].join("\n");
+    }
+
+    it("renders a citation chip inside a cell", () => {
+        // A citation in a table is still a citation; cells rendered
+        // math, formatting and symbols but left chips as raw source.
+        const view = mountPreview(tableWith(String.raw`see \cite{knuth}`));
+
+        expect(hasElement(view, ".cm-table-widget .cm-ref-chip")).toBe(true);
+        expect(renderedText(view)).not.toContain(String.raw`\cite`);
+    });
+
+    it("renders a reference chip inside a cell", () => {
+        const view = mountPreview(tableWith(String.raw`\ref{fig:one}`));
+
+        expect(hasElement(view, ".cm-table-widget .cm-ref-chip")).toBe(true);
+    });
+
+    it("keeps rendering math in cells", () => {
+        const view = mountPreview(tableWith(String.raw`$x^2$`));
+
+        expect(hasElement(view, ".cm-table-widget .katex")).toBe(true);
+    });
+});
+
 describe("live preview — selecting across a block", () => {
     /** An environment whose tag lines the preview hides. */
     const DOC = [

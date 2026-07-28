@@ -14,6 +14,7 @@ import { applyTextReplacements, findTextReplacements } from "./findTextReplaceme
 import { findRefRanges } from "./findRefs";
 import type { RefKind } from "./findRefs";
 import type { TabularRows } from "./parseTabular";
+import type { MacroTable } from "./findMacros";
 
 /**
  * Replaces a math source range with its KaTeX rendering. Invalid
@@ -24,10 +25,16 @@ export class MathWidget extends WidgetType {
     /**
      * @param latex - The LaTeX source between the delimiters.
      * @param display - True renders display (block) math.
+     * @param macros - Macros the document defines; without them, a
+     *   command like `\dmodel` renders as red error text.
+     * @param macroKey - Stable identity for `macros`, so {@link eq} can
+     *   tell tables apart without walking them.
      */
     constructor(
         private readonly latex: string,
         private readonly display: boolean,
+        private readonly macros: MacroTable = {},
+        private readonly macroKey = "",
     ) {
         super();
     }
@@ -39,7 +46,13 @@ export class MathWidget extends WidgetType {
      * @returns True when both would render identically.
      */
     override eq(other: MathWidget): boolean {
-        return other.latex === this.latex && other.display === this.display;
+        return (
+            other.latex === this.latex &&
+            other.display === this.display &&
+            // Editing a macro's definition changes what its uses
+            // render as, so identical source is not enough.
+            other.macroKey === this.macroKey
+        );
     }
 
     /**
@@ -55,6 +68,10 @@ export class MathWidget extends WidgetType {
             katex.render(this.latex, container, {
                 displayMode: this.display,
                 throwOnError: false,
+                // A copy, because KaTeX writes into this object when
+                // the source uses `\gdef` — sharing it would let one
+                // expression's definitions leak into every other.
+                macros: { ...this.macros },
             });
         } catch {
             // KaTeX only throws for internal errors with throwOnError
@@ -164,6 +181,7 @@ export class TableWidget extends WidgetType {
             for (const cell of row) {
                 const tableCell = document.createElement("td");
                 if (cell.span > 1) tableCell.colSpan = cell.span;
+                if (cell.rowSpan > 1) tableCell.rowSpan = cell.rowSpan;
                 if (cell.align !== null) tableCell.style.textAlign = cell.align;
                 renderCellContents(tableCell, cell.source);
                 tableRow.appendChild(tableCell);

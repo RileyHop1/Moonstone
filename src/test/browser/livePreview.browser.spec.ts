@@ -101,6 +101,230 @@ async function roundTripFailures(page: Page): Promise<string[]> {
     });
 }
 
+/** Prose either side of a display-maths block. */
+const DOCUMENT_WITH_DISPLAY_MATHS = [
+    "Text before the equation.",
+    "",
+    "$$\\int_0^1 x \\, dx$$",
+    "",
+    "Text after the equation.",
+].join("\n");
+
+/**
+ * Reports the cursor's line and whether the maths is rendered.
+ *
+ * @param page - The Playwright page.
+ * @returns The cursor's 1-based line and the block-widget count.
+ */
+async function cursorState(page: Page): Promise<{ line: number; blocks: number }> {
+    return page.evaluate(() => {
+        const view = (window as { moonstoneView?: import("@codemirror/view").EditorView })
+            .moonstoneView;
+        if (!view) throw new Error("Editor is not mounted");
+
+        return {
+            line: view.state.doc.lineAt(view.state.selection.main.head).number,
+            blocks: document.querySelectorAll(".cm-math-block").length,
+        };
+    });
+}
+
+/**
+ * Places the cursor without using the mouse, and focuses the editor.
+ *
+ * @param page - The Playwright page.
+ * @param offset - Document offset to move to.
+ */
+async function placeCursor(page: Page, offset: number): Promise<void> {
+    await page.evaluate((at) => {
+        const view = (window as { moonstoneView?: import("@codemirror/view").EditorView })
+            .moonstoneView;
+        if (!view) throw new Error("Editor is not mounted");
+        view.dispatch({ selection: { anchor: at } });
+        view.focus();
+    }, offset);
+}
+
+test.describe("cursor motion over rendered blocks", () => {
+    // A `block: true` replace leaves no text line for vertical motion
+    // to land on, so arrow keys used to step clean over display maths —
+    // which made it editable only by clicking. Real keys are the whole
+    // point here, so these cannot live in jsdom.
+
+    test("arrow up stops inside display maths rather than skipping it", async ({ page }) => {
+        await openPreview(page, DOCUMENT_WITH_DISPLAY_MATHS);
+
+        await placeCursor(page, DOCUMENT_WITH_DISPLAY_MATHS.indexOf("Text after") + 3);
+        await expect(page.locator(".cm-math-block")).toHaveCount(1);
+
+        // Up onto the blank line, then up again onto the maths.
+        await page.keyboard.press("ArrowUp");
+        await page.keyboard.press("ArrowUp");
+
+        const state = await cursorState(page);
+        expect(state.line, "cursor should land on the maths line").toBe(3);
+        expect(state.blocks, "maths should reveal as editable source").toBe(0);
+    });
+
+    test("arrow down stops inside display maths rather than skipping it", async ({ page }) => {
+        await openPreview(page, DOCUMENT_WITH_DISPLAY_MATHS);
+
+        await placeCursor(page, 3);
+        await page.keyboard.press("ArrowDown");
+        await page.keyboard.press("ArrowDown");
+
+        const state = await cursorState(page);
+        expect(state.line).toBe(3);
+        expect(state.blocks).toBe(0);
+    });
+
+    test("continues past the maths on the next press", async ({ page }) => {
+        await openPreview(page, DOCUMENT_WITH_DISPLAY_MATHS);
+
+        await placeCursor(page, DOCUMENT_WITH_DISPLAY_MATHS.indexOf("Text after") + 3);
+        await page.keyboard.press("ArrowUp");
+        await page.keyboard.press("ArrowUp");
+        await page.keyboard.press("ArrowUp");
+
+        // Stopping inside the block must cost one keypress, not trap
+        // the cursor there.
+        expect((await cursorState(page)).line).toBeLessThan(3);
+    });
+
+    test("inline maths is reached by horizontal motion", async ({ page }) => {
+        const doc = "First line.\nSecond line with $x^2 + y^2$ maths.\nThird line.";
+        await openPreview(page, doc);
+
+        // From just past the maths, walk left into it.
+        await placeCursor(page, doc.indexOf("maths."));
+        for (let press = 0; press < 3; press++) await page.keyboard.press("ArrowLeft");
+
+        await expect(page.locator(".cm-inline-math")).toHaveCount(0);
+    });
+});
+
+/** Prose wrapped around a multi-line environment box. */
+const DOCUMENT_WITH_BOX = [
+    "Before the environment.",
+    "",
+    "\\begin{itemize}",
+    "First line inside the box.",
+    "Second line inside the box.",
+    "Third line inside the box.",
+    "Fourth line inside the box.",
+    "\\end{itemize}",
+    "",
+    "After the environment.",
+].join("\n");
+
+test.describe("selection inside an environment box", () => {
+    // CodeMirror draws selection into `.cm-selectionLayer` *behind* the
+    // content, so an opaque background on a `.cm-line` hides it. The
+    // environment box had exactly that, and selecting inside one showed
+    // no highlight — which read as "only the last line renders".
+
+    /**
+     * Selects a range and reports what the selection layer drew.
+     *
+     * @param page - The Playwright page.
+     * @param from - Selection anchor.
+     * @param to - Selection head.
+     * @returns Each drawn rectangle's top and width.
+     */
+    async function selectionRects(
+        page: Page,
+        from: number,
+        to: number,
+    ): Promise<{ top: number; width: number }[]> {
+        await page.evaluate(
+            ([anchor, head]) => {
+                const view = (window as { moonstoneView?: import("@codemirror/view").EditorView })
+                    .moonstoneView;
+                if (!view) throw new Error("Editor is not mounted");
+                view.focus();
+                view.dispatch({ selection: { anchor: anchor as number, head: head as number } });
+            },
+            [from, to],
+        );
+
+        // Drawn in CodeMirror's measure phase, so a synchronous read
+        // straight after the dispatch sees nothing.
+        await page.waitForTimeout(300);
+
+        return page.evaluate(() =>
+            Array.from(document.querySelectorAll(".cm-selectionBackground")).map((element) => {
+                const box = element.getBoundingClientRect();
+                return { top: Math.round(box.top), width: Math.round(box.width) };
+            }),
+        );
+    }
+
+    test("draws the highlight on every selected line", async ({ page }) => {
+        await openPreview(page, DOCUMENT_WITH_BOX);
+
+        const rects = await selectionRects(
+            page,
+            DOCUMENT_WITH_BOX.indexOf("First line") + 3,
+            DOCUMENT_WITH_BOX.indexOf("Fourth line") + 8,
+        );
+
+        // Three pieces: the tail of the first line, a block covering
+        // the whole lines between, and the head of the last.
+        expect(rects.length).toBeGreaterThanOrEqual(3);
+        expect(rects.every((rect) => rect.width > 0)).toBe(true);
+    });
+
+    test("nothing paints over the selection layer", async ({ page }) => {
+        await openPreview(page, DOCUMENT_WITH_BOX);
+
+        await selectionRects(
+            page,
+            DOCUMENT_WITH_BOX.indexOf("First line") + 3,
+            DOCUMENT_WITH_BOX.indexOf("Fourth line") + 8,
+        );
+
+        // The rule this enforces: a line inside a box must not carry an
+        // *opaque* background of its own. Its surface is painted by a
+        // pseudo-element below the selection layer instead.
+        //
+        // Translucent ones are fine and expected — the active line
+        // carries a faint tint, and the selection shows through it.
+        const opaqueLines = await page.evaluate(() =>
+            Array.from(document.querySelectorAll(".cm-env-line"))
+                .map((element) => getComputedStyle(element).backgroundColor)
+                .filter((colour) => {
+                    // Count the components rather than pattern-matching
+                    // the last number: `rgb(19, 26, 38)` has no alpha,
+                    // and reading its blue channel as one is how an
+                    // earlier version of this passed against the bug.
+                    const parts = colour.match(/[\d.]+/g) ?? [];
+                    if (parts.length < 3) return false;
+
+                    const alpha = parts.length >= 4 ? Number(parts[3]) : 1;
+                    return alpha === 1;
+                }),
+        );
+
+        expect(opaqueLines, "an opaque line background hides the selection").toEqual([]);
+    });
+
+    test("still draws the highlight when the selection leaves the box", async ({ page }) => {
+        await openPreview(page, DOCUMENT_WITH_BOX);
+
+        const rects = await selectionRects(
+            page,
+            DOCUMENT_WITH_BOX.indexOf("Before the") + 3,
+            DOCUMENT_WITH_BOX.indexOf("Fourth line") + 8,
+        );
+
+        // This case always worked — leaving the box reveals it, which
+        // removes the box styling — so it guards against a fix that
+        // trades one for the other.
+        expect(rects.length).toBeGreaterThanOrEqual(3);
+        expect(rects.every((rect) => rect.width > 0)).toBe(true);
+    });
+});
+
 test.describe("live preview geometry", () => {
     test("positions round-trip while the preamble is revealed", async ({ page }) => {
         await openPreview(page, DOCUMENT_WITH_PREAMBLE);

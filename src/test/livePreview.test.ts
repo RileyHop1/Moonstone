@@ -263,6 +263,152 @@ describe("live preview — block layer", () => {
         expect(renderedText(view)).toContain("\\section{");
     });
 
+    describe("document-defined macros", () => {
+        /**
+         * Finds text KaTeX painted in its error colour.
+         *
+         * With `throwOnError: false` an unknown command does not fail —
+         * KaTeX colours it and carries on — so this is the only thing
+         * that distinguishes "rendered" from "rendered wrongly".
+         *
+         * @param view - The mounted editor.
+         * @returns The offending text, or null when nothing is red.
+         */
+        function katexErrorText(view: EditorView): string | null {
+            // KaTeX marks the offending command twice: `mathcolor` on
+            // the MathML and an inline `color` on the HTML. Matching
+            // only one of them is how an earlier version of this helper
+            // found nothing and passed against broken rendering.
+            const element = view.dom.querySelector(
+                '[mathcolor="#cc0000"], [style*="cc0000"]',
+            );
+            return element?.textContent ?? null;
+        }
+
+        it("expands a macro the document defines", () => {
+            const view = mountPreview(
+                String.raw`\newcommand{\dmodel}{d_{\text{model}}}` + "\n\nvalue $\\dmodel$ here",
+                { cursor: 0 },
+            );
+
+            expect(katexErrorText(view)).toBeNull();
+        });
+
+        it("shows the error colour when the macro is undefined", () => {
+            // The control: without a definition, this is exactly what a
+            // real paper looked like before macros were collected.
+            const view = mountPreview("value $\\dmodel$ here", { cursor: 0 });
+
+            expect(katexErrorText(view)).toBe("\\dmodel");
+        });
+
+        it("expands a macro that takes an argument", () => {
+            const view = mountPreview(
+                String.raw`\newcommand{\mc}[1]{\mathcal{#1}}` + "\n\nset $\\mc{X}$ here",
+                { cursor: 0 },
+            );
+
+            expect(katexErrorText(view)).toBeNull();
+        });
+
+        it("ignores a definition that is commented out", () => {
+            const view = mountPreview(
+                String.raw`% \newcommand{\dmodel}{d}` + "\n\nvalue $\\dmodel$ here",
+                { cursor: 0 },
+            );
+
+            expect(katexErrorText(view)).toBe("\\dmodel");
+        });
+
+        it("re-renders maths when the definition changes", () => {
+            const doc = String.raw`\newcommand{\q}{alpha}` + "\n\nvalue $\\q$ here";
+            const view = mountPreview(doc, { cursor: 0 });
+
+            expect(renderedText(view)).toContain("alpha");
+
+            // Identical maths source, different meaning — the widget
+            // must not consider itself unchanged.
+            view.dispatch({
+                changes: { from: doc.indexOf("alpha"), to: doc.indexOf("alpha") + 5, insert: "beta" },
+            });
+
+            expect(renderedText(view)).toContain("beta");
+        });
+    });
+
+    describe("cursor motion over rendered blocks", () => {
+        // Whether an arrow key *lands* in the block needs a real
+        // browser and is covered there. What is checked here is the
+        // rule's guards: it must fire for a step across a block, and
+        // stay out of the way otherwise.
+        const doc = "before\n\n$$x^2$$\n\nafter";
+        const mathFrom = doc.indexOf("$$x^2$$");
+        const mathTo = mathFrom + "$$x^2$$".length;
+
+        /**
+         * Moves the cursor and reports where it ended up.
+         *
+         * @param view - The mounted editor.
+         * @param anchor - Where the movement asked to go.
+         * @param userEvent - The user-event annotation to send.
+         * @returns The resulting cursor position.
+         */
+        function moveTo(view: EditorView, anchor: number, userEvent?: string): number {
+            view.dispatch(userEvent ? { selection: { anchor }, userEvent } : { selection: { anchor } });
+            return view.state.selection.main.head;
+        }
+
+        it("stops a step over the block inside it", () => {
+            const view = mountPreview(doc, { cursor: doc.indexOf("after") });
+
+            // The blank line below the maths to the blank line above
+            // it — what one press of ArrowUp asks for, since vertical
+            // motion moves a line at a time.
+            const below = view.state.doc.line(4).from;
+            const above = view.state.doc.line(2).from;
+
+            view.dispatch({ selection: { anchor: below } });
+            expect(moveTo(view, above)).toBe(mathTo);
+        });
+
+        it("stops the same step downwards", () => {
+            const view = mountPreview(doc, { cursor: 0 });
+
+            const above = view.state.doc.line(2).from;
+            const below = view.state.doc.line(4).from;
+
+            view.dispatch({ selection: { anchor: above } });
+            expect(moveTo(view, below)).toBe(mathFrom);
+        });
+
+        it("leaves clicks alone", () => {
+            const view = mountPreview(doc, { cursor: doc.indexOf("after") });
+
+            const below = view.state.doc.line(4).from;
+            const above = view.state.doc.line(2).from;
+
+            // A click says where the user wants to be, and a drag
+            // across a block must not be snapped back into it. Same
+            // step as the first test, so only the annotation differs.
+            view.dispatch({ selection: { anchor: below } });
+            expect(moveTo(view, above, "select.pointer")).toBe(above);
+        });
+
+        it("leaves a jump across the whole document alone", () => {
+            const view = mountPreview(doc, { cursor: doc.length });
+
+            // Ctrl+Home, a search hit, `gg` — these cross the block
+            // without meaning to enter it, so they must not be caught.
+            expect(moveTo(view, 0)).toBe(0);
+        });
+
+        it("leaves ordinary motion within a line alone", () => {
+            const view = mountPreview(doc, { cursor: 0 });
+
+            expect(moveTo(view, 3)).toBe(3);
+        });
+    });
+
     it("collapses the preamble behind a chip", () => {
         const view = mountPreview(
             "\\documentclass{article}\n\\begin{document}\nbody\n\\end{document}",

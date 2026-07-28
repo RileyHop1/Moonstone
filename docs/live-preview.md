@@ -292,6 +292,28 @@ table ranges, the collapsed preamble) so later passes — headings and
 list items — never emit overlapping replaces, which CodeMirror rejects
 within one decoration set.
 
+### A line inside a box must not have an opaque background
+
+CodeMirror draws the selection into `.cm-selectionLayer`, which sits at
+`z-index: -2` — **behind** the content. So an opaque `background` on a
+`.cm-line` paints over it, and text selected inside that line shows no
+highlight at all.
+
+The environment box had exactly that, and selecting several lines
+inside one appeared to highlight only the last. Selections that started
+or ended outside the box looked fine, which is the tell: leaving the
+box reveals it, the box styling disappears, and nothing is left to
+cover the selection.
+
+The box surface is therefore painted by a **pseudo-element below the
+selection layer** (`.cm-env-line::before` at `z-index: -3`) rather than
+by a background on the line. The box keeps its solid surface and the
+selection still shows.
+
+Translucent line backgrounds are fine — the active line carries one,
+and the selection shows through it. Only fully opaque ones are a
+problem, which is what the browser test asserts.
+
 ### Claim checks must match what a pass actually replaces
 
 The overlap checks that keep replaces from colliding have to be as
@@ -360,14 +382,20 @@ This is guarded three ways, all in `src/test/browser/`:
 
 ## Headings
 
-`findSections.ts` scans for `\section{...}`, `\subsection{...}`, and
-`\subsubsection{...}` (plus starred variants), brace-matching titles
-via the shared `braces.ts` helper so nested groups work. Each heading
-gets a `cm-heading-1/2/3` line class (font size + weight — applied
-even while revealed, so the text keeps its size during editing) and,
-when the cursor is off the line, two replaces hiding the `\section{`
-prefix and closing `}`. Skipped (raw source): escaped commands,
-unclosed braces, multi-line titles, and empty titles.
+`findSections.ts` scans the five sectioning commands — `\section`,
+`\subsection`, `\subsubsection`, `\paragraph` and `\subparagraph`
+(plus starred variants) — brace-matching titles via the shared
+`braces.ts` helper so nested groups work. Each heading gets a
+`cm-heading-1` … `cm-heading-5` line class (font size + weight —
+applied even while revealed, so the text keeps its size during editing)
+and, when the cursor is off the line, two replaces hiding the
+`\section{` prefix and closing `}`. Skipped (raw source): escaped
+commands, unclosed braces, multi-line titles, and empty titles.
+
+Levels 4 and 5 are styled as LaTeX renders them: **run-in headings**,
+bold lead-ins at body size rather than another step down in scale.
+They were missing entirely until the arXiv validation found
+`\paragraph{Residual Dropout}` sitting in the prose as raw source.
 
 ## Text-mode spellings
 
@@ -476,9 +504,24 @@ them — outside math segments and reference chips, and never after a
 trimming argument, `\addlinespace` — then splits rows on `\\` and
 cells on unescaped `&`) into `TabularCell` objects. `\multicolumn{n}{spec}{...}`
 cells carry a column span and alignment (first `l`/`c`/`r` in the
-spec), rendered as `colspan`/`text-align` on the `td`. A successful
+spec), and `\multirow{n}{width}{...}` a row span, rendered as
+`colspan`/`rowspan`/`text-align` on the `td`. The two nest, so
+`\multicolumn{2}{c}{\multirow{2}{*}{X}}` spans both ways. A successful
 parse renders the whole environment as a theme-styled HTML table
 (`TableWidget`).
+
+**Row spans need bookkeeping, not just an attribute.** LaTeX still
+expects the rows a span covers to write a placeholder for that column —
+usually blank, as the leading `&` in `& Cost` — so the parser tracks
+which columns remain covered and drops those placeholders. Without
+that, every row under a span renders one cell too wide.
+
+**Struts are stripped along with the rules.** Authors open up a row's
+height with `\hline\rule{0pt}{2.0ex}`, which leaves `\rule{…}{…}`
+sitting in front of the cell's real command. That was enough to stop a
+`\multirow` being recognised and drop a whole table to the generic box
+— it cost one of the five tables in the arXiv paper even after row
+spans worked.
 
 Cells render the same constructs as anywhere else — math, formatting
 commands, symbols and text-mode spellings. A table is replaced
@@ -505,6 +548,7 @@ editing. Clicking the table reveals the source, as everywhere else.
 - `src/views/editor/TextEditor/LivePreview/findGraphics.ts` — `\includegraphics` scanner
 - `src/views/editor/TextEditor/LivePreview/findTextReplacements.ts` — escapes, dashes, quotes, ties, accents
 - `src/views/editor/TextEditor/LivePreview/symbols.ts` — symbol map + scanner
+- `src/views/editor/TextEditor/LivePreview/findMacros.ts` — `\newcommand` scanner
 - `src/views/editor/TextEditor/LivePreview/parseTabular.ts` — table parser
 - `src/views/editor/TextEditor/LivePreview/MathWidget.ts` — all widgets
 - Tests: `src/test/findMath.test.ts`, `findEnvironments.test.ts`,
@@ -512,16 +556,91 @@ editing. Clicking the table reveals the source, as everywhere else.
   `findListItems.test.ts`, `findRefs.test.ts`, `parseTabular.test.ts`,
   `symbols.test.ts`, `inertRegions.test.ts`, `findGraphics.test.ts`,
   `mathEnvironments.test.ts`, `imageSourceResolver.test.ts`,
-  `claimedRanges.test.ts`, `findTextReplacements.test.ts`, and
-  `livePreview.test.ts` — the assembly suite, which mounts a real
-  editor and asserts on what it renders
+  `claimedRanges.test.ts`, `findTextReplacements.test.ts`,
+  `findMacros.test.ts`, and `livePreview.test.ts` — the assembly suite,
+  which mounts a real editor and asserts on what it renders
+- Browser tests: `src/test/browser/livePreview.browser.spec.ts` —
+  geometry and cursor motion, neither of which jsdom can answer
+
+## Document-defined macros
+
+Papers define shorthands in their preamble — `\dmodel`, `\mc`,
+`\argmax` — and use them throughout. `findMacros.ts` collects
+`\newcommand`, `\renewcommand`, `\providecommand` and
+`\DeclareMathOperator` (which becomes `\operatorname`) and hands them
+to KaTeX's `macros` option.
+
+Without this the maths **looks** rendered while a red `\dmodel` sits in
+the middle of it. KaTeX runs with `throwOnError: false`, so an unknown
+command does not fail — it is painted in KaTeX's error colour and
+rendering continues, which means nothing anywhere reports a problem.
+The real paper had 36 such commands.
+
+Two details worth keeping:
+
+- Definitions are read from the **masked** text, so a commented-out
+  `\newcommand` is not picked up.
+- The widget carries a `macroKey` alongside the table. Editing a
+  definition changes what its uses render as, so identical maths source
+  is not enough to call a widget unchanged — without the key, changing
+  `\newcommand{\q}{alpha}` to `{beta}` would leave every `$\q$` showing
+  the old value.
+
+`\def` is deliberately not collected: its parameter-text syntax is not
+what KaTeX's macro table accepts, and a half-understood definition
+renders worse than an unknown command.
+
+## Cursor motion over rendered blocks
+
+A `block: true` replace leaves no text line for vertical motion to land
+on, so arrow keys stepped clean over display maths — it could only be
+reached by clicking. The same held for hidden `\begin`/`\end` lines and
+the collapsed preamble, whose only reveal path is the cursor.
+
+`revealBlockOnVerticalMotion` is a **transaction filter**, because every
+way of moving the cursor goes through one: arrow keys, Vim's `j`/`k`,
+Helix's motions, and anything added later. A keymap would have covered
+only the first, and would have had to outrank the modal keymaps to do
+it.
+
+The rule is deliberately narrow. It fires only when a single cursor
+movement lands on the far side of a block whose neighbouring lines are
+exactly where the cursor came from and went to, so a jump to the top of
+the file or a search hit crossing a block is left alone. Pointer
+selections are excluded outright — a click says where the user wants to
+be, and a drag across a block must not be snapped back into it.
+
+## Validated against a real paper
+
+Checked on 2026-07-27 against the arXiv source of *Attention Is All You
+Need* — ten files, 1,061 lines, a preamble with duplicate
+`\usepackage` lines, a bundled `.sty`, `subfiles` and fourteen
+`\newcommand` macros. No crashes and no console errors; headings, maths
+environments, images and citations all rendered.
+
+Performance, measured on the same document (keystroke cost is the
+dispatch, where CodeMirror does its synchronous DOM work):
+
+| Document | First render | Keystroke median | Worst |
+|---|---|---|---|
+| 418 lines | 21ms | 1.4ms | 3.8ms |
+| 1,061 lines | 13ms | 1.8ms | 4.7ms |
+| 3,185 lines | 18ms | 4.0ms | 7.0ms |
+
+Both the preview and the spell checker are scoped to the **viewport**,
+which is why first render barely grows with document length and why
+spell checking costs almost nothing. Thesis scale is comfortable.
+
+Both gaps the exercise surfaced have since been closed: **user-defined
+macros** are collected and passed to KaTeX (see above), and
+**`\multirow`** is supported, taking the paper from 2 of 5 tables
+rendering to 5 of 5.
 
 ## Deferred (next passes)
 
-- **`\multirow`** — still bails the whole parse. Unlike `\multicolumn`
-  it needs state across rows: a spanning cell must suppress a cell in
-  each following row, which the current row-at-a-time parse has no
-  place to record.
+- **`\def`** — not collected as a macro. Its parameter-text syntax
+  (`\def\foo#1.#2{…}`) is not what KaTeX's macro table accepts, and a
+  half-understood definition renders worse than an unknown command.
 - **Old-style font groups** (`{\bf ...}`, `{\it ...}`) — a different
   shape from the `\text*` commands, since the scope is the enclosing
   group rather than a brace argument.

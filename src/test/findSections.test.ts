@@ -56,4 +56,32 @@ describe("findSections", () => {
     it("skips escaped commands", () => {
         expect(findSections("\\\\section{not a heading}")).toEqual([]);
     });
+
+    it("finds \\paragraph as a fourth level", () => {
+        const doc = String.raw`\paragraph{Residual Dropout}`;
+
+        expect(findSections(doc)).toEqual([
+            { level: 4, from: 0, to: 28, contentFrom: 11, contentTo: 27 },
+        ]);
+    });
+
+    it("finds \\subparagraph as a fifth level", () => {
+        const doc = String.raw`\subparagraph{Detail}`;
+
+        expect(findSections(doc)).toEqual([
+            { level: 5, from: 0, to: 21, contentFrom: 14, contentTo: 20 },
+        ]);
+    });
+
+    it("tells \\paragraph and \\subparagraph apart", () => {
+        // The names overlap, so a careless alternation reads the wrong
+        // one and reports the wrong level.
+        const doc = String.raw`\paragraph{A}` + "\n" + String.raw`\subparagraph{B}`;
+
+        expect(findSections(doc).map((section) => section.level)).toEqual([4, 5]);
+    });
+
+    it("accepts the starred forms", () => {
+        expect(findSections(String.raw`\paragraph*{A}`).map((s) => s.level)).toEqual([4]);
+    });
 });

@@ -38,6 +38,8 @@ import { findListItems } from "./findListItems";
 import type { ListItem } from "./findListItems";
 import { findGraphicsRanges } from "./findGraphics";
 import { findRefRanges } from "./findRefs";
+import { findMacros } from "./findMacros";
+import type { MacroTable } from "./findMacros";
 import { findTextReplacements } from "./findTextReplacements";
 import { findSections } from "./findSections";
 import type { SectionRange } from "./findSections";
@@ -149,7 +151,8 @@ function buildInlineDecorations(view: EditorView): InlineDecorationSets {
     const replaces: Range<Decoration>[] = [];
     const marks: Range<Decoration>[] = [];
     const { state } = view;
-    const { inertRegions } = state.field(documentScanField);
+    const scan = state.field(documentScanField);
+    const { inertRegions } = scan;
 
     // Visible ranges are expanded to whole lines so a `$...$` pair is
     // never split by a range edge; the clamp keeps expanded ranges
@@ -178,10 +181,9 @@ function buildInlineDecorations(view: EditorView): InlineDecorationSets {
 
             const source = state.doc.sliceString(math.innerFrom, math.innerTo);
             replaces.push(
-                Decoration.replace({ widget: new MathWidget(source, false) }).range(
-                    math.from,
-                    math.to,
-                ),
+                Decoration.replace({
+                    widget: new MathWidget(source, false, scan.macros, scan.macroKey),
+                }).range(math.from, math.to),
             );
         }
 
@@ -352,6 +354,17 @@ interface DocumentScan {
     readonly environments: readonly EnvRange[];
     readonly sections: readonly SectionRange[];
     readonly listItems: readonly ListItem[];
+    /**
+     * Macros the document defines for itself, handed to KaTeX so maths
+     * using them renders instead of showing a red command name.
+     */
+    readonly macros: MacroTable;
+    /**
+     * A stable identity for {@link macros}, so a widget can tell
+     * whether the macro table changed without comparing it entry by
+     * entry on every render.
+     */
+    readonly macroKey: string;
 }
 
 /**
@@ -364,6 +377,10 @@ function scanDocument(docText: string): DocumentScan {
     const inertRegions = findInertRegions(docText);
     const scanText = maskChunk(docText, 0, inertRegions);
 
+    // Read from the masked text, so a definition sitting in a comment
+    // is not picked up — commented-out macros are common in preambles.
+    const macros = findMacros(scanText);
+
     return {
         docText,
         scanText,
@@ -372,6 +389,8 @@ function scanDocument(docText: string): DocumentScan {
         environments: findEnvironments(scanText),
         sections: findSections(scanText),
         listItems: findListItems(scanText),
+        macros,
+        macroKey: JSON.stringify(macros),
     };
 }
 
@@ -478,6 +497,16 @@ interface BlockDecorationSets {
     readonly decorations: DecorationSet;
     /** The subset arrow keys should skip over. */
     readonly atomic: DecorationSet;
+    /**
+     * Regions replaced as whole-line blocks, in document order.
+     *
+     * A block replace leaves no text line for vertical cursor motion to
+     * land on, so arrow keys step clean over it — which made display
+     * maths, hidden `\begin`/`\end` lines and the preamble reachable
+     * only with the mouse. {@link revealBlockOnVerticalMotion} uses
+     * these to stop the cursor inside one instead.
+     */
+    readonly blocks: readonly Interval[];
 }
 
 /**
@@ -494,6 +523,8 @@ interface BlockBuild {
      * to put the cursor on it, which atomic ranges would prevent.
      */
     readonly atomic: Range<Decoration>[];
+    /** Whole-line block replaces, for cursor motion to stop inside. */
+    readonly blocks: Interval[];
     /** Regions already replaced, which later passes must not overlap. */
     readonly claimed: ClaimedRanges;
 }
@@ -515,6 +546,7 @@ function buildBlockDecorations(state: EditorState): BlockDecorationSets {
         scan: state.field(documentScanField),
         decorations: [],
         atomic: [],
+        blocks: [],
         claimed: new ClaimedRanges(),
     };
 
@@ -526,6 +558,8 @@ function buildBlockDecorations(state: EditorState): BlockDecorationSets {
     return {
         decorations: Decoration.set(build.decorations, true),
         atomic: Decoration.set(build.atomic, true),
+        // The passes run in their own order, not the document's.
+        blocks: [...build.blocks].sort((first, second) => first.from - second.from),
     };
 }
 
@@ -554,10 +588,12 @@ function collectDisplayMathDecorations(build: BlockBuild): void {
 
         build.decorations.push(
             Decoration.replace({
-                widget: new MathWidget(source, true),
+                widget: new MathWidget(source, true, scan.macros, scan.macroKey),
                 block: coversFullLines,
             }).range(math.from, math.to),
         );
+
+        if (coversFullLines) build.blocks.push({ from: math.from, to: math.to });
 
         build.claimed.add(math.from, math.to);
     }
@@ -727,17 +763,24 @@ export const MATH_ENVIRONMENTS: ReadonlySet<string> = new Set([
  * back to the generic box.
  *
  * @param env - The environment under consideration.
- * @param docText - The real document text.
+ * @param scan - The cached document scan (text plus its macros).
  * @returns The widget to render, or null to use the box treatment.
  */
-function buildEnvironmentWidget(env: EnvRange, docText: string): WidgetType | null {
+function buildEnvironmentWidget(env: EnvRange, scan: DocumentScan): WidgetType | null {
+    const { docText } = scan;
+
     if (env.name === "tabular" || env.name === "tabular*") {
         const parsed = parseTabular(docText.slice(env.beginTo, env.endFrom));
         return parsed ? new TableWidget(parsed) : null;
     }
 
     if (MATH_ENVIRONMENTS.has(env.name)) {
-        return new MathWidget(docText.slice(env.from, env.to), true);
+        return new MathWidget(
+            docText.slice(env.from, env.to),
+            true,
+            scan.macros,
+            scan.macroKey,
+        );
     }
 
     return null;
@@ -777,7 +820,7 @@ function tryReplaceEnvironment(build: BlockBuild, env: EnvRange): boolean {
     if (build.claimed.overlaps(beginLine.from, endLine.to)) return false;
 
     // Built last: the cheap rejections above avoid parsing work.
-    const widget = buildEnvironmentWidget(env, scan.docText);
+    const widget = buildEnvironmentWidget(env, scan);
     if (!widget) return false;
 
     // Not atomic: the cursor must be able to reach the region to
@@ -812,6 +855,7 @@ function addReplace(
 
     build.decorations.push(decoration);
     if (atomic) build.atomic.push(decoration);
+    if (block) build.blocks.push({ from, to });
 
     build.claimed.add(from, to);
 }
@@ -925,6 +969,70 @@ const blockPreviewField = StateField.define<BlockDecorationSets>({
     ],
 });
 
+/**
+ * Stops the cursor inside a rendered block that vertical motion would
+ * otherwise step clean over.
+ *
+ * A `block: true` replace has no text line for CodeMirror to land on,
+ * so pressing Up from below display maths lands on the line *above* it
+ * and the maths is never revealed — leaving it editable only by
+ * clicking. The same held for hidden `\begin`/`\end` lines and the
+ * collapsed preamble, whose only reveal path is the cursor.
+ *
+ * A transaction filter is the seam because every way of moving the
+ * cursor goes through one: arrow keys, Vim's `j`/`k`, Helix's motions
+ * and anything else added later. A keymap would have covered only the
+ * first, and would have had to outrank the modal keymaps to do it.
+ *
+ * The rule is deliberately narrow — it fires only when a *single*
+ * cursor movement lands on the far side of a block whose neighbouring
+ * lines are exactly where the cursor came from and went to. Clicking is
+ * excluded outright: a click says where the user wants to be.
+ */
+const revealBlockOnVerticalMotion = EditorState.transactionFilter.of((transaction) => {
+    if (!transaction.selection || transaction.docChanged) return transaction;
+
+    // Pointer selections are explicit, and a drag across a block must
+    // not be snapped back into it.
+    if (transaction.isUserEvent("select.pointer")) return transaction;
+
+    const before = transaction.startState.selection.main;
+    const after = transaction.newSelection.main;
+    if (!before.empty || !after.empty || before.head === after.head) return transaction;
+
+    const { doc } = transaction.startState;
+    const movingUp = after.head < before.head;
+    const [lower, upper] = movingUp ? [after.head, before.head] : [before.head, after.head];
+
+    const skipped = transaction.startState
+        .field(blockPreviewField)
+        .blocks.find((block) => block.from > lower && block.to < upper);
+    if (!skipped) return transaction;
+
+    // Only a step from the line directly below to the line directly
+    // above (or the reverse) counts. A jump to the top of the file, or
+    // a search landing far away, crosses blocks without meaning to
+    // enter one.
+    const blockStart = doc.lineAt(skipped.from).number;
+    const blockEnd = doc.lineAt(skipped.to).number;
+    const fromLine = doc.lineAt(before.head).number;
+    const toLine = doc.lineAt(after.head).number;
+
+    const steppedOver = movingUp
+        ? fromLine === blockEnd + 1 && toLine === blockStart - 1
+        : fromLine === blockStart - 1 && toLine === blockEnd + 1;
+    if (!steppedOver) return transaction;
+
+    // Entering from below leaves the cursor at the end of the revealed
+    // source, and from above at its start, so the next press continues
+    // in the direction of travel.
+    return {
+        selection: { anchor: movingUp ? skipped.to : skipped.from },
+        effects: transaction.effects,
+        scrollIntoView: true,
+    };
+});
+
 /** Options for {@link livePreview}. */
 export interface LivePreviewOptions {
     /**
@@ -959,6 +1067,9 @@ export function livePreview(options?: LivePreviewOptions): Extension {
         inlineMathPlugin,
         blockPreviewField,
         revealFacet.of(options?.reveal ?? true),
+        // Pointless without reveal: read-only mode never shows source,
+        // so stopping the cursor in a block would only obstruct.
+        ...((options?.reveal ?? true) ? [revealBlockOnVerticalMotion] : []),
         ...(options?.resolveImageSource
             ? [imageResolverFacet.of(options.resolveImageSource)]
             : []),

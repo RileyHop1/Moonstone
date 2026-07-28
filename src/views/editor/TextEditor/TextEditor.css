@@ -86,8 +86,11 @@
     color: var(--bg-titlebar);
 }
 
-.view-container-text-editor .hx-status-panel,
-.view-container-text-editor .hx-command-panel {
+/* Helix prefixes its panel classes with `cm-`. Styling them without it
+   silently did nothing, so these panels kept CodeMirror's default
+   chrome in every theme until a browser test read the real DOM. */
+.view-container-text-editor .cm-hx-status-panel,
+.view-container-text-editor .cm-hx-command-panel {
     background: var(--bg-titlebar);
     color: var(--text-primary);
     border-top: 1px solid var(--border-color);

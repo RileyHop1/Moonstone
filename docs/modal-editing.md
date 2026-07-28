@@ -32,6 +32,12 @@ preserves the document and undo history — no remount.
 visual mode, `/` search, counts, etc. Block cursor and `:` command
 panel themed to match (`TextEditor.css`).
 
+Enabled with `vim({ status: true })`, which turns on the package's own
+status bar — `--INSERT--` and friends along the bottom. Without it the
+only signal of the current mode was the cursor shape, which says "not
+inserting" but cannot tell normal from visual. The panel doubles as the
+`:` command line, so it is also where `:w` types.
+
 ### Helix (experimental)
 
 `codemirror-helix` (the same extension the obsidian-helix plugin uses).
@@ -40,7 +46,11 @@ the operator acts on it (`w` selects a word, `d` deletes the selection,
 `x` selects the line, `i`/`Esc` toggle insert). The extension is
 early-stage — functional but incomplete — hence "experimental". Its
 block cursor and status/command panels are themed (`.cm-hx-cursor`,
-`.hx-status-panel`, `.hx-command-panel`).
+`.cm-hx-status-panel`, `.cm-hx-command-panel`).
+
+Those last two class names carry a `cm-` prefix that the stylesheet
+originally omitted, so the Helix panels went unthemed from the day they
+shipped until a browser test read the real DOM and found the mismatch.
 
 Helix is configured with `"editor.cursor-shape.insert": "bar"`, so the
 cursor becomes a bar while inserting rather than staying a block. That

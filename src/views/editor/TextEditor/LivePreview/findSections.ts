@@ -1,14 +1,17 @@
 /**
- * Pure scanner for LaTeX sectioning commands (`\section{...}`,
- * `\subsection{...}`, `\subsubsection{...}` and starred variants).
+ * Pure scanner for LaTeX sectioning commands (`\section{...}` down to
+ * `\subparagraph{...}`, and starred variants).
  */
 
 import { findGroupEnd } from "./braces";
 
+/** Heading depth, from `\section` (1) to `\subparagraph` (5). */
+export type SectionLevel = 1 | 2 | 3 | 4 | 5;
+
 /** One sectioning command found in the document. */
 export interface SectionRange {
-    /** Heading level: 1 = section, 2 = subsection, 3 = subsubsection. */
-    readonly level: 1 | 2 | 3;
+    /** Heading level: 1 = section … 5 = subparagraph. */
+    readonly level: SectionLevel;
     /** Start offset of the command, including the backslash. */
     readonly from: number;
     /** End offset, just past the closing `}`. */
@@ -19,14 +22,28 @@ export interface SectionRange {
     readonly contentTo: number;
 }
 
-/** Matches the head of a sectioning command up to its opening brace. */
-const SECTION_PATTERN = /\\(section|subsection|subsubsection)\*?\{/g;
+/**
+ * Matches the head of a sectioning command up to its opening brace.
+ *
+ * Longest names first: alternation is tried left to right at the same
+ * start position, so `section` listed ahead of `subsection` would still
+ * be safe here (they differ at the first character after the
+ * backslash), but ordering by length keeps that from being an accident
+ * waiting on the next command added.
+ */
+const SECTION_PATTERN =
+    /\\(subsubsection|subsection|section|subparagraph|paragraph)\*?\{/g;
 
 /** Command name → heading level. */
-const SECTION_LEVELS: Record<string, 1 | 2 | 3> = {
+const SECTION_LEVELS: Record<string, SectionLevel> = {
     section: 1,
     subsection: 2,
     subsubsection: 3,
+    // `\paragraph` and `\subparagraph` are real sectioning commands,
+    // and papers use them freely — they rendered as raw source until
+    // the arXiv validation turned them up.
+    paragraph: 4,
+    subparagraph: 5,
 };
 
 /**

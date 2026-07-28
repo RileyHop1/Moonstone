@@ -105,10 +105,25 @@ it is called done.
   often than it is flake, and retrying would hide exactly the class of
   intermittent, layout-dependent problem this layer exists to catch.
 - When fixing a bug, put the bug back once and watch the new test fail.
-  Two of the three geometry tests written for the margin bug passed
-  against the unfixed code on the first attempt — sampling only the
-  centre of a line, and measuring a widget's own box, are both blind to
-  it.
+  This is not optional diligence — it has caught a bad test **every
+  time** it has been done:
+
+  | Test written for | What was wrong with it |
+  |---|---|
+  | Preamble widget margin | Sampled only a line's centre; drift under half a line is invisible there |
+  | Preamble widget margin | Measured the widget's own box, which excludes margins by definition |
+  | Colour literals in the light theme | Scanned the DOM, so hover/selected/drop-target rules were never evaluated |
+  | Selection inside an env box | Read `rgb(19, 26, 38)`'s blue channel as the alpha, so an opaque colour looked translucent |
+  | Undefined macros | Looked for the error colour under `.katex`, which is not where KaTeX puts it |
+
+  Every one of those passed against broken code. A test that cannot
+  fail is worse than no test, because it reads as coverage.
+
+- **Assert the styling, not just the element.** A `toBeVisible` check
+  on Helix's status panel passed happily while the panel was completely
+  unthemed — our stylesheet targeted `.hx-status-panel` and the package
+  emits `.cm-hx-status-panel`. Comparing the computed background
+  against the palette is what catches a selector that matches nothing.
 
 ## Files
 
@@ -121,6 +136,32 @@ it is called done.
   collapse, and name truncation
 - `src/test/browser/theme.browser.spec.ts` — contrast audit for both
   palettes (see [theming.md](theming.md))
+
+## Checking that the guards still guard
+
+Every bug fixed so far has been re-verified by reverting the fix and
+confirming a test notices. Current state, all confirmed:
+
+| Fix | Test that catches it |
+|---|---|
+| Macros handed to KaTeX | `livePreview.test.ts` |
+| `\multirow` supported | `parseTabular.test.ts` |
+| Table struts stripped | `parseTabular.test.ts` |
+| `\paragraph` heading levels | `findSections.test.ts` |
+| Cursor stops inside blocks | `livePreview.browser.spec.ts` |
+| Selection visible in an env box | `livePreview.browser.spec.ts` |
+| Preamble widget uses padding, not margin | `livePreview.browser.spec.ts` |
+| Env box survives inner display maths | `livePreview.test.ts` |
+| Reveal frozen during a drag | `livePreview.test.ts` |
+| Vim mode label | `modalMode.browser.spec.ts` |
+| Modal panels are themed | `modalMode.browser.spec.ts` |
+| Light-theme tints are perceptible | `theme.browser.spec.ts` |
+| No colour literals outside the palette | `themePalette.test.ts` |
+
+Worth repeating after a refactor that touches the preview, the theme
+tokens or the modal extensions. Reverting one fix at a time and running
+the named suite is enough; a fix whose revert leaves the suite green
+has no coverage, whatever the test names suggest.
 
 ## The jsdom side
 

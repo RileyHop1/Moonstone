@@ -41,6 +41,18 @@ const HELIX_OPTIONS = {
 } as const;
 
 /**
+ * Vim configuration.
+ *
+ * `status` turns on the package's own status bar, which is what Vim
+ * users expect at the bottom of the window and what Helix already had.
+ * Without it the only signal of the current mode was the cursor shape,
+ * which says "not inserting" but never which mode you are actually in
+ * — visual and normal look identical. The panel doubles as the `:`
+ * command line, so it is also where `:w` and friends type.
+ */
+const VIM_OPTIONS = { status: true } as const;
+
+/**
  * Publishes the active modal mode into editor state, for the same
  * reason as `viewModeFacet`: the compartment holds a keymap, not a
  * record of which mode asked for it.
@@ -60,7 +72,7 @@ export function modalExtensionForMode(mode: ModalMode): Extension {
         case "none":
             return [modalModeFacet.of(mode)];
         case "vim":
-            return [modalModeFacet.of(mode), vim()];
+            return [modalModeFacet.of(mode), vim(VIM_OPTIONS)];
         case "helix":
             return [modalModeFacet.of(mode), helix(HELIX_OPTIONS)];
     }

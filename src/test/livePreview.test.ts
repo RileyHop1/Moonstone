@@ -272,6 +272,20 @@ describe("live preview — block layer", () => {
         expect(renderedText(view)).not.toContain("documentclass");
     });
 
+    it("spaces the preamble chip with a row rather than a margin", () => {
+        const view = mountPreview(
+            "\\documentclass{article}\n\\begin{document}\nbody\n\\end{document}",
+        );
+
+        // A vertical margin on a block widget is invisible to
+        // CodeMirror's height map, which desynchronises every
+        // coordinate lookup below it. The spacing therefore lives on a
+        // wrapper as padding; see the browser suite for the geometry
+        // assertion this structure exists to satisfy.
+        const chip = view.dom.querySelector(".cm-preamble-chip");
+        expect(chip?.parentElement?.classList.contains("cm-preamble-row")).toBe(true);
+    });
+
     it("reveals the preamble when the cursor is inside it", () => {
         const view = mountPreview(
             "\\documentclass{article}\n\\begin{document}\nbody\n\\end{document}",

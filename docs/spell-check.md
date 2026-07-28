@@ -46,6 +46,26 @@ malformed input degrades to "treat it as ordinary text":
   Treating the remainder as math would silently stop checking
   everything after a stray dollar sign.
 
+## The correction popup
+
+Hovering a misspelling opens CodeMirror's lint tooltip, listing up to
+five suggestions as clickable quick fixes. The popup stays open while
+the pointer travels onto it, which CodeMirror handles natively — it
+treats the tooltip's own rectangle as part of the hovered region.
+
+That behaviour once appeared broken: the box dismissed itself as soon
+as the pointer moved after clicking a misspelled word. The cause was
+not in the tooltip at all but in the preview's geometry — a margin on
+the collapsed-preamble widget left CodeMirror's height map adrift from
+the DOM, so it wrongly concluded the pointer had left the word. The
+write-up is in
+[live-preview.md](live-preview.md#block-widgets-must-never-carry-a-vertical-margin);
+the popup itself needed no change.
+
+Because the popup lives or dies by pointer geometry, its tests are in
+the browser suite (`src/test/browser/spellCheck.browser.spec.ts`), not
+in jsdom — see [browser-tests.md](browser-tests.md).
+
 ## Loading and cost
 
 The Hunspell data is about half a megabyte, so `dictionary.ts` pulls
@@ -89,4 +109,5 @@ match the `?raw` suffix, and anchoring with `$` would drop it.
 - `src/views/editor/TextEditor/SpellCheck/dictionary.ts` — lazy Hunspell loading
 - `src/views/editor/TextEditor/SpellCheck/spellCheck.ts` — linter, compartment
 - `src/views/editor/TextEditor/SpellCheck/spellCheck.css` — underline and quick-fix styling
-- Tests: `src/test/findProseWords.test.ts`
+- Tests: `src/test/findProseWords.test.ts`,
+  `src/test/browser/spellCheck.browser.spec.ts` (popup behaviour)

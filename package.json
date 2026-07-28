@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:browser": "playwright test"
   },
   "dependencies": {
     "@codemirror/autocomplete": "6.20.0",
@@ -30,6 +31,7 @@
     "react-dom": "^19.2.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.0",
     "@tauri-apps/cli": "^2",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",

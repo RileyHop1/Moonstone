@@ -240,10 +240,18 @@
     text-decoration: underline;
 }
 
-/* Collapsed-preamble chip shown above the document box. */
+/* Collapsed-preamble chip shown above the document box.
+   The row exists to hold the chip's vertical spacing as padding.
+   Never give a block widget a vertical margin: CodeMirror measures
+   widget heights with getBoundingClientRect(), which excludes margins,
+   so the height map ends up shorter than the rendered DOM and every
+   posAtCoords below the widget resolves to the wrong line. */
+.cm-preamble-row {
+    padding: 0.3rem 0;
+}
+
 .cm-preamble-chip {
     display: inline-block;
-    margin: 0.3rem 0;
     padding: 0.2rem 0.7rem;
     border: 1px solid var(--border-color);
     border-radius: 999px;

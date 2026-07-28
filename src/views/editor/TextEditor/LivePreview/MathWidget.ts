@@ -565,15 +565,30 @@ export class PreambleWidget extends WidgetType {
     }
 
     /**
-     * Renders the preamble chip.
+     * Renders the preamble chip inside a row that carries its vertical
+     * spacing.
      *
-     * @returns The chip element.
+     * The wrapper is not decoration. CodeMirror measures a block
+     * widget with `getBoundingClientRect().height`, which **excludes
+     * margins** — so spacing the chip with a margin leaves the height
+     * map short by that much, and every coordinate-to-position lookup
+     * below the preamble resolves to the wrong line. The visible
+     * symptom was the spell-check popup dismissing itself. Padding on
+     * an outer block is inside the measured box, so it keeps the same
+     * spacing and the geometry stays honest.
+     *
+     * @returns The chip's row element.
      */
     override toDOM(): HTMLElement {
+        const row = document.createElement("div");
+        row.className = "cm-preamble-row";
+
         const chip = document.createElement("div");
         chip.className = "cm-preamble-chip";
         chip.textContent = "⚙ Preamble — click to edit";
-        return chip;
+        row.appendChild(chip);
+
+        return row;
     }
 
     /**

@@ -428,6 +428,12 @@ dist/
 # Vitest coverage reports
 coverage/
 
+# Playwright browser-test artifacts (traces, screenshots, HTML report)
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
 # TypeScript incremental build info
 *.tsbuildinfo
 

@@ -292,6 +292,42 @@ table ranges, the collapsed preamble) so later passes — headings and
 list items — never emit overlapping replaces, which CodeMirror rejects
 within one decoration set.
 
+## Block widgets must never carry a vertical margin
+
+A hard rule, learned from a bug that looked like nothing to do with
+layout.
+
+CodeMirror maintains a **height map**: its own model of where every
+line sits vertically, used by `posAtCoords` to answer "which position
+is under this pointer". Widget heights enter that map via
+`getBoundingClientRect().height`, and **a bounding rect excludes
+margins**. So a block widget with `margin: 0.3rem 0` occupies 9.6px
+more on screen than the height map believes, and every line below it
+sits lower in the DOM than CodeMirror thinks.
+
+Nothing looks wrong — the rendering is pixel-perfect. What breaks is
+every coordinate query below the widget. The symptom that exposed it:
+the spell-check correction popup dismissed itself the moment the
+pointer moved, because CodeMirror concluded the pointer had left the
+misspelled word when it had not. Clicks were unaffected, which made it
+look like a tooltip bug, because CodeMirror positions the caret from a
+click using the browser's native caret lookup rather than its own
+height map.
+
+**Use padding, on a wrapper element if the widget's own box needs to
+stay tight.** `PreambleWidget` renders a `cm-preamble-row` whose only
+job is to hold the chip's vertical spacing as padding. The same rule is
+why headings use `padding-top` rather than `margin-top`.
+
+This is guarded three ways, all in `src/test/browser/`:
+
+- positions round-trip through `coordsAtPos` → `posAtCoords`, sampled
+  across each line's full height (the centre alone stays correct until
+  the drift exceeds half a line, which is how this hid);
+- no widget element carries a non-zero vertical margin;
+- the spell-check popup survives the journey from a clicked word to its
+  corrections.
+
 ## Headings
 
 `findSections.ts` scans for `\section{...}`, `\subsection{...}`, and

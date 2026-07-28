@@ -47,6 +47,9 @@ export default defineConfig(async () => ({
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",
     css: false,
+    // The Playwright specs in src/test/browser need a real browser and
+    // would fail under jsdom. They run via `npm run test:browser`.
+    exclude: ["**/node_modules/**", "**/dist/**", "src/test/browser/**"],
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

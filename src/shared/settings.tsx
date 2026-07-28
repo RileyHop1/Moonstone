@@ -8,7 +8,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from "react";
 import { getSettings, saveSettings } from "./tauri";
 import type { StoredSettings } from "./tauri";
-import type { AppSettings, LineNumberMode, ModalMode, Theme } from "./types";
+import { DEFAULT_THEME, normalizeTheme } from "./themes";
+import type { AppSettings, LineNumberMode, ModalMode } from "./types";
 
 /** The modal modes a stored value is allowed to name. */
 const MODAL_MODES: readonly ModalMode[] = ["none", "vim", "helix"];
@@ -18,7 +19,7 @@ const LINE_NUMBER_MODES: readonly LineNumberMode[] = ["absolute", "relative", "m
 
 /** The settings a fresh install starts with (mirrors the backend). */
 export const DEFAULT_SETTINGS: AppSettings = {
-    theme: "dark",
+    theme: DEFAULT_THEME,
     editorFontSize: 14,
     modalMode: "none",
     spellCheckEnabled: true,
@@ -69,7 +70,10 @@ export function useSettings(): SettingsValue {
 export function normalizeSettings(stored: StoredSettings | null | undefined): AppSettings {
     if (!stored) return DEFAULT_SETTINGS;
 
-    const theme: Theme = stored.theme === "light" ? "light" : "dark";
+    // Anything unrecognised falls back to the default, so a settings
+    // file naming a theme this build does not have cannot leave the app
+    // with a `data-theme` no stylesheet answers to.
+    const theme = normalizeTheme(stored.theme);
 
     const rawFontSize = Number(stored.editorFontSize);
     const editorFontSize = Number.isFinite(rawFontSize)

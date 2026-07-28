@@ -292,6 +292,36 @@ table ranges, the collapsed preamble) so later passes — headings and
 list items — never emit overlapping replaces, which CodeMirror rejects
 within one decoration set.
 
+### Claim checks must match what a pass actually replaces
+
+The overlap checks that keep replaces from colliding have to be as
+narrow as the replace they guard, or they suppress rendering that would
+have been perfectly legal.
+
+The environment pass has two treatments and they need different checks:
+
+| Treatment | Replaces | Correct check |
+|---|---|---|
+| Wholesale widget (`tryReplaceEnvironment`) | the entire environment | the whole range |
+| Box (hidden tags + `cm-env-line`) | the two tag lines only | the tag lines only |
+
+The box treatment was guarded by the whole-range check, and it cost a
+real bug. Display math is claimed in an **earlier pass** than
+environments, so a single `$$…$$` anywhere in the body made the
+`document` environment look claimed. The result: no box, no hidden
+`\begin{document}`/`\end{document}`, and no preamble chip — the whole
+document rendered as raw LaTeX.
+
+What made it look bizarre rather than obviously broken is that it
+inverted the reveal rule. Putting the cursor *inside* the maths
+revealed them as source, so they claimed nothing, the check passed, and
+the document snapped into its rendered form. Clicking away broke it
+again.
+
+Line decorations are not replaces, so `boxInteriorLines` may safely
+style lines that a block widget covers — a boxed environment containing
+a rendered table demonstrates this every time it renders.
+
 ## Block widgets must never carry a vertical margin
 
 A hard rule, learned from a bug that looked like nothing to do with

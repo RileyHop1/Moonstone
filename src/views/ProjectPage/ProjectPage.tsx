@@ -45,6 +45,7 @@ import {
     previewExtensionForMode,
 } from "../editor/TextEditor/viewMode";
 import { modalCompartment, modalExtensionForMode } from "../editor/TextEditor/modalMode";
+import { moonstoneThemeForMode, themeCompartment } from "../editor/TextEditor/moonstoneTheme";
 import {
     spellCheckCompartment,
     spellCheckExtensionForEnabled,
@@ -137,7 +138,7 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
     // Modal editing and spell checking are user preferences, not
     // per-session editor state, so they come from settings and persist.
     const { settings, updateSettings } = useSettings();
-    const { modalMode, spellCheckEnabled, lineNumberMode, showDiagnostics } = settings;
+    const { modalMode, spellCheckEnabled, lineNumberMode, showDiagnostics, theme } = settings;
 
     const viewRef = useRef<EditorView | null>(null);
     const statusTimerRef = useRef<number | null>(null);
@@ -500,6 +501,16 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
         setDiagnosticsVisible(view, showDiagnostics);
     }, [showDiagnostics]);
 
+    // Swap the editor's palette in place. The CSS variables restyle
+    // themselves, but CodeMirror's `dark` flag lives in the theme
+    // extension and decides which half of every `&dark`/`&light` rule
+    // applies — so it has to be reconfigured, not just repainted.
+    useEffect(() => {
+        viewRef.current?.dispatch({
+            effects: themeCompartment.reconfigure(moonstoneThemeForMode(theme)),
+        });
+    }, [theme]);
+
     // Turn spell checking on or off in place.
     useEffect(() => {
         viewRef.current?.dispatch({
@@ -554,6 +565,7 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
                             initialViewMode={viewMode}
                             initialModalMode={modalMode}
                             initialSpellCheckEnabled={spellCheckEnabled}
+                            initialTheme={theme}
                             initialLineNumberMode={lineNumberMode}
                             initialShowDiagnostics={showDiagnostics}
                             onDiagnosticsToggled={(visible) =>

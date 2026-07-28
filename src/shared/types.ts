@@ -74,8 +74,12 @@ export type FileNode =
           readonly children: readonly FileNode[];
       };
 
-/** Color theme of the application. */
-export type Theme = "dark" | "light";
+// Themes live in their own module: the list is runtime data (labels,
+// and whether each palette is dark), not just a type. Re-exported here
+// so `AppSettings` below and existing importers keep working.
+import type { Theme } from "./themes";
+
+export type { Theme };
 
 /**
  * How the editor renders its document:

@@ -30,7 +30,12 @@ const SETTINGS_FILE_NAME: &str = "settings.json";
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
-    /// Color theme: `"dark"` or `"light"`.
+    /// Color theme id, e.g. `"dark"`, `"light"`, `"bloodmoon"`.
+    ///
+    /// Deliberately a free-form `String` rather than an enum: the
+    /// frontend owns the theme list, and validates what it reads, so
+    /// adding a palette never needs a backend change or a migration.
+    /// An unknown value falls back to the default on load there.
     #[serde(default = "default_theme")]
     pub theme: String,
     /// Editor font size in pixels.

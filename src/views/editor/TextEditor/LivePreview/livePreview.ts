@@ -593,10 +593,21 @@ function collectEnvironmentDecorations(build: BlockBuild): void {
             isRevealed(state, endLine.from, endLine.to);
         if (tagsRevealed) continue;
 
-        // Nested inside an environment already replaced wholesale, or
-        // sharing a tag line with a display-math widget: either way an
-        // overlapping replace, which CodeMirror rejects.
-        if (build.claimed.overlaps(env.from, env.to)) continue;
+        // Only the *tag lines* are checked, deliberately. The box
+        // treatment replaces nothing but those two lines — the interior
+        // gets line decorations, which sit happily over a block widget.
+        //
+        // Testing the whole range instead was a bug: display math is
+        // claimed in an earlier pass, so a `$$…$$` anywhere in the body
+        // made `document` look claimed and skipped its box, hidden tags
+        // and preamble chip. It rendered correctly only while the
+        // cursor was inside the maths, because revealing them claimed
+        // nothing. Wholesale replacement still needs the full-range
+        // check, and `tryReplaceEnvironment` makes it for itself.
+        //
+        // A tag line inside a claimed region means this environment is
+        // nested in one already replaced wholesale, which these two
+        // checks still catch.
         if (build.claimed.overlaps(beginLine.from, beginLine.to)) continue;
         if (build.claimed.overlaps(endLine.from, endLine.to)) continue;
 
@@ -868,6 +879,13 @@ function collapsePreamble(build: BlockBuild, documentBeginFrom: number): void {
     const preambleTo = documentBeginFrom - 1;
 
     if (isRevealed(build.state, 0, preambleTo)) return;
+
+    // The chip replaces the whole preamble, so anything already
+    // rendered up there (display math in a macro definition, say) would
+    // collide. The environment loop used to make this check on the
+    // caller's behalf; it no longer does, and it never covered the
+    // preamble properly anyway.
+    if (build.claimed.overlaps(0, preambleTo)) return;
 
     // Not atomic: the cursor must be able to enter the preamble, which
     // is what expands it for editing.

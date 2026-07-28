@@ -21,20 +21,43 @@ button and no way to lose a change by navigating away.
 Sections are declared in `settingsTabs.ts` as plain data, so adding one
 is a line there plus its panel component. `Settings.tsx` owns only the
 selection and the sidebar; each panel (`GeneralTab`, `EditorTab`) reads
-and writes settings itself. `SettingsRow` and `ChoiceButtons` are the
-two shared building blocks — a labelled row and a set of mutually
-exclusive options.
+and writes settings itself.
+
+`SettingsRow` — a labelled row — holds one of two controls, chosen by
+how long the option list is:
+
+- **`ChoiceButtons`**, a row of buttons, for two or three mutually
+  exclusive options. The default, and what most rows use.
+- **`SettingsSelect`**, a dropdown, for lists that are open-ended.
+
+The theme picker started as buttons and outgrew them: six themes
+overflowed the settings card and squeezed the label to one word per
+line. Anything expected to keep growing belongs in the dropdown.
+
+`SettingsSelect` wraps a **native `<select>`** deliberately. Keyboard
+navigation, type-to-find, screen-reader semantics and scrolling for a
+long list all come free and correct, where a hand-rolled listbox has to
+reproduce each one. The cost: the open popup is drawn by the OS and
+follows the palette only as far as `color-scheme` allows — a neutral
+dark or light menu rather than a tinted one, and only while open. Every
+palette sets `color-scheme`, or a dark theme would open a white menu.
+
+The row gives its label a `min-width` and lets the control shrink.
+Before that the control refused to give ground, so a long one pushed
+past the card instead of the row adapting.
 
 The sidebar is a `tablist` and the panel a `tabpanel`, so the sections
 are navigable and testable by role rather than by class name.
 
 ## Current settings
 
-- **Theme** — dark (default) or light. The palette is a set of CSS
-  variables on `:root`, overridden under `:root[data-theme="light"]`;
-  the editor chrome and syntax colors route through the same
-  variables, so the whole app (CodeMirror included) follows the
-  toggle. Also reachable from the hotbar: **Settings > Light/Dark**.
+- **Theme** — seven palettes: Dark (default), Light, Blood Moon, Blue
+  Moon, Harvest Moon, New Moon and Eclipse (high contrast). Each is a
+  block of CSS variables
+  selected by `data-theme` on the document element; the editor chrome
+  and syntax colours route through the same variables, so the whole app
+  (CodeMirror included) follows the choice. Full write-up, including
+  how to add one, in `theming.md`.
 - **Editor font size** — 10–24 px (clamped), applied through the
   `--editor-font-size` CSS variable.
 - **Edit mode** — None, Vim or Helix. See `modal-editing.md`.

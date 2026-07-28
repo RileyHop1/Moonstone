@@ -272,6 +272,44 @@ describe("live preview — block layer", () => {
         expect(renderedText(view)).not.toContain("documentclass");
     });
 
+    it("still collapses the preamble when the body contains display math", () => {
+        // Regression: display math is claimed before the environment
+        // pass, so the `document` environment saw its own range as
+        // already claimed and skipped everything — box, hidden tags and
+        // preamble chip alike. The visible symptom was a document that
+        // rendered correctly only while the cursor sat *inside* the
+        // maths, because revealing it claimed nothing.
+        const view = mountPreview(
+            "\\documentclass{article}\n\\begin{document}\n\n$$x^2$$\n\nbody\n\\end{document}",
+        );
+
+        expect(hasElement(view, ".cm-preamble-chip")).toBe(true);
+        expect(renderedText(view)).not.toContain("documentclass");
+        expect(renderedText(view)).not.toContain("\\begin{document}");
+    });
+
+    it("still boxes an environment whose body contains a table", () => {
+        const view = mountPreview(
+            "\\begin{document}\n\n\\begin{tabular}{ll}\na & b \\\\\n\\end{tabular}\n\nbody\n\\end{document}",
+        );
+
+        expect(hasElement(view, ".cm-env-line")).toBe(true);
+        expect(renderedText(view)).not.toContain("\\begin{document}");
+    });
+
+    it("keeps the box while the cursor sits in the rendered maths", () => {
+        const doc = "\\documentclass{article}\n\\begin{document}\n\n$$x^2$$\n\nbody\n\\end{document}";
+
+        // Inside the display math: it reveals as source, and the
+        // surrounding document must stay boxed either way. This is the
+        // half that already worked, kept so a fix cannot trade one
+        // cursor position for the other.
+        const view = mountPreview(doc, { cursor: doc.indexOf("x^2") });
+
+        expect(hasElement(view, ".cm-preamble-chip")).toBe(true);
+        expect(renderedText(view)).toContain("$$x^2$$");
+    });
+
     it("spaces the preamble chip with a row rather than a margin", () => {
         const view = mountPreview(
             "\\documentclass{article}\n\\begin{document}\nbody\n\\end{document}",

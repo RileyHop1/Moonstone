@@ -79,8 +79,14 @@
     gap: 1.5rem;
 }
 
+/* Holds its width: without this the control wins every contest for
+   space and the label collapses to one word per line, which is exactly
+   what a six-item choice row did before the theme picker became a
+   dropdown. */
 .settings-row-text {
     display: flex;
+    flex: 1 1 auto;
+    min-width: 12rem;
     flex-direction: column;
     gap: 0.15rem;
 }
@@ -94,13 +100,56 @@
     color: var(--text-secondary);
 }
 
+/* May shrink, and wraps its contents when it does — a control that
+   refuses to give ground overflows the card instead. */
 .settings-control {
-    flex-shrink: 0;
+    flex: 0 1 auto;
+    min-width: 0;
 }
 
 .settings-choices {
     display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 0.4rem;
+}
+
+/* Dropdown for settings with an open-ended list of options. Styled to
+   match the choice buttons, so a row of either reads the same. */
+.settings-select {
+    max-width: 100%;
+    padding: 0.35rem 0.6rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.settings-select:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.settings-select:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: var(--glow);
+}
+
+.settings-select:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+/* The popup list is drawn by the OS, which ignores the rules above.
+   Setting the surface here at least keeps the open menu legible in the
+   dark palettes rather than white-on-white. */
+.settings-select option {
+    background: var(--bg-sidebar);
+    color: var(--text-primary);
 }
 
 .settings-choice {

@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { Settings } from "../views/Settings";
+import { THEMES } from "../shared/themes";
 import { invokeMock, mockCommands, resetInvokeMock } from "./mockTauri";
 import { renderWithProviders } from "./testUtils";
 
@@ -32,7 +33,7 @@ describe("Settings", () => {
                 "aria-selected",
                 "true",
             );
-            expect(screen.getByRole("radio", { name: "Dark" })).toBeInTheDocument();
+            expect(screen.getByRole("combobox", { name: "Theme" })).toBeInTheDocument();
         });
 
         it("shows only the selected section's controls", () => {
@@ -44,7 +45,7 @@ describe("Settings", () => {
             fireEvent.click(screen.getByRole("tab", { name: "Editor" }));
 
             expect(screen.getByRole("spinbutton")).toBeInTheDocument();
-            expect(screen.queryByRole("radio", { name: "Dark" })).not.toBeInTheDocument();
+            expect(screen.queryByRole("combobox", { name: "Theme" })).not.toBeInTheDocument();
         });
 
         it("moves the selection when another section is picked", () => {
@@ -66,7 +67,9 @@ describe("Settings", () => {
     it("switches the theme, applies it to the DOM, and persists it", async () => {
         renderWithProviders(<Settings />, { kind: "settings" });
 
-        fireEvent.click(screen.getByRole("radio", { name: "Light" }));
+        fireEvent.change(screen.getByRole("combobox", { name: "Theme" }), {
+            target: { value: "light" },
+        });
 
         await waitFor(() => {
             expect(document.documentElement.dataset.theme).toBe("light");
@@ -81,6 +84,19 @@ describe("Settings", () => {
             showDiagnostics: false,
             },
         });
+    });
+
+    it("offers every registered theme", () => {
+        renderWithProviders(<Settings />, { kind: "settings" });
+
+        const themes = screen.getByRole("combobox", { name: "Theme" });
+
+        // A dropdown, not a row of buttons: six themes overflowed the
+        // settings card, and the list is expected to keep growing.
+        expect(themes.tagName).toBe("SELECT");
+        expect([...themes.querySelectorAll("option")].map((option) => option.value)).toEqual(
+            THEMES.map((theme) => theme.id),
+        );
     });
 
     it("clamps the editor font size into its allowed range", async () => {

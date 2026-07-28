@@ -84,7 +84,7 @@
 
 .panel-collapse-toggle:hover {
     color: var(--accent);
-    background: rgba(169, 198, 255, 0.12);
+    background: var(--surface-hover);
 }
 
 /* Collapsed there is no content left to carry the panel's edge, so the

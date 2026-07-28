@@ -1,4 +1,18 @@
-/* ---- Theme variables (Moonstone gem) ---- */
+/* ---- Theme variables (Moonstone gem) ----
+
+   Two rules keep the themes honest, both learned the hard way:
+
+   1. **No colour literal outside this file.** Tints were hardcoded as
+      rgba(169, 198, 255, …) — the *dark* accent — in eight other
+      files, so every hover, selection and active line stayed a pale
+      blue wash in the light theme. That is what "washed out in light"
+      meant. Surfaces are semantic tokens now.
+   2. **A tint's alpha is per theme.** The same alpha does not read the
+      same over ink as over paper, so the light theme sets its own
+      rather than inheriting the dark one.
+
+   `--accent-rgb` holds bare channels so a token can mix its own alpha
+   with `rgb(… / …)`. */
 :root {
   --bg-app: #0d1117;        /* blue-black gem body */
   --bg-sidebar: #0a0e14;
@@ -9,11 +23,26 @@
   --text-secondary: #8b93b0;
   --border-color: #1e2738;
   --accent: #a9c6ff;        /* silver-blue sheen */
+  --accent-rgb: 169 198 255;
+
+  /* Tells the browser which way OS-drawn UI should lean — `<select>`
+     popups above all, which CSS cannot reach. Every palette sets it,
+     or a dark theme opens a white menu. */
+  color-scheme: dark;
 
   /* Adularescence: soft cool glow used on accents/focus */
-  --glow: 0 0 10px rgba(169, 198, 255, 0.35);
+  --glow: 0 0 10px rgb(var(--accent-rgb) / 0.35);
   /* Off-center moonlight catching the stone */
   --sheen: radial-gradient(120% 80% at 70% 0%, #1a2740 0%, var(--bg-app) 55%);
+
+  /* Interactive surfaces, in increasing strength. */
+  --surface-hover: rgb(var(--accent-rgb) / 0.08);
+  --surface-selected: rgb(var(--accent-rgb) / 0.14);
+  --surface-active-line: rgb(var(--accent-rgb) / 0.05);
+  --surface-selection: rgb(var(--accent-rgb) / 0.18);
+  --surface-drop-target: rgb(var(--accent-rgb) / 0.2);
+  --surface-error-tint: rgb(255 156 156 / 0.08);
+  --shadow-menu: 0 2px 8px rgb(0 0 0 / 0.4);
 
   /* Editor */
   --editor-font-size: 14px;
@@ -31,32 +60,273 @@
   --error-color: #ff9c9c;
 }
 
-/* ---- Light theme overrides ---- */
-:root[data-theme="light"] {
-  --bg-app: #eef1f8;
-  --bg-sidebar: #e4e9f4;
-  --bg-editor: #f7f9fd;
-  --bg-preview: #ffffff;
-  --bg-titlebar: #dbe2f0;
-  --text-primary: #1d2434;
-  --text-secondary: #5c6680;
-  --border-color: #c3cde0;
-  --accent: #3b62b8;
+/* ---- Light theme ----
 
-  --glow: 0 0 10px rgba(59, 98, 184, 0.22);
-  --sheen: radial-gradient(120% 80% at 70% 0%, #ffffff 0%, var(--bg-app) 55%);
+   Moonstone in daylight rather than "the dark theme, lightened": a
+   milky blue-white stone with the same cool adularescent sheen. The
+   surfaces stay faintly blue instead of neutral grey, which is what
+   made the first attempt read as a generic light theme. */
+:root[data-theme="light"] {
+  --bg-app: #eaeff9;        /* milky stone, faintly blue */
+  --bg-sidebar: #dde5f4;
+  --bg-editor: #f5f8fd;
+  --bg-preview: #ffffff;
+  --bg-titlebar: #d3ddf0;
+  --text-primary: #131a2b;  /* deep blue-black, not pure black */
+  --text-secondary: #4c5670;
+  --border-color: #b9c6e0;
+  --accent: #2f56ad;        /* deeper, so it carries text contrast */
+  --accent-rgb: 47 86 173;
+  color-scheme: light;
+
+  --glow: 0 0 10px rgb(var(--accent-rgb) / 0.25);
+  /* The sheen catches the stone from the same off-centre angle, but
+     as a cool white bloom rather than a blue one. */
+  --sheen: radial-gradient(120% 80% at 70% 0%, #fbfdff 0%, var(--bg-app) 55%);
+
+  /* Stronger than the dark theme's: a dark tint over near-white needs
+     more alpha to register than a light tint over near-black. */
+  --surface-hover: rgb(var(--accent-rgb) / 0.1);
+  --surface-selected: rgb(var(--accent-rgb) / 0.18);
+  --surface-active-line: rgb(var(--accent-rgb) / 0.07);
+  --surface-selection: rgb(var(--accent-rgb) / 0.22);
+  --surface-drop-target: rgb(var(--accent-rgb) / 0.24);
+  --surface-error-tint: rgb(196 60 60 / 0.1);
+  /* Pure black at 0.4 reads as grime on a pale surface; the shadow is
+     tinted with the palette and softened instead. */
+  --shadow-menu: 0 2px 10px rgb(31 45 74 / 0.18);
 
   /* Deeper syntax tones for contrast on light backgrounds */
-  --syn-keyword: #6a4fc9;
-  --syn-name: #2b55a8;
-  --syn-variable: #1d2434;
-  --syn-string: #1f7a63;
-  --syn-number: #8244b8;
-  --syn-comment: #7c86a3;
-  --syn-operator: #5c6680;
-  --syn-heading: #16203a;
-  --syn-invalid: #c43c3c;
-  --error-color: #c43c3c;
+  --syn-keyword: #5a3fbd;
+  --syn-name: #23499b;
+  --syn-variable: #131a2b;
+  --syn-string: #146b56;
+  --syn-number: #7534ad;
+  --syn-comment: #656f8c;
+  --syn-operator: #4c5670;
+  --syn-heading: #101a33;
+  --syn-invalid: #b32d2d;
+  --error-color: #b32d2d;
+}
+
+/* ---- Blood Moon ----
+
+   A lunar eclipse: the moon lit only by refracted sunlight, so the
+   whole stone runs copper-red. Ember accents on a red-black body. */
+:root[data-theme="bloodmoon"] {
+  --bg-app: #150a0c;
+  --bg-sidebar: #100709;
+  --bg-editor: #150a0c;
+  --bg-preview: #1f1013;
+  --bg-titlebar: #0b0405;
+  --text-primary: #ffe6e2;
+  --text-secondary: #c09a99;
+  --border-color: #3d1d22;
+  --accent: #ff7a6b;
+  --accent-rgb: 255 122 107;
+  color-scheme: dark;
+
+  --glow: 0 0 10px rgb(var(--accent-rgb) / 0.35);
+  --sheen: radial-gradient(120% 80% at 70% 0%, #3d1418 0%, var(--bg-app) 55%);
+
+  --surface-hover: rgb(var(--accent-rgb) / 0.08);
+  --surface-selected: rgb(var(--accent-rgb) / 0.14);
+  --surface-active-line: rgb(var(--accent-rgb) / 0.05);
+  --surface-selection: rgb(var(--accent-rgb) / 0.18);
+  --surface-drop-target: rgb(var(--accent-rgb) / 0.2);
+  --surface-error-tint: rgb(255 180 170 / 0.1);
+  --shadow-menu: 0 2px 8px rgb(0 0 0 / 0.5);
+
+  --syn-keyword: #ff93a8;
+  --syn-name: #ffab86;
+  --syn-variable: #ffe6e2;
+  --syn-string: #e0b473;
+  --syn-number: #ff9bb3;
+  --syn-comment: #96686c;
+  --syn-operator: #c09a99;
+  --syn-heading: #ffd2cb;
+  --syn-invalid: #ff6161;
+  --error-color: #ff8f8f;
+}
+
+/* ---- Blue Moon ----
+
+   The second full moon in a month: rarer, colder and more saturated
+   than the default stone, which is near-neutral by comparison. Deep
+   indigo body, vivid azure sheen. */
+:root[data-theme="bluemoon"] {
+  --bg-app: #081033;
+  --bg-sidebar: #050b25;
+  --bg-editor: #081033;
+  --bg-preview: #0f1d56;
+  --bg-titlebar: #04081c;
+  --text-primary: #dee9ff;
+  --text-secondary: #8fa4d4;
+  --border-color: #1f2e57;
+  --accent: #5cc2ff;
+  --accent-rgb: 92 194 255;
+  color-scheme: dark;
+
+  --glow: 0 0 10px rgb(var(--accent-rgb) / 0.35);
+  --sheen: radial-gradient(120% 80% at 70% 0%, #16275f 0%, var(--bg-app) 55%);
+
+  --surface-hover: rgb(var(--accent-rgb) / 0.08);
+  --surface-selected: rgb(var(--accent-rgb) / 0.14);
+  --surface-active-line: rgb(var(--accent-rgb) / 0.05);
+  --surface-selection: rgb(var(--accent-rgb) / 0.18);
+  --surface-drop-target: rgb(var(--accent-rgb) / 0.2);
+  --surface-error-tint: rgb(255 156 156 / 0.08);
+  --shadow-menu: 0 2px 8px rgb(0 0 0 / 0.45);
+
+  --syn-keyword: #a99bff;
+  --syn-name: #5cc2ff;
+  --syn-variable: #dee9ff;
+  --syn-string: #6fd6c4;
+  --syn-number: #c9a6ff;
+  --syn-comment: #5d6f9e;
+  --syn-operator: #8fa4d4;
+  --syn-heading: #c8dbff;
+  --syn-invalid: #ff7d7d;
+  --error-color: #ff9c9c;
+}
+
+/* ---- Harvest Moon ----
+
+   The full moon nearest the autumn equinox, hanging low and orange
+   over the fields. Warm amber on a brown-black body — the only theme
+   here with no blue in it. */
+:root[data-theme="harvestmoon"] {
+  --bg-app: #191208;
+  --bg-sidebar: #130d06;
+  --bg-editor: #191208;
+  --bg-preview: #241a0e;
+  --bg-titlebar: #0e0904;
+  --text-primary: #ffeed6;
+  --text-secondary: #c4a37d;
+  --border-color: #40311b;
+  --accent: #ffb347;
+  --accent-rgb: 255 179 71;
+  color-scheme: dark;
+
+  --glow: 0 0 10px rgb(var(--accent-rgb) / 0.3);
+  --sheen: radial-gradient(120% 80% at 70% 0%, #402a10 0%, var(--bg-app) 55%);
+
+  --surface-hover: rgb(var(--accent-rgb) / 0.08);
+  --surface-selected: rgb(var(--accent-rgb) / 0.14);
+  --surface-active-line: rgb(var(--accent-rgb) / 0.05);
+  --surface-selection: rgb(var(--accent-rgb) / 0.18);
+  --surface-drop-target: rgb(var(--accent-rgb) / 0.2);
+  --surface-error-tint: rgb(255 156 156 / 0.09);
+  --shadow-menu: 0 2px 8px rgb(0 0 0 / 0.5);
+
+  --syn-keyword: #f5a86a;
+  --syn-name: #ffc27a;
+  --syn-variable: #ffeed6;
+  --syn-string: #bfd07a;
+  --syn-number: #ffcb6b;
+  --syn-comment: #8a7250;
+  --syn-operator: #c4a37d;
+  --syn-heading: #ffdfae;
+  --syn-invalid: #ff8a70;
+  --error-color: #ff9f85;
+}
+
+/* ---- New Moon ----
+
+   The moon unlit: nothing to catch the light, so the palette drops its
+   colour entirely. Near-black and monochrome, for a dark room or an
+   OLED panel. Syntax stays faintly tinted rather than pure grey —
+   fully monochrome code is hard to scan. */
+:root[data-theme="newmoon"] {
+  --bg-app: #000000;
+  --bg-sidebar: #070707;
+  --bg-editor: #000000;
+  --bg-preview: #0d0d0d;
+  --bg-titlebar: #000000;
+  --text-primary: #ededed;
+  --text-secondary: #9a9a9a;
+  --border-color: #292929;
+  --accent: #d4d4d4;
+  --accent-rgb: 212 212 212;
+  color-scheme: dark;
+
+  --glow: 0 0 10px rgb(var(--accent-rgb) / 0.18);
+  --sheen: radial-gradient(120% 80% at 70% 0%, #111111 0%, var(--bg-app) 55%);
+
+  --surface-hover: rgb(var(--accent-rgb) / 0.08);
+  --surface-selected: rgb(var(--accent-rgb) / 0.14);
+  --surface-active-line: rgb(var(--accent-rgb) / 0.05);
+  --surface-selection: rgb(var(--accent-rgb) / 0.16);
+  --surface-drop-target: rgb(var(--accent-rgb) / 0.2);
+  --surface-error-tint: rgb(255 156 156 / 0.08);
+  --shadow-menu: 0 2px 8px rgb(0 0 0 / 0.6);
+
+  --syn-keyword: #c7c1d6;
+  --syn-name: #bfc9d6;
+  --syn-variable: #ededed;
+  --syn-string: #bcd0c6;
+  --syn-number: #d3c6d9;
+  --syn-comment: #6e6e6e;
+  --syn-operator: #9a9a9a;
+  --syn-heading: #f5f5f5;
+  --syn-invalid: #e08a8a;
+  --error-color: #e79a9a;
+}
+
+/* ---- Eclipse ----
+
+   Totality: the moon's disc pitch black, the corona blazing around it.
+   The high-contrast palette — pure black behind pure white, with vivid
+   syntax at full brightness rather than the muted tones the others
+   use.
+
+   Three things are done differently here on purpose, because the point
+   is separation rather than atmosphere:
+
+   - **No sheen.** Every other theme washes a gradient over the body;
+     a wash is exactly what lowers contrast, so this one stays flat.
+   - **Bright borders.** Structure is drawn with a visible line instead
+     of a change in surface tone, which is what a reader who needs this
+     theme is here for.
+   - **Stronger tints.** Hover and selection run two to three times the
+     alpha of the other palettes, so a state is unmistakable rather
+     than merely detectable. */
+:root[data-theme="eclipse"] {
+  --bg-app: #000000;
+  --bg-sidebar: #000000;
+  --bg-editor: #000000;
+  --bg-preview: #0b0b0b;
+  --bg-titlebar: #000000;
+  --text-primary: #ffffff;
+  /* Bright enough to still be body text: dimming secondary text is
+     the first thing that quietly breaks a high-contrast palette. */
+  --text-secondary: #d8d8d8;
+  --border-color: #9c9c9c;
+  --accent: #ffd447;        /* corona gold */
+  --accent-rgb: 255 212 71;
+  color-scheme: dark;
+
+  --glow: 0 0 10px rgb(var(--accent-rgb) / 0.5);
+  --sheen: none;
+
+  --surface-hover: rgb(var(--accent-rgb) / 0.18);
+  --surface-selected: rgb(var(--accent-rgb) / 0.3);
+  --surface-active-line: rgb(var(--accent-rgb) / 0.12);
+  --surface-selection: rgb(var(--accent-rgb) / 0.35);
+  --surface-drop-target: rgb(var(--accent-rgb) / 0.4);
+  --surface-error-tint: rgb(255 107 107 / 0.2);
+  --shadow-menu: 0 2px 8px rgb(0 0 0 / 0.8);
+
+  --syn-keyword: #ff8ae2;
+  --syn-name: #6fe3ff;
+  --syn-variable: #ffffff;
+  --syn-string: #7cff9b;
+  --syn-number: #ffd447;
+  --syn-comment: #b0b0b0;
+  --syn-operator: #e8e8e8;
+  --syn-heading: #ffffff;
+  --syn-invalid: #ff7676;
+  --error-color: #ff8080;
 }
 
 /* ---- Reset ---- */

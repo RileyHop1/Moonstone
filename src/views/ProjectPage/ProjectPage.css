@@ -65,7 +65,7 @@
 }
 
 .dock-zone-active {
-    background: rgba(169, 198, 255, 0.08);
+    background: var(--surface-hover);
     outline: 1px dashed var(--accent);
     outline-offset: -6px;
 }

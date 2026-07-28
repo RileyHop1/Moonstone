@@ -119,6 +119,8 @@ it is called done.
 - `src/test/browser/spellCheck.browser.spec.ts` — correction popup
 - `src/test/browser/fileBrowserPanel.browser.spec.ts` — panel resize,
   collapse, and name truncation
+- `src/test/browser/theme.browser.spec.ts` — contrast audit for both
+  palettes (see [theming.md](theming.md))
 
 ## The jsdom side
 

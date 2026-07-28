@@ -21,7 +21,7 @@
  * | `modal`    | `none` \| `vim` \| `helix`      | `none` |
  * | `spell`    | `on` \| `off`                   | `on` |
  * | `lines`    | `absolute` \| `relative` \| `mixed` | `absolute` |
- * | `theme`    | `dark` \| `light`               | `dark` |
+ * | `theme`    | any registered theme id         | `dark` |
  * | `cursor`   | document offset to select at    | none (offset 0) |
  *
  * `cursor` matters more than it looks: the preview reveals source
@@ -33,6 +33,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import type { EditorView } from "@codemirror/view";
 import { TextEditor } from "../../views/editor/TextEditor/TextEditor";
+import { normalizeTheme } from "../../shared/themes";
 import type { LineNumberMode, ModalMode, ViewMode } from "../../shared/types";
 import "../../styles/styles.css";
 
@@ -107,7 +108,9 @@ function mountHarness(): void {
 
     const params = new URLSearchParams(window.location.search);
     const doc = params.get("doc") ?? DEFAULT_DOC;
-    const theme = readEnum("theme", ["dark", "light"] as const, "dark");
+    // Validated through the registry, so every theme is reachable here
+    // as soon as it is registered.
+    const theme = normalizeTheme(params.get("theme"));
 
     // The app sets this on the document element; the harness has no
     // settings backend, so it applies the same attribute directly.
@@ -130,6 +133,7 @@ function mountHarness(): void {
                     "none",
                 )}
                 initialSpellCheckEnabled={readEnum("spell", ["on", "off"] as const, "on") === "on"}
+                initialTheme={theme}
                 initialLineNumberMode={readEnum<LineNumberMode>(
                     "lines",
                     ["absolute", "relative", "mixed"],

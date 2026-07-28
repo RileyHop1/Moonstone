@@ -45,7 +45,7 @@
 
 .file-browser-action:hover:not(:disabled) {
     color: var(--accent);
-    background: rgba(169, 198, 255, 0.1);
+    background: var(--surface-hover);
 }
 
 .file-browser-action:disabled {
@@ -96,11 +96,11 @@
 }
 
 .file-tree-row:hover {
-    background: rgba(169, 198, 255, 0.08);
+    background: var(--surface-hover);
 }
 
 .file-tree-row-selected {
-    background: rgba(169, 198, 255, 0.14);
+    background: var(--surface-selected);
     color: var(--accent);
 }
 
@@ -132,7 +132,7 @@
 
 /* Directory highlighted as a drag-and-drop move target. */
 .file-tree-row-drop-target {
-    background: rgba(169, 198, 255, 0.2);
+    background: var(--surface-drop-target);
     outline: 1px solid var(--accent);
     outline-offset: -1px;
 }

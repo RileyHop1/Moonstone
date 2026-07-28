@@ -12,8 +12,8 @@ import { EditorView, basicSetup } from "codemirror";
 import { keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import { latex } from "codemirror-lang-latex";
-import type { ModalMode, ViewMode } from "../../../shared/types";
-import { moonstone } from "./moonstoneTheme";
+import type { ModalMode, Theme, ViewMode } from "../../../shared/types";
+import { moonstoneThemeForMode, themeCompartment } from "./moonstoneTheme";
 import type { ImageSourceResolver, LinkOpener } from "./LivePreview";
 import { previewCompartment, previewExtensionForMode } from "./viewMode";
 import { modalCompartment, modalExtensionForMode } from "./modalMode";
@@ -34,6 +34,12 @@ export interface TextEditorProps {
     readonly initialModalMode: ModalMode;
     /** Whether spell checking is on at mount. */
     readonly initialSpellCheckEnabled: boolean;
+    /**
+     * Palette the editor mounts with (compartment reconfigures later).
+     * CodeMirror's `dark` flag is baked into a theme extension, so the
+     * editor needs telling — the CSS variables alone are not enough.
+     */
+    readonly initialTheme: Theme;
     /** How lines are numbered at mount. */
     readonly initialLineNumberMode: LineNumberMode;
     /** Whether the diagnostic overlay is shown at mount. */
@@ -74,6 +80,7 @@ export function TextEditor({
     initialViewMode,
     initialModalMode,
     initialSpellCheckEnabled,
+    initialTheme,
     initialLineNumberMode,
     initialShowDiagnostics,
     onDiagnosticsToggled,
@@ -96,6 +103,7 @@ export function TextEditor({
     const resolveImageSourceRef = useRef(resolveImageSource);
     const openLinkRef = useRef(openLink);
     const initialSpellCheckRef = useRef(initialSpellCheckEnabled);
+    const initialThemeRef = useRef(initialTheme);
     const initialReferencesRef = useRef(initialReferences);
     const initialShowDiagnosticsRef = useRef(initialShowDiagnostics);
     const onDiagnosticsToggledRef = useRef(onDiagnosticsToggled);
@@ -131,7 +139,7 @@ export function TextEditor({
                     // offers them alongside ours.
                     enableAutocomplete: false,
                 }),
-                moonstone,
+                themeCompartment.of(moonstoneThemeForMode(initialThemeRef.current)),
                 previewCompartment.of(
                     previewExtensionForMode(
                         initialViewModeRef.current,

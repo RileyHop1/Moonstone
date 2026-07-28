@@ -18,12 +18,14 @@
  * | `side`  | `left` \| `right`  | `left` |
  * | `width` | initial panel width in px | 220 |
  * | `names` | `long` \| `short`  | `long` |
+ * | `theme` | any registered theme id | `dark` |
  */
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { ResizablePanel } from "../../components/ResizablePanel";
 import { FileBrowser } from "../../views/ProjectPage/FileBrowser";
+import { normalizeTheme } from "../../shared/themes";
 import type { DockSide } from "../../shared/useDockDrag";
 import type { FileNode, LoadState } from "../../shared/types";
 import "../../styles/styles.css";
@@ -100,6 +102,12 @@ function mountHarness(): void {
     const requestedWidth = Number.parseInt(params.get("width") ?? "", 10);
     const initialWidth = Number.isInteger(requestedWidth) ? requestedWidth : 220;
     const useLongNames = readEnum("names", ["long", "short"] as const, "long") === "long";
+
+    // The app sets this on the document element; the harness has no
+    // settings backend, so it applies the same attribute directly.
+    // Validated through the registry so every theme is reachable here
+    // as soon as it is registered.
+    document.documentElement.setAttribute("data-theme", normalizeTheme(params.get("theme")));
 
     const tree: LoadState<FileNode> = { status: "ready", data: buildTree(useLongNames) };
 

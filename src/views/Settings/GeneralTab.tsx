@@ -4,15 +4,20 @@
  */
 
 import { useSettings } from "../../shared/settings";
+import { THEMES } from "../../shared/themes";
 import type { Theme } from "../../shared/types";
-import { ChoiceButtons } from "./ChoiceButtons";
 import { SettingsRow } from "./SettingsRow";
+import { SettingsSelect } from "./SettingsSelect";
 
-/** The selectable themes, in display order. */
-const THEME_CHOICES: readonly { readonly value: Theme; readonly label: string }[] = [
-    { value: "dark", label: "Dark" },
-    { value: "light", label: "Light" },
-];
+/**
+ * The selectable themes, in display order.
+ *
+ * Derived from the registry rather than restated, so a new palette
+ * appears here by existing.
+ */
+const THEME_CHOICES: readonly { readonly value: Theme; readonly label: string }[] = THEMES.map(
+    ({ id, label }) => ({ value: id, label }),
+);
 
 /**
  * Renders the general settings panel.
@@ -24,9 +29,9 @@ export function GeneralTab() {
 
     return (
         <SettingsRow label="Theme" description="Applies immediately across the app.">
-            <ChoiceButtons
+            <SettingsSelect
                 label="Theme"
-                choices={THEME_CHOICES}
+                options={THEME_CHOICES}
                 value={settings.theme}
                 onChange={(theme) => updateSettings({ theme })}
             />

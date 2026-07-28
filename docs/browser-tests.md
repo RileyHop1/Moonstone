@@ -32,12 +32,15 @@ a CSS margin on a block widget desynchronised CodeMirror's height map
 from the DOM. Every jsdom test passed throughout, and would have kept
 passing, because the disagreement is a purely geometric one.
 
-## The harness
+## The harnesses
 
-`src/test/browser/harness.html` + `harness.tsx` mount the **real**
-`TextEditor` component on a bare page. They deliberately do not
-re-declare its extension list: a copy would drift, and then the tests
-would be verifying a fiction.
+Two fixture pages, both mounting **real** components on a bare page.
+
+### `harness.html` — the editor
+
+Mounts `TextEditor` itself. It deliberately does not re-declare the
+extension list: a copy would drift, and then the tests would be
+verifying a fiction.
 
 Configuration comes from the query string, so one fixture serves every
 scenario and no test needs its own page:
@@ -56,6 +59,25 @@ before touching anything) and `moonstoneView`, the live `EditorView`.
 Driving assertions through the view rather than through DOM selectors
 is usually more robust — a word is a slice of a text node, not an
 element, so `view.coordsAtPos` is the only honest way to point at one.
+
+### `workspaceHarness.html` — the project page's layout
+
+Mounts a real `ResizablePanel` around a real `FileBrowser`, beside a
+placeholder editor pane, using the project page's own CSS.
+
+**No backend is mocked, and that is deliberate.** `FileBrowser` takes
+its tree as a prop, so a fixture tree is enough to render the real
+component. A mocked IPC layer that drifted from the real backend would
+produce tests that pass while the app is broken; not needing one yet is
+worth preserving. The editor pane is a placeholder because what is
+under test is how the panes share width — mounting CodeMirror there
+would add noise, not fidelity.
+
+| Param | Values | Default |
+|---|---|---|
+| `side` | `left` \| `right` | `left` |
+| `width` | initial panel width in px | 220 |
+| `names` | `long` \| `short` | `long` |
 
 ## What is not covered
 
@@ -91,6 +113,18 @@ it is called done.
 ## Files
 
 - `playwright.config.ts` — runner config, dev server, Chromium project
-- `src/test/browser/harness.html` / `harness.tsx` — the fixture page
+- `src/test/browser/harness.html` / `harness.tsx` — editor fixture
+- `src/test/browser/workspaceHarness.html` / `.tsx` — layout fixture
 - `src/test/browser/livePreview.browser.spec.ts` — height map vs DOM
 - `src/test/browser/spellCheck.browser.spec.ts` — correction popup
+- `src/test/browser/fileBrowserPanel.browser.spec.ts` — panel resize,
+  collapse, and name truncation
+
+## The jsdom side
+
+`src/test/setup.ts` installs an **inert `ResizeObserver`**, which jsdom
+does not implement. It is deliberately a no-op rather than a
+simulation: jsdom has no layout, so there are no size changes to
+report, and a fake that invented some would mislead. Components that
+watch their container mount cleanly under jsdom and are tested for real
+here.

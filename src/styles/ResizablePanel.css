@@ -1,0 +1,102 @@
+/* Resizable, collapsible side panel: content plus an edge splitter. */
+
+.resizable-panel {
+    position: relative;
+    display: flex;
+    /* Never grow or shrink from the width set inline — the whole point
+       is that the panel's width is the user's decision, and the
+       neighbour absorbs whatever is left. */
+    flex: 0 0 auto;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.resizable-panel-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    overflow: hidden;
+}
+
+/* The splitter belongs on whichever edge faces the neighbour, so
+   docking right reverses the panel's own layout. This is driven by the
+   `side` prop rather than an ancestor's class, so the panel stays
+   usable outside the project page. */
+.resizable-panel-right {
+    flex-direction: row-reverse;
+}
+
+/* A real column rather than an overlay on the content. Absolutely
+   positioning the toggle over the panel meant it collided with
+   whatever the content happened to put in that corner — the file
+   browser's header buttons on one dock side, its "FILES" label on the
+   other. Reserving the space removes that whole class of problem. */
+.panel-splitter {
+    display: flex;
+    flex: 0 0 var(--splitter-width);
+    flex-direction: column;
+    align-items: center;
+    width: var(--splitter-width);
+    --splitter-width: 16px;
+}
+
+.resizable-panel-collapsed .panel-splitter {
+    flex: 1;
+    width: 100%;
+}
+
+/* Fills the column below the toggle, so the drag target is the full
+   height of the panel rather than a 4px line. */
+.panel-splitter-grip {
+    flex: 1;
+    width: 100%;
+    background: transparent;
+    cursor: col-resize;
+    /* Pointer capture needs the raw events; disable touch scrolling. */
+    touch-action: none;
+}
+
+.panel-splitter-grip:hover,
+.panel-splitter-active .panel-splitter-grip {
+    /* Only the inner sliver lights up: a 16px accent bar on hover
+       would read as a UI element rather than an edge. */
+    background: linear-gradient(
+        to right,
+        transparent calc(50% - 1px),
+        var(--accent) calc(50% - 1px),
+        var(--accent) calc(50% + 1px),
+        transparent calc(50% + 1px)
+    );
+}
+
+.panel-collapse-toggle {
+    flex: 0 0 auto;
+    margin-top: 0.45rem;
+    padding: 0.1rem 0.15rem;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.7rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.panel-collapse-toggle:hover {
+    color: var(--accent);
+    background: rgba(169, 198, 255, 0.12);
+}
+
+/* Collapsed there is no content left to carry the panel's edge, so the
+   rail takes over the sidebar's surface and border. */
+.resizable-panel-collapsed {
+    background: var(--bg-sidebar);
+}
+
+.resizable-panel-left.resizable-panel-collapsed {
+    border-right: 1px solid var(--border-color);
+}
+
+.resizable-panel-right.resizable-panel-collapsed {
+    border-left: 1px solid var(--border-color);
+}

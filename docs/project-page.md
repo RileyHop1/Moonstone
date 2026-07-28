@@ -46,6 +46,58 @@ Docking right simply reverses the flex row (`row-reverse`), so the
 editor never remounts. The window sets `dragDropEnabled: false`
 (`tauri.conf.json`) so the webview handles HTML5 DnD rather than the OS.
 
+## Resizing and hiding the browser
+
+The browser sits inside a reusable `ResizablePanel`, which owns its
+width and collapsed state. The browser itself knows nothing about
+either — it simply fills whatever width it is given, which is what
+makes the panel reusable for the second file window in the plan.
+
+**Dragging** the splitter on the panel's inner edge resizes it. The
+editor is a flex child that grows, so it absorbs exactly what the panel
+gives up without any coordination between them. Docked right, the
+panel grows as the pointer moves *left*; the hook inverts the delta
+from the `side` prop rather than the layout guessing.
+
+**Two floors, both enforced** (`clampPanelWidth`): the panel never goes
+below 150px and never leaves its neighbour less than 240px. A panel
+that can be dragged to nothing is a panel the user cannot get back,
+and the same is true of the editor. When the container is too narrow
+to honour both, the panel keeps its minimum — shrinking it further
+would not rescue the neighbour and would leave nothing to grab.
+
+The width the user chose is stored separately from the width applied.
+A window too narrow to honour their choice displays a clamped value but
+remembers the real one, so widening the window restores it instead of
+silently keeping the squeezed figure.
+
+**Collapsing** leaves a narrow rail carrying the toggle, so the browser
+is always one click from coming back. The stored width is untouched
+while collapsed — that is what "restores the last width" means in
+practice; no separate cache is needed.
+
+The toggle lives in the splitter's own column rather than floating over
+the panel. It was an overlay first, and it collided with whatever the
+browser put in that corner: the header buttons on one dock side, the
+"FILES" label on the other. Reserving the column removes the class of
+problem rather than tuning offsets.
+
+**Long names** truncate with a CSS ellipsis. The `min-width: 0` on
+`.file-tree-name` is what makes it work — a flex item refuses to shrink
+below its content by default, so without it a long name widens the row
+instead of truncating. The truncation is purely visual: rename, open
+and drag-to-move all use the real filename, which the browser suite
+asserts explicitly.
+
+Width and collapsed state are **per session**, matching the dock side,
+which is also not persisted. Persisting all three to settings is a
+reasonable follow-on; doing it for width alone would be inconsistent.
+
+Because this is layout and pointer behaviour, its tests are in the
+browser suite (`src/test/browser/fileBrowserPanel.browser.spec.ts`) —
+jsdom has no widths to redistribute. Only the clamp arithmetic, which
+is pure, is unit-tested.
+
 ## Editor wiring
 
 `TextEditor` is file-agnostic: the page passes `initialDoc` and
@@ -80,5 +132,11 @@ while this page is open and render disabled elsewhere.
 - `src/views/ProjectPage/FileBrowser/` — tree panel (+ `RenameInput.tsx`)
 - `src/views/ProjectPage/Toolbar/` — action row
 - `src/shared/useDockDrag.ts` — drag-to-dock hook
+- `src/shared/usePanelResize.ts` — splitter drag hook + width clamp
+- `src/components/ResizablePanel.tsx` — resizable, collapsible panel
+- `src/styles/ResizablePanel.css` — panel and splitter styling
 - `src-tauri/src/file_manager.rs` — `move_entry` and other file commands
-- Tests: `src/test/ProjectPage.test.tsx`
+- Tests: `src/test/ProjectPage.test.tsx`,
+  `src/test/usePanelResize.test.ts` (clamp arithmetic),
+  `src/test/browser/fileBrowserPanel.browser.spec.ts` (drag, collapse,
+  truncation)

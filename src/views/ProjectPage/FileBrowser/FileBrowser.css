@@ -1,10 +1,12 @@
 /* File browser panel and tree rows. */
 
+/* Fills whatever width its ResizablePanel has been given; the panel,
+   not the browser, owns how wide that is. */
 .file-browser {
     display: flex;
+    flex: 1;
     flex-direction: column;
-    width: 220px;
-    min-width: 220px;
+    min-width: 0;
     background: var(--bg-sidebar);
     border-right: 1px solid var(--border-color);
     overflow: hidden;
@@ -117,7 +119,13 @@
     transform: rotate(90deg);
 }
 
+/* `min-width: 0` is what makes the ellipsis work: a flex item refuses
+   to shrink below its content by default, so without it a long name
+   pushes the row wider instead of truncating. The truncation is purely
+   visual — the full name is still what rename, open and drag use. */
 .file-tree-name {
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
 }

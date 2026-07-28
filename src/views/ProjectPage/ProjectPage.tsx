@@ -8,6 +8,7 @@ import type { EditorView } from "@codemirror/view";
 import { redo, undo } from "@codemirror/commands";
 import { NameDialog } from "../../components/NameDialog";
 import type { NameDialogResult } from "../../components/NameDialog";
+import { ResizablePanel } from "../../components/ResizablePanel";
 import { DEFAULT_FILE_EXTENSION } from "../../shared/fileTypes";
 import { useNavigation } from "../../shared/navigation";
 import { useAppActions } from "../../shared/appActions";
@@ -89,6 +90,9 @@ type FileDialogState =
 
 /** How long transient info status messages stay visible. */
 const STATUS_CLEAR_MS = 2000;
+
+/** Width the file browser opens at, before the user resizes it. */
+const DEFAULT_BROWSER_WIDTH_PX = 220;
 
 /**
  * Picks the file to auto-open for a freshly loaded project: the
@@ -526,14 +530,20 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
             />
 
             <div className="project-workspace">
-                <FileBrowser
-                    tree={tree}
-                    selectedPath={openFile?.path ?? null}
-                    onSelectFile={(path) => void openFileByPath(path)}
-                    onFileOperation={(operation) => void handleFileOperation(operation)}
-                    onRename={renameInline}
-                    dragHandleProps={handleProps}
-                />
+                <ResizablePanel
+                    initialWidth={DEFAULT_BROWSER_WIDTH_PX}
+                    side={dockSide}
+                    label="the file browser"
+                >
+                    <FileBrowser
+                        tree={tree}
+                        selectedPath={openFile?.path ?? null}
+                        onSelectFile={(path) => void openFileByPath(path)}
+                        onFileOperation={(operation) => void handleFileOperation(operation)}
+                        onRename={renameInline}
+                        dragHandleProps={handleProps}
+                    />
+                </ResizablePanel>
 
                 <section className="project-editor-panel">
                     {openFile ? (

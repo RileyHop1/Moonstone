@@ -188,7 +188,7 @@ export function findSymbolRanges(
     for (const match of text.matchAll(COMMAND_PATTERN)) {
         const commandName = match[1];
         const matchStart = match.index;
-        if (commandName === undefined || matchStart === undefined) continue;
+        if (commandName === undefined) continue;
 
         const symbol = SYMBOLS[commandName];
         if (symbol === undefined) continue;

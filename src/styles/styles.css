@@ -14,50 +14,50 @@
    `--accent-rgb` holds bare channels so a token can mix its own alpha
    with `rgb(… / …)`. */
 :root {
-  --bg-app: #0d1117;        /* blue-black gem body */
-  --bg-sidebar: #0a0e14;
-  --bg-editor: #0d1117;
-  --bg-preview: #131a26;
-  --bg-titlebar: #070a0f;
-  --text-primary: #e6ecff;  /* moonlight white */
-  --text-secondary: #8b93b0;
-  --border-color: #1e2738;
-  --accent: #a9c6ff;        /* silver-blue sheen */
-  --accent-rgb: 169 198 255;
+    --bg-app: #0d1117; /* blue-black gem body */
+    --bg-sidebar: #0a0e14;
+    --bg-editor: #0d1117;
+    --bg-preview: #131a26;
+    --bg-titlebar: #070a0f;
+    --text-primary: #e6ecff; /* moonlight white */
+    --text-secondary: #8b93b0;
+    --border-color: #1e2738;
+    --accent: #a9c6ff; /* silver-blue sheen */
+    --accent-rgb: 169 198 255;
 
-  /* Tells the browser which way OS-drawn UI should lean — `<select>`
+    /* Tells the browser which way OS-drawn UI should lean — `<select>`
      popups above all, which CSS cannot reach. Every palette sets it,
      or a dark theme opens a white menu. */
-  color-scheme: dark;
+    color-scheme: dark;
 
-  /* Adularescence: soft cool glow used on accents/focus */
-  --glow: 0 0 10px rgb(var(--accent-rgb) / 0.35);
-  /* Off-center moonlight catching the stone */
-  --sheen: radial-gradient(120% 80% at 70% 0%, #1a2740 0%, var(--bg-app) 55%);
+    /* Adularescence: soft cool glow used on accents/focus */
+    --glow: 0 0 10px rgb(var(--accent-rgb) / 0.35);
+    /* Off-center moonlight catching the stone */
+    --sheen: radial-gradient(120% 80% at 70% 0%, #1a2740 0%, var(--bg-app) 55%);
 
-  /* Interactive surfaces, in increasing strength. */
-  --surface-hover: rgb(var(--accent-rgb) / 0.08);
-  --surface-selected: rgb(var(--accent-rgb) / 0.14);
-  --surface-active-line: rgb(var(--accent-rgb) / 0.05);
-  --surface-selection: rgb(var(--accent-rgb) / 0.18);
-  --surface-drop-target: rgb(var(--accent-rgb) / 0.2);
-  --surface-error-tint: rgb(255 156 156 / 0.08);
-  --shadow-menu: 0 2px 8px rgb(0 0 0 / 0.4);
+    /* Interactive surfaces, in increasing strength. */
+    --surface-hover: rgb(var(--accent-rgb) / 0.08);
+    --surface-selected: rgb(var(--accent-rgb) / 0.14);
+    --surface-active-line: rgb(var(--accent-rgb) / 0.05);
+    --surface-selection: rgb(var(--accent-rgb) / 0.18);
+    --surface-drop-target: rgb(var(--accent-rgb) / 0.2);
+    --surface-error-tint: rgb(255 156 156 / 0.08);
+    --shadow-menu: 0 2px 8px rgb(0 0 0 / 0.4);
 
-  /* Editor */
-  --editor-font-size: 14px;
+    /* Editor */
+    --editor-font-size: 14px;
 
-  /* Syntax palette (moonlit pastels on dark) */
-  --syn-keyword: #b4a9ff;
-  --syn-name: #a9c6ff;
-  --syn-variable: #e6ecff;
-  --syn-string: #9ed0c4;
-  --syn-number: #d6b9ff;
-  --syn-comment: #5a6480;
-  --syn-operator: #8b93b0;
-  --syn-heading: #cdd6f4;
-  --syn-invalid: #ff8b8b;
-  --error-color: #ff9c9c;
+    /* Syntax palette (moonlit pastels on dark) */
+    --syn-keyword: #b4a9ff;
+    --syn-name: #a9c6ff;
+    --syn-variable: #e6ecff;
+    --syn-string: #9ed0c4;
+    --syn-number: #d6b9ff;
+    --syn-comment: #5a6480;
+    --syn-operator: #8b93b0;
+    --syn-heading: #cdd6f4;
+    --syn-invalid: #ff8b8b;
+    --error-color: #ff9c9c;
 }
 
 /* ---- Light theme ----
@@ -67,46 +67,46 @@
    surfaces stay faintly blue instead of neutral grey, which is what
    made the first attempt read as a generic light theme. */
 :root[data-theme="light"] {
-  --bg-app: #eaeff9;        /* milky stone, faintly blue */
-  --bg-sidebar: #dde5f4;
-  --bg-editor: #f5f8fd;
-  --bg-preview: #ffffff;
-  --bg-titlebar: #d3ddf0;
-  --text-primary: #131a2b;  /* deep blue-black, not pure black */
-  --text-secondary: #4c5670;
-  --border-color: #b9c6e0;
-  --accent: #2f56ad;        /* deeper, so it carries text contrast */
-  --accent-rgb: 47 86 173;
-  color-scheme: light;
+    --bg-app: #eaeff9; /* milky stone, faintly blue */
+    --bg-sidebar: #dde5f4;
+    --bg-editor: #f5f8fd;
+    --bg-preview: #ffffff;
+    --bg-titlebar: #d3ddf0;
+    --text-primary: #131a2b; /* deep blue-black, not pure black */
+    --text-secondary: #4c5670;
+    --border-color: #b9c6e0;
+    --accent: #2f56ad; /* deeper, so it carries text contrast */
+    --accent-rgb: 47 86 173;
+    color-scheme: light;
 
-  --glow: 0 0 10px rgb(var(--accent-rgb) / 0.25);
-  /* The sheen catches the stone from the same off-centre angle, but
+    --glow: 0 0 10px rgb(var(--accent-rgb) / 0.25);
+    /* The sheen catches the stone from the same off-centre angle, but
      as a cool white bloom rather than a blue one. */
-  --sheen: radial-gradient(120% 80% at 70% 0%, #fbfdff 0%, var(--bg-app) 55%);
+    --sheen: radial-gradient(120% 80% at 70% 0%, #fbfdff 0%, var(--bg-app) 55%);
 
-  /* Stronger than the dark theme's: a dark tint over near-white needs
+    /* Stronger than the dark theme's: a dark tint over near-white needs
      more alpha to register than a light tint over near-black. */
-  --surface-hover: rgb(var(--accent-rgb) / 0.1);
-  --surface-selected: rgb(var(--accent-rgb) / 0.18);
-  --surface-active-line: rgb(var(--accent-rgb) / 0.07);
-  --surface-selection: rgb(var(--accent-rgb) / 0.22);
-  --surface-drop-target: rgb(var(--accent-rgb) / 0.24);
-  --surface-error-tint: rgb(196 60 60 / 0.1);
-  /* Pure black at 0.4 reads as grime on a pale surface; the shadow is
+    --surface-hover: rgb(var(--accent-rgb) / 0.1);
+    --surface-selected: rgb(var(--accent-rgb) / 0.18);
+    --surface-active-line: rgb(var(--accent-rgb) / 0.07);
+    --surface-selection: rgb(var(--accent-rgb) / 0.22);
+    --surface-drop-target: rgb(var(--accent-rgb) / 0.24);
+    --surface-error-tint: rgb(196 60 60 / 0.1);
+    /* Pure black at 0.4 reads as grime on a pale surface; the shadow is
      tinted with the palette and softened instead. */
-  --shadow-menu: 0 2px 10px rgb(31 45 74 / 0.18);
+    --shadow-menu: 0 2px 10px rgb(31 45 74 / 0.18);
 
-  /* Deeper syntax tones for contrast on light backgrounds */
-  --syn-keyword: #5a3fbd;
-  --syn-name: #23499b;
-  --syn-variable: #131a2b;
-  --syn-string: #146b56;
-  --syn-number: #7534ad;
-  --syn-comment: #656f8c;
-  --syn-operator: #4c5670;
-  --syn-heading: #101a33;
-  --syn-invalid: #b32d2d;
-  --error-color: #b32d2d;
+    /* Deeper syntax tones for contrast on light backgrounds */
+    --syn-keyword: #5a3fbd;
+    --syn-name: #23499b;
+    --syn-variable: #131a2b;
+    --syn-string: #146b56;
+    --syn-number: #7534ad;
+    --syn-comment: #656f8c;
+    --syn-operator: #4c5670;
+    --syn-heading: #101a33;
+    --syn-invalid: #b32d2d;
+    --error-color: #b32d2d;
 }
 
 /* ---- Blood Moon ----
@@ -114,39 +114,39 @@
    A lunar eclipse: the moon lit only by refracted sunlight, so the
    whole stone runs copper-red. Ember accents on a red-black body. */
 :root[data-theme="bloodmoon"] {
-  --bg-app: #150a0c;
-  --bg-sidebar: #100709;
-  --bg-editor: #150a0c;
-  --bg-preview: #1f1013;
-  --bg-titlebar: #0b0405;
-  --text-primary: #ffe6e2;
-  --text-secondary: #c09a99;
-  --border-color: #3d1d22;
-  --accent: #ff7a6b;
-  --accent-rgb: 255 122 107;
-  color-scheme: dark;
+    --bg-app: #150a0c;
+    --bg-sidebar: #100709;
+    --bg-editor: #150a0c;
+    --bg-preview: #1f1013;
+    --bg-titlebar: #0b0405;
+    --text-primary: #ffe6e2;
+    --text-secondary: #c09a99;
+    --border-color: #3d1d22;
+    --accent: #ff7a6b;
+    --accent-rgb: 255 122 107;
+    color-scheme: dark;
 
-  --glow: 0 0 10px rgb(var(--accent-rgb) / 0.35);
-  --sheen: radial-gradient(120% 80% at 70% 0%, #3d1418 0%, var(--bg-app) 55%);
+    --glow: 0 0 10px rgb(var(--accent-rgb) / 0.35);
+    --sheen: radial-gradient(120% 80% at 70% 0%, #3d1418 0%, var(--bg-app) 55%);
 
-  --surface-hover: rgb(var(--accent-rgb) / 0.08);
-  --surface-selected: rgb(var(--accent-rgb) / 0.14);
-  --surface-active-line: rgb(var(--accent-rgb) / 0.05);
-  --surface-selection: rgb(var(--accent-rgb) / 0.18);
-  --surface-drop-target: rgb(var(--accent-rgb) / 0.2);
-  --surface-error-tint: rgb(255 180 170 / 0.1);
-  --shadow-menu: 0 2px 8px rgb(0 0 0 / 0.5);
+    --surface-hover: rgb(var(--accent-rgb) / 0.08);
+    --surface-selected: rgb(var(--accent-rgb) / 0.14);
+    --surface-active-line: rgb(var(--accent-rgb) / 0.05);
+    --surface-selection: rgb(var(--accent-rgb) / 0.18);
+    --surface-drop-target: rgb(var(--accent-rgb) / 0.2);
+    --surface-error-tint: rgb(255 180 170 / 0.1);
+    --shadow-menu: 0 2px 8px rgb(0 0 0 / 0.5);
 
-  --syn-keyword: #ff93a8;
-  --syn-name: #ffab86;
-  --syn-variable: #ffe6e2;
-  --syn-string: #e0b473;
-  --syn-number: #ff9bb3;
-  --syn-comment: #96686c;
-  --syn-operator: #c09a99;
-  --syn-heading: #ffd2cb;
-  --syn-invalid: #ff6161;
-  --error-color: #ff8f8f;
+    --syn-keyword: #ff93a8;
+    --syn-name: #ffab86;
+    --syn-variable: #ffe6e2;
+    --syn-string: #e0b473;
+    --syn-number: #ff9bb3;
+    --syn-comment: #96686c;
+    --syn-operator: #c09a99;
+    --syn-heading: #ffd2cb;
+    --syn-invalid: #ff6161;
+    --error-color: #ff8f8f;
 }
 
 /* ---- Blue Moon ----
@@ -155,39 +155,39 @@
    than the default stone, which is near-neutral by comparison. Deep
    indigo body, vivid azure sheen. */
 :root[data-theme="bluemoon"] {
-  --bg-app: #081033;
-  --bg-sidebar: #050b25;
-  --bg-editor: #081033;
-  --bg-preview: #0f1d56;
-  --bg-titlebar: #04081c;
-  --text-primary: #dee9ff;
-  --text-secondary: #8fa4d4;
-  --border-color: #1f2e57;
-  --accent: #5cc2ff;
-  --accent-rgb: 92 194 255;
-  color-scheme: dark;
+    --bg-app: #081033;
+    --bg-sidebar: #050b25;
+    --bg-editor: #081033;
+    --bg-preview: #0f1d56;
+    --bg-titlebar: #04081c;
+    --text-primary: #dee9ff;
+    --text-secondary: #8fa4d4;
+    --border-color: #1f2e57;
+    --accent: #5cc2ff;
+    --accent-rgb: 92 194 255;
+    color-scheme: dark;
 
-  --glow: 0 0 10px rgb(var(--accent-rgb) / 0.35);
-  --sheen: radial-gradient(120% 80% at 70% 0%, #16275f 0%, var(--bg-app) 55%);
+    --glow: 0 0 10px rgb(var(--accent-rgb) / 0.35);
+    --sheen: radial-gradient(120% 80% at 70% 0%, #16275f 0%, var(--bg-app) 55%);
 
-  --surface-hover: rgb(var(--accent-rgb) / 0.08);
-  --surface-selected: rgb(var(--accent-rgb) / 0.14);
-  --surface-active-line: rgb(var(--accent-rgb) / 0.05);
-  --surface-selection: rgb(var(--accent-rgb) / 0.18);
-  --surface-drop-target: rgb(var(--accent-rgb) / 0.2);
-  --surface-error-tint: rgb(255 156 156 / 0.08);
-  --shadow-menu: 0 2px 8px rgb(0 0 0 / 0.45);
+    --surface-hover: rgb(var(--accent-rgb) / 0.08);
+    --surface-selected: rgb(var(--accent-rgb) / 0.14);
+    --surface-active-line: rgb(var(--accent-rgb) / 0.05);
+    --surface-selection: rgb(var(--accent-rgb) / 0.18);
+    --surface-drop-target: rgb(var(--accent-rgb) / 0.2);
+    --surface-error-tint: rgb(255 156 156 / 0.08);
+    --shadow-menu: 0 2px 8px rgb(0 0 0 / 0.45);
 
-  --syn-keyword: #a99bff;
-  --syn-name: #5cc2ff;
-  --syn-variable: #dee9ff;
-  --syn-string: #6fd6c4;
-  --syn-number: #c9a6ff;
-  --syn-comment: #5d6f9e;
-  --syn-operator: #8fa4d4;
-  --syn-heading: #c8dbff;
-  --syn-invalid: #ff7d7d;
-  --error-color: #ff9c9c;
+    --syn-keyword: #a99bff;
+    --syn-name: #5cc2ff;
+    --syn-variable: #dee9ff;
+    --syn-string: #6fd6c4;
+    --syn-number: #c9a6ff;
+    --syn-comment: #5d6f9e;
+    --syn-operator: #8fa4d4;
+    --syn-heading: #c8dbff;
+    --syn-invalid: #ff7d7d;
+    --error-color: #ff9c9c;
 }
 
 /* ---- Harvest Moon ----
@@ -196,39 +196,39 @@
    over the fields. Warm amber on a brown-black body — the only theme
    here with no blue in it. */
 :root[data-theme="harvestmoon"] {
-  --bg-app: #191208;
-  --bg-sidebar: #130d06;
-  --bg-editor: #191208;
-  --bg-preview: #241a0e;
-  --bg-titlebar: #0e0904;
-  --text-primary: #ffeed6;
-  --text-secondary: #c4a37d;
-  --border-color: #40311b;
-  --accent: #ffb347;
-  --accent-rgb: 255 179 71;
-  color-scheme: dark;
+    --bg-app: #191208;
+    --bg-sidebar: #130d06;
+    --bg-editor: #191208;
+    --bg-preview: #241a0e;
+    --bg-titlebar: #0e0904;
+    --text-primary: #ffeed6;
+    --text-secondary: #c4a37d;
+    --border-color: #40311b;
+    --accent: #ffb347;
+    --accent-rgb: 255 179 71;
+    color-scheme: dark;
 
-  --glow: 0 0 10px rgb(var(--accent-rgb) / 0.3);
-  --sheen: radial-gradient(120% 80% at 70% 0%, #402a10 0%, var(--bg-app) 55%);
+    --glow: 0 0 10px rgb(var(--accent-rgb) / 0.3);
+    --sheen: radial-gradient(120% 80% at 70% 0%, #402a10 0%, var(--bg-app) 55%);
 
-  --surface-hover: rgb(var(--accent-rgb) / 0.08);
-  --surface-selected: rgb(var(--accent-rgb) / 0.14);
-  --surface-active-line: rgb(var(--accent-rgb) / 0.05);
-  --surface-selection: rgb(var(--accent-rgb) / 0.18);
-  --surface-drop-target: rgb(var(--accent-rgb) / 0.2);
-  --surface-error-tint: rgb(255 156 156 / 0.09);
-  --shadow-menu: 0 2px 8px rgb(0 0 0 / 0.5);
+    --surface-hover: rgb(var(--accent-rgb) / 0.08);
+    --surface-selected: rgb(var(--accent-rgb) / 0.14);
+    --surface-active-line: rgb(var(--accent-rgb) / 0.05);
+    --surface-selection: rgb(var(--accent-rgb) / 0.18);
+    --surface-drop-target: rgb(var(--accent-rgb) / 0.2);
+    --surface-error-tint: rgb(255 156 156 / 0.09);
+    --shadow-menu: 0 2px 8px rgb(0 0 0 / 0.5);
 
-  --syn-keyword: #f5a86a;
-  --syn-name: #ffc27a;
-  --syn-variable: #ffeed6;
-  --syn-string: #bfd07a;
-  --syn-number: #ffcb6b;
-  --syn-comment: #8a7250;
-  --syn-operator: #c4a37d;
-  --syn-heading: #ffdfae;
-  --syn-invalid: #ff8a70;
-  --error-color: #ff9f85;
+    --syn-keyword: #f5a86a;
+    --syn-name: #ffc27a;
+    --syn-variable: #ffeed6;
+    --syn-string: #bfd07a;
+    --syn-number: #ffcb6b;
+    --syn-comment: #8a7250;
+    --syn-operator: #c4a37d;
+    --syn-heading: #ffdfae;
+    --syn-invalid: #ff8a70;
+    --error-color: #ff9f85;
 }
 
 /* ---- New Moon ----
@@ -238,39 +238,39 @@
    OLED panel. Syntax stays faintly tinted rather than pure grey —
    fully monochrome code is hard to scan. */
 :root[data-theme="newmoon"] {
-  --bg-app: #000000;
-  --bg-sidebar: #070707;
-  --bg-editor: #000000;
-  --bg-preview: #0d0d0d;
-  --bg-titlebar: #000000;
-  --text-primary: #ededed;
-  --text-secondary: #9a9a9a;
-  --border-color: #292929;
-  --accent: #d4d4d4;
-  --accent-rgb: 212 212 212;
-  color-scheme: dark;
+    --bg-app: #000000;
+    --bg-sidebar: #070707;
+    --bg-editor: #000000;
+    --bg-preview: #0d0d0d;
+    --bg-titlebar: #000000;
+    --text-primary: #ededed;
+    --text-secondary: #9a9a9a;
+    --border-color: #292929;
+    --accent: #d4d4d4;
+    --accent-rgb: 212 212 212;
+    color-scheme: dark;
 
-  --glow: 0 0 10px rgb(var(--accent-rgb) / 0.18);
-  --sheen: radial-gradient(120% 80% at 70% 0%, #111111 0%, var(--bg-app) 55%);
+    --glow: 0 0 10px rgb(var(--accent-rgb) / 0.18);
+    --sheen: radial-gradient(120% 80% at 70% 0%, #111111 0%, var(--bg-app) 55%);
 
-  --surface-hover: rgb(var(--accent-rgb) / 0.08);
-  --surface-selected: rgb(var(--accent-rgb) / 0.14);
-  --surface-active-line: rgb(var(--accent-rgb) / 0.05);
-  --surface-selection: rgb(var(--accent-rgb) / 0.16);
-  --surface-drop-target: rgb(var(--accent-rgb) / 0.2);
-  --surface-error-tint: rgb(255 156 156 / 0.08);
-  --shadow-menu: 0 2px 8px rgb(0 0 0 / 0.6);
+    --surface-hover: rgb(var(--accent-rgb) / 0.08);
+    --surface-selected: rgb(var(--accent-rgb) / 0.14);
+    --surface-active-line: rgb(var(--accent-rgb) / 0.05);
+    --surface-selection: rgb(var(--accent-rgb) / 0.16);
+    --surface-drop-target: rgb(var(--accent-rgb) / 0.2);
+    --surface-error-tint: rgb(255 156 156 / 0.08);
+    --shadow-menu: 0 2px 8px rgb(0 0 0 / 0.6);
 
-  --syn-keyword: #c7c1d6;
-  --syn-name: #bfc9d6;
-  --syn-variable: #ededed;
-  --syn-string: #bcd0c6;
-  --syn-number: #d3c6d9;
-  --syn-comment: #6e6e6e;
-  --syn-operator: #9a9a9a;
-  --syn-heading: #f5f5f5;
-  --syn-invalid: #e08a8a;
-  --error-color: #e79a9a;
+    --syn-keyword: #c7c1d6;
+    --syn-name: #bfc9d6;
+    --syn-variable: #ededed;
+    --syn-string: #bcd0c6;
+    --syn-number: #d3c6d9;
+    --syn-comment: #6e6e6e;
+    --syn-operator: #9a9a9a;
+    --syn-heading: #f5f5f5;
+    --syn-invalid: #e08a8a;
+    --error-color: #e79a9a;
 }
 
 /* ---- Eclipse ----
@@ -292,58 +292,61 @@
      alpha of the other palettes, so a state is unmistakable rather
      than merely detectable. */
 :root[data-theme="eclipse"] {
-  --bg-app: #000000;
-  --bg-sidebar: #000000;
-  --bg-editor: #000000;
-  --bg-preview: #0b0b0b;
-  --bg-titlebar: #000000;
-  --text-primary: #ffffff;
-  /* Bright enough to still be body text: dimming secondary text is
+    --bg-app: #000000;
+    --bg-sidebar: #000000;
+    --bg-editor: #000000;
+    --bg-preview: #0b0b0b;
+    --bg-titlebar: #000000;
+    --text-primary: #ffffff;
+    /* Bright enough to still be body text: dimming secondary text is
      the first thing that quietly breaks a high-contrast palette. */
-  --text-secondary: #d8d8d8;
-  --border-color: #9c9c9c;
-  --accent: #ffd447;        /* corona gold */
-  --accent-rgb: 255 212 71;
-  color-scheme: dark;
+    --text-secondary: #d8d8d8;
+    --border-color: #9c9c9c;
+    --accent: #ffd447; /* corona gold */
+    --accent-rgb: 255 212 71;
+    color-scheme: dark;
 
-  --glow: 0 0 10px rgb(var(--accent-rgb) / 0.5);
-  --sheen: none;
+    --glow: 0 0 10px rgb(var(--accent-rgb) / 0.5);
+    --sheen: none;
 
-  --surface-hover: rgb(var(--accent-rgb) / 0.18);
-  --surface-selected: rgb(var(--accent-rgb) / 0.3);
-  --surface-active-line: rgb(var(--accent-rgb) / 0.12);
-  --surface-selection: rgb(var(--accent-rgb) / 0.35);
-  --surface-drop-target: rgb(var(--accent-rgb) / 0.4);
-  --surface-error-tint: rgb(255 107 107 / 0.2);
-  --shadow-menu: 0 2px 8px rgb(0 0 0 / 0.8);
+    --surface-hover: rgb(var(--accent-rgb) / 0.18);
+    --surface-selected: rgb(var(--accent-rgb) / 0.3);
+    --surface-active-line: rgb(var(--accent-rgb) / 0.12);
+    --surface-selection: rgb(var(--accent-rgb) / 0.35);
+    --surface-drop-target: rgb(var(--accent-rgb) / 0.4);
+    --surface-error-tint: rgb(255 107 107 / 0.2);
+    --shadow-menu: 0 2px 8px rgb(0 0 0 / 0.8);
 
-  --syn-keyword: #ff8ae2;
-  --syn-name: #6fe3ff;
-  --syn-variable: #ffffff;
-  --syn-string: #7cff9b;
-  --syn-number: #ffd447;
-  --syn-comment: #b0b0b0;
-  --syn-operator: #e8e8e8;
-  --syn-heading: #ffffff;
-  --syn-invalid: #ff7676;
-  --error-color: #ff8080;
+    --syn-keyword: #ff8ae2;
+    --syn-name: #6fe3ff;
+    --syn-variable: #ffffff;
+    --syn-string: #7cff9b;
+    --syn-number: #ffd447;
+    --syn-comment: #b0b0b0;
+    --syn-operator: #e8e8e8;
+    --syn-heading: #ffffff;
+    --syn-invalid: #ff7676;
+    --error-color: #ff8080;
 }
 
 /* ---- Reset ---- */
-*, *::before, *::after {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+*,
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
 }
 
-html, body {
-  height: 100%;
-  font-family: 'Segoe UI', system-ui, sans-serif;
-  background: var(--bg-app);
-  background-image: var(--sheen);
-  background-attachment: fixed;
-  color: var(--text-primary);
-  overflow: hidden;
+html,
+body {
+    height: 100%;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: var(--bg-app);
+    background-image: var(--sheen);
+    background-attachment: fixed;
+    color: var(--text-primary);
+    overflow: hidden;
 }
 
 /* ---- App shell ---- */
@@ -354,266 +357,266 @@ html, body {
    properties and the WebKit pseudo-elements the webview actually
    honours. */
 * {
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-color) transparent;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
 }
 
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+    width: 10px;
+    height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+    background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: var(--border-color);
-  /* Inset the thumb so it reads as floating rather than filling a
+    border-radius: 999px;
+    background: var(--border-color);
+    /* Inset the thumb so it reads as floating rather than filling a
      gutter, which is what makes the default look bolted on. */
-  border: 2px solid transparent;
-  background-clip: content-box;
+    border: 2px solid transparent;
+    background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-secondary);
-  background-clip: content-box;
+    background: var(--text-secondary);
+    background-clip: content-box;
 }
 
 ::-webkit-scrollbar-corner {
-  background: transparent;
+    background: transparent;
 }
 
 .app {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
 }
 
 /* The page being worked in. It stays mounted while settings is open,
    so the open document and its unsaved edits survive the detour. */
 .app-page {
-  flex: 1;
-  display: flex;
-  min-height: 0;
+    flex: 1;
+    display: flex;
+    min-height: 0;
 }
 
 /* `hidden` has to beat the flex display above, or the page would stay
    on screen underneath settings. */
 .app-page[hidden] {
-  display: none;
+    display: none;
 }
 
 /* ---- Title bar ---- */
 .titlebar {
-  height: 36px;
-  background: var(--bg-titlebar);
-  display: flex;
-  align-items: center;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--border-color);
-  user-select: none;
+    height: 36px;
+    background: var(--bg-titlebar);
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    border-bottom: 1px solid var(--border-color);
+    user-select: none;
 }
 
 .titlebar-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  text-shadow: var(--glow);
-  letter-spacing: 0.3px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-shadow: var(--glow);
+    letter-spacing: 0.3px;
 }
 
 .titlebar-project {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-left: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-left: 6px;
 }
 
 /* ---- Shared modal dialog (name prompts) ---- */
 .dialog-overlay {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(4, 6, 10, 0.7);
-  z-index: 200;
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(4, 6, 10, 0.7);
+    z-index: 200;
 }
 
 .dialog-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 0.9rem;
-  width: min(360px, 90vw);
-  padding: 1.5rem;
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  background: var(--bg-preview);
-  box-shadow: var(--glow);
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    width: min(360px, 90vw);
+    padding: 1.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-preview);
+    box-shadow: var(--glow);
 }
 
 .dialog-title {
-  margin: 0;
-  font-size: 1.1rem;
-  color: var(--text-primary);
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--text-primary);
 }
 
 .dialog-input {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: var(--bg-app);
-  color: var(--text-primary);
-  outline: none;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-app);
+    color: var(--text-primary);
+    outline: none;
 }
 
 .dialog-input:focus {
-  border-color: var(--accent);
+    border-color: var(--accent);
 }
 
 .dialog-error {
-  margin: 0;
-  font-size: 0.85rem;
-  color: var(--error-color);
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--error-color);
 }
 
 /* Labelled control beneath the name input (e.g. the file type). */
 .dialog-field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
 }
 
 .dialog-field-label {
-  font-size: 0.8rem;
-  color: var(--text-secondary);
+    font-size: 0.8rem;
+    color: var(--text-secondary);
 }
 
 .dialog-select {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: var(--bg-app);
-  color: var(--text-primary);
-  outline: none;
-  font-family: inherit;
-  font-size: inherit;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-app);
+    color: var(--text-primary);
+    outline: none;
+    font-family: inherit;
+    font-size: inherit;
 }
 
 .dialog-select:focus {
-  border-color: var(--accent);
+    border-color: var(--accent);
 }
 
 /* Shows the filename that will be created, so the chosen extension
    is never a surprise after the fact. */
 .dialog-preview {
-  margin: 0;
-  font-size: 0.85rem;
-  color: var(--text-secondary);
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
 }
 
 .dialog-preview code {
-  color: var(--text-primary);
-  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+    color: var(--text-primary);
+    font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
 }
 
 .dialog-buttons {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
 }
 
 .dialog-button {
-  padding: 0.45rem 1rem;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-primary);
-  cursor: pointer;
+    padding: 0.45rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-primary);
+    cursor: pointer;
 }
 
 .dialog-button:hover {
-  border-color: var(--accent);
+    border-color: var(--accent);
 }
 
 .dialog-button-primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--bg-app);
-  font-weight: 600;
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg-app);
+    font-weight: 600;
 }
 
 .dialog-button-primary:disabled {
-  opacity: 0.6;
-  cursor: default;
+    opacity: 0.6;
+    cursor: default;
 }
 
 /* ---- New-project template picker ---- */
 
 /* The template list needs more room than a name prompt. */
 .dialog-panel-wide {
-  width: min(560px, 92vw);
+    width: min(560px, 92vw);
 }
 
 .dialog-hint {
-  margin: 0;
-  font-size: 0.85rem;
-  color: var(--text-secondary);
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
 }
 
 /* Capped so a long template list scrolls inside the dialog rather
    than pushing the buttons off screen. */
 .template-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  max-height: 40vh;
-  overflow-y: auto;
-  padding-right: 0.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    max-height: 40vh;
+    overflow-y: auto;
+    padding-right: 0.25rem;
 }
 
 .template-option {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  padding: 0.6rem 0.75rem;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: var(--bg-app);
-  color: var(--text-primary);
-  text-align: left;
-  font: inherit;
-  cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-app);
+    color: var(--text-primary);
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
 }
 
 .template-option:hover {
-  border-color: var(--accent);
+    border-color: var(--accent);
 }
 
 .template-option-selected {
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .template-option-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.75rem;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
 }
 
 .template-option-name {
-  font-weight: 600;
+    font-weight: 600;
 }
 
 .template-option-count {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  white-space: nowrap;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
 }
 
 .template-option-description {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
+    font-size: 0.85rem;
+    color: var(--text-secondary);
 }

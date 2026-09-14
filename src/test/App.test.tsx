@@ -59,9 +59,7 @@ function selectMenuItem(menu: string, item: string): void {
  * @returns The menu item element.
  */
 function findMenuItem(label: string): HTMLElement {
-    const item = screen
-        .getAllByText(label)
-        .find((element) => element.tagName === "LI");
+    const item = screen.getAllByText(label).find((element) => element.tagName === "LI");
 
     expect(item, `menu item ${label}`).toBeDefined();
     return item!;

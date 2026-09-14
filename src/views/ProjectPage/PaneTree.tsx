@@ -1,0 +1,79 @@
+/**
+ * Renders the pane layout tree as nested flex rows and columns.
+ *
+ * Purely structural: it walks the tree and hands each leaf to
+ * {@link EditorPane}, passing the same callbacks straight through. All
+ * the decisions about what the tree should look like live in
+ * `paneLayout.ts`, and all the state lives in the project page.
+ */
+
+import { EditorPane } from "./EditorPane";
+import type { PaneDocument, PaneEditorSettings } from "./EditorPane";
+import type { DropSide, PaneId, PaneNode } from "./paneLayout";
+import type { EditorView } from "@codemirror/view";
+import type { ImageSourceResolver, LinkOpener } from "../editor/TextEditor/LivePreview";
+
+/** Props for {@link PaneTree}. */
+export interface PaneTreeProps {
+    /** The subtree to render. */
+    readonly node: PaneNode;
+    /** Open documents, keyed by pane. */
+    readonly documents: ReadonlyMap<PaneId, PaneDocument>;
+    /** Panes with unsaved changes. */
+    readonly dirtyPanes: ReadonlySet<PaneId>;
+    /** The pane driving the toolbar. */
+    readonly activePaneId: PaneId;
+    /** False when only one pane is open, hiding its close button. */
+    readonly canClose: boolean;
+    readonly settings: PaneEditorSettings;
+    readonly resolveImageSource?: ImageSourceResolver;
+    readonly openLink?: LinkOpener;
+    readonly onActivate: (paneId: PaneId) => void;
+    readonly onDropFile: (paneId: PaneId, side: DropSide | null, path: string) => void;
+    readonly onClose: (paneId: PaneId) => void;
+    readonly onViewReady: (paneId: PaneId, view: EditorView) => void;
+    readonly onDocChanged: (paneId: PaneId) => void;
+    readonly onSaveRequested: (paneId: PaneId) => void;
+    readonly onDiagnosticsToggled: (visible: boolean) => void;
+}
+
+/**
+ * Renders one node of the layout tree.
+ *
+ * @param props - The subtree plus everything a pane needs.
+ * @returns The rendered subtree.
+ */
+export function PaneTree({ node, ...shared }: PaneTreeProps) {
+    if (node.kind === "leaf") {
+        return (
+            <EditorPane
+                paneId={node.id}
+                document={shared.documents.get(node.id) ?? null}
+                isActive={node.id === shared.activePaneId}
+                isDirty={shared.dirtyPanes.has(node.id)}
+                canClose={shared.canClose}
+                settings={shared.settings}
+                resolveImageSource={shared.resolveImageSource}
+                openLink={shared.openLink}
+                onActivate={shared.onActivate}
+                onDropFile={shared.onDropFile}
+                onClose={shared.onClose}
+                onViewReady={shared.onViewReady}
+                onDocChanged={shared.onDocChanged}
+                onSaveRequested={shared.onSaveRequested}
+                onDiagnosticsToggled={shared.onDiagnosticsToggled}
+            />
+        );
+    }
+
+    return (
+        <div className={`pane-split pane-split-${node.direction}`}>
+            {node.children.map((child) => (
+                // Keyed by node id, never by position: keying by index
+                // would remount every editor below an insertion and
+                // throw away its undo history.
+                <PaneTree key={child.id} node={child} {...shared} />
+            ))}
+        </div>
+    );
+}

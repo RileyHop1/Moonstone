@@ -161,7 +161,11 @@ export function FileBrowser({
 
     return (
         <aside className="file-browser">
-            <div className="file-browser-header" {...dragHandleProps} title="Drag to dock left or right">
+            <div
+                className="file-browser-header"
+                {...dragHandleProps}
+                title="Drag to dock left or right"
+            >
                 <span>Files</span>
                 <span className="file-browser-header-actions">
                     <button
@@ -248,7 +252,11 @@ export function FileBrowser({
  * @returns True when the move must be rejected.
  */
 function isInvalidMove(source: string, destDir: string): boolean {
-    return destDir === source || destDir.startsWith(`${source}\\`) || destDir.startsWith(`${source}/`);
+    return (
+        destDir === source ||
+        destDir.startsWith(`${source}\\`) ||
+        destDir.startsWith(`${source}/`)
+    );
 }
 
 /**
@@ -284,7 +292,8 @@ function buildMenuItems(
         {
             label: "Delete",
             danger: true,
-            onClick: () => onFileOperation({ kind: "delete", path: node.path, name: node.name }),
+            onClick: () =>
+                onFileOperation({ kind: "delete", path: node.path, name: node.name }),
         },
     ];
 
@@ -330,7 +339,12 @@ function renderTree(tree: LoadState<FileNode>, interaction: TreeInteraction) {
             return (
                 <ul className="file-tree-list">
                     {children.map((child) => (
-                        <FileTreeNode key={child.path} node={child} depth={0} interaction={interaction} />
+                        <FileTreeNode
+                            key={child.path}
+                            node={child}
+                            depth={0}
+                            interaction={interaction}
+                        />
                     ))}
                 </ul>
             );

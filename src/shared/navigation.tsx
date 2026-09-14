@@ -17,8 +17,7 @@ import type { ProjectInfo } from "./types";
  * rather than guarding against it at every use.
  */
 export type ReturnablePage =
-    | { readonly kind: "browser" }
-    | { readonly kind: "project"; readonly project: ProjectInfo };
+    { readonly kind: "browser" } | { readonly kind: "project"; readonly project: ProjectInfo };
 
 /** Every page the app can display, tagged for exhaustive switching. */
 export type AppPage = ReturnablePage | { readonly kind: "settings" };

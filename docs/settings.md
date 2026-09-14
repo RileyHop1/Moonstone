@@ -12,11 +12,11 @@ A sidebar of sections beside the selected section's controls. Every
 control applies immediately and persists itself, so there is no save
 button and no way to lose a change by navigating away.
 
-| Section | Settings |
-|---|---|
-| General | Theme |
-| Editor | Font size, edit mode, line numbers, spell check |
-| Advanced | Show editor diagnostics |
+| Section  | Settings                                        |
+| -------- | ----------------------------------------------- |
+| General  | Theme                                           |
+| Editor   | Font size, edit mode, line numbers, spell check |
+| Advanced | Show editor diagnostics                         |
 
 Sections are declared in `settingsTabs.ts` as plain data, so adding one
 is a line there plus its panel component. `Settings.tsx` owns only the

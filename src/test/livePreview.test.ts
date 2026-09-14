@@ -279,15 +279,14 @@ describe("live preview — block layer", () => {
             // the MathML and an inline `color` on the HTML. Matching
             // only one of them is how an earlier version of this helper
             // found nothing and passed against broken rendering.
-            const element = view.dom.querySelector(
-                '[mathcolor="#cc0000"], [style*="cc0000"]',
-            );
+            const element = view.dom.querySelector('[mathcolor="#cc0000"], [style*="cc0000"]');
             return element?.textContent ?? null;
         }
 
         it("expands a macro the document defines", () => {
             const view = mountPreview(
-                String.raw`\newcommand{\dmodel}{d_{\text{model}}}` + "\n\nvalue $\\dmodel$ here",
+                String.raw`\newcommand{\dmodel}{d_{\text{model}}}` +
+                    "\n\nvalue $\\dmodel$ here",
                 { cursor: 0 },
             );
 
@@ -329,7 +328,11 @@ describe("live preview — block layer", () => {
             // Identical maths source, different meaning — the widget
             // must not consider itself unchanged.
             view.dispatch({
-                changes: { from: doc.indexOf("alpha"), to: doc.indexOf("alpha") + 5, insert: "beta" },
+                changes: {
+                    from: doc.indexOf("alpha"),
+                    to: doc.indexOf("alpha") + 5,
+                    insert: "beta",
+                },
             });
 
             expect(renderedText(view)).toContain("beta");
@@ -354,7 +357,9 @@ describe("live preview — block layer", () => {
          * @returns The resulting cursor position.
          */
         function moveTo(view: EditorView, anchor: number, userEvent?: string): number {
-            view.dispatch(userEvent ? { selection: { anchor }, userEvent } : { selection: { anchor } });
+            view.dispatch(
+                userEvent ? { selection: { anchor }, userEvent } : { selection: { anchor } },
+            );
             return view.state.selection.main.head;
         }
 
@@ -444,7 +449,8 @@ describe("live preview — block layer", () => {
     });
 
     it("keeps the box while the cursor sits in the rendered maths", () => {
-        const doc = "\\documentclass{article}\n\\begin{document}\n\n$$x^2$$\n\nbody\n\\end{document}";
+        const doc =
+            "\\documentclass{article}\n\\begin{document}\n\n$$x^2$$\n\nbody\n\\end{document}";
 
         // Inside the display math: it reveals as source, and the
         // surrounding document must stay boxed either way. This is the

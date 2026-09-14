@@ -89,17 +89,22 @@ export function createImageSourceResolver(
 }
 
 /**
- * Settings as the backend stores them: enum-like values arrive as
- * plain strings and are narrowed to {@link AppSettings} by the
- * settings provider.
+ * Settings as the backend stores them, straight off the IPC boundary.
+ *
+ * Every field is `unknown` on purpose. These values come from a JSON
+ * file on disk that an older build — or the user with a text editor —
+ * may have written, so the only honest type for them is "no idea yet".
+ * {@link normalizeSettings} is what turns them into a usable
+ * {@link AppSettings}; declaring them as `string`/`boolean` here would
+ * make its guards look redundant and invite someone to delete them.
  */
 export interface StoredSettings {
-    readonly theme: string;
-    readonly editorFontSize: number;
-    readonly modalMode: string;
-    readonly spellCheckEnabled: boolean;
-    readonly lineNumberMode: string;
-    readonly showDiagnostics: boolean;
+    readonly theme: unknown;
+    readonly editorFontSize: unknown;
+    readonly modalMode: unknown;
+    readonly spellCheckEnabled: unknown;
+    readonly lineNumberMode: unknown;
+    readonly showDiagnostics: unknown;
 }
 
 /**
@@ -166,10 +171,7 @@ export function listProjects(): Promise<Result<readonly ProjectInfo[]>> {
  * @param templateId - Identifier from {@link listTemplates}.
  * @returns Metadata of the created project.
  */
-export function createProject(
-    name: string,
-    templateId: string,
-): Promise<Result<ProjectInfo>> {
+export function createProject(name: string, templateId: string): Promise<Result<ProjectInfo>> {
     return invokeCommand("create_project", { name, templateId });
 }
 
@@ -262,10 +264,7 @@ export function createFile(
  * @param newName - The new project name.
  * @returns The renamed project's path.
  */
-export function renameProject(
-    projectPath: string,
-    newName: string,
-): Promise<Result<string>> {
+export function renameProject(projectPath: string, newName: string): Promise<Result<string>> {
     return invokeCommand("rename_project", { projectPath, newName });
 }
 
@@ -276,7 +275,10 @@ export function renameProject(
  * @param dirName - Name of the new directory.
  * @returns The full path of the created directory.
  */
-export function createDirectory(parentDirectory: string, dirName: string): Promise<Result<string>> {
+export function createDirectory(
+    parentDirectory: string,
+    dirName: string,
+): Promise<Result<string>> {
     return invokeCommand("create_directory", { parentDirectory, dirName });
 }
 

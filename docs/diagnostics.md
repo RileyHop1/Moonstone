@@ -27,12 +27,12 @@ stops the switch in settings from disagreeing with what is on screen.
 
 ## What it reports
 
-| Section | Fields | Why it matters |
-|---|---|---|
-| Modes | View mode, modal mode, editable | The first explanation for "why isn't this rendering?" — source mode renders nothing, read-only never reveals. |
-| Document | Lines, characters | Sets the scale for the whole-document scans the block layer runs. |
-| Selection | Cursor line/column, offset, range count, selected characters | The preview reveals source wherever the selection lands, so cursor position drives most preview behavior. |
-| Viewport | Rendered line range, share of the document rendered | The inline layer only scans visible ranges; this shows how much that actually is. |
+| Section   | Fields                                                       | Why it matters                                                                                                |
+| --------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| Modes     | View mode, modal mode, editable                              | The first explanation for "why isn't this rendering?" — source mode renders nothing, read-only never reveals. |
+| Document  | Lines, characters                                            | Sets the scale for the whole-document scans the block layer runs.                                             |
+| Selection | Cursor line/column, offset, range count, selected characters | The preview reveals source wherever the selection lands, so cursor position drives most preview behavior.     |
+| Viewport  | Rendered line range, share of the document rendered          | The inline layer only scans visible ranges; this shows how much that actually is.                             |
 
 ## Design
 
@@ -54,8 +54,8 @@ contains, so no rendering code changes.
 
 ### Why a StateField, not a Compartment
 
-`viewMode.ts` and `modalMode.ts` use compartments because they *swap
-extensions*. Diagnostics only toggles a flag, so a `StateField` plus a
+`viewMode.ts` and `modalMode.ts` use compartments because they _swap
+extensions_. Diagnostics only toggles a flag, so a `StateField` plus a
 `StateEffect` is simpler and — unlike a compartment — reachable
 directly from a keymap without routing through React state.
 

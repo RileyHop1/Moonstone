@@ -27,7 +27,7 @@ import type { ViewUpdate } from "@codemirror/view";
 const startPointerSelection = StateEffect.define<EditorSelection>();
 
 /** Ends the gesture, handing reveal back to the live selection. */
-const endPointerSelection = StateEffect.define<null>();
+const endPointerSelection = StateEffect.define();
 
 /**
  * The selection reveal is pinned to while a drag is in progress, or

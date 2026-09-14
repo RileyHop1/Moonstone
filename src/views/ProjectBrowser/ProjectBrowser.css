@@ -47,7 +47,9 @@
     color: var(--text-primary);
     cursor: pointer;
     user-select: none;
-    transition: border-color 120ms ease, box-shadow 120ms ease;
+    transition:
+        border-color 120ms ease,
+        box-shadow 120ms ease;
 }
 
 .project-card:hover {

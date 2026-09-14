@@ -8,8 +8,7 @@
  * callers must handle both branches.
  */
 export type Result<T> =
-    | { readonly ok: true; readonly data: T }
-    | { readonly ok: false; readonly error: string };
+    { readonly ok: true; readonly data: T } | { readonly ok: false; readonly error: string };
 
 /** Metadata for one project, as returned by the `list_projects` command. */
 export interface ProjectInfo {

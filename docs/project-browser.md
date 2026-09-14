@@ -30,6 +30,7 @@ characters, no path separators or `* ? " < > |`, no control
 characters, no leading dot, no trailing dot or space, and no Windows
 device name (`CON`, `NUL`, `COM1`… — reserved with any extension).
 The frontend never accepts what the backend would refuse.
+
 - Loading, error (with Retry), and empty states are rendered from a
   `LoadState` discriminated union, so every state is handled
   explicitly.

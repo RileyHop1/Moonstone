@@ -60,13 +60,13 @@ describe("dashes and quotes", () => {
 
 describe("accents", () => {
     it("renders bare accents", () => {
-        expect(render("na\\\"ive")).toBe("naïve");
+        expect(render('na\\"ive')).toBe("naïve");
         expect(render("caf\\'e")).toBe("café");
         expect(render("\\`a la carte")).toBe("à la carte");
     });
 
     it("renders braced accents", () => {
-        expect(render("na\\\"{i}ve")).toBe("naïve");
+        expect(render('na\\"{i}ve')).toBe("naïve");
         expect(render("\\^{o}")).toBe("ô");
     });
 

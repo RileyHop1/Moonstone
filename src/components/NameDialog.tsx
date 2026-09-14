@@ -4,7 +4,7 @@
  */
 
 import { useState } from "react";
-import type { FormEvent } from "react";
+import type { SyntheticEvent } from "react";
 import { DEFAULT_FILE_EXTENSION, FILE_TYPES } from "../shared/fileTypes";
 import { validateEntryName } from "../shared/nameValidation";
 
@@ -70,7 +70,7 @@ export function NameDialog({
      *
      * @param event - The form submission event.
      */
-    async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    async function handleSubmit(event: SyntheticEvent<HTMLFormElement>): Promise<void> {
         event.preventDefault();
 
         const trimmed = name.trim();
@@ -97,7 +97,9 @@ export function NameDialog({
             <form
                 className="dialog-panel"
                 onClick={(event) => event.stopPropagation()}
-                onSubmit={handleSubmit}
+                onSubmit={(event) => {
+                    void handleSubmit(event);
+                }}
             >
                 <h2 className="dialog-title">{title}</h2>
 

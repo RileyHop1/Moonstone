@@ -32,6 +32,134 @@
     background: var(--bg-editor);
 }
 
+/* ---- Split editor area ---- */
+
+/* A row or column of panes. `min-width`/`min-height` of zero is what
+   lets a nested split actually shrink: flex items default to their
+   content size, so without it a deep tree overflows instead of
+   sharing the space. */
+.pane-split {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.pane-split-row {
+    flex-direction: row;
+}
+
+.pane-split-column {
+    flex-direction: column;
+}
+
+.editor-pane {
+    position: relative;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--bg-editor);
+    border: 1px solid transparent;
+}
+
+/* Only the active pane is outlined: with several open, which one the
+   toolbar acts on has to be visible at a glance. */
+.editor-pane-active {
+    border-color: var(--border-color);
+}
+
+.editor-pane-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-sidebar);
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+
+.editor-pane-active .editor-pane-header {
+    color: var(--text-primary);
+}
+
+.editor-pane-name {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.editor-pane-dirty {
+    color: var(--accent);
+}
+
+.editor-pane-close {
+    flex: 0 0 auto;
+    padding: 0 0.25rem;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+.editor-pane-close:hover {
+    color: var(--accent);
+    background: var(--surface-hover);
+}
+
+/* Shows where a dropped file would land. Pointer-events off so the
+   hint never eats the drop it is describing. */
+.pane-drop-hint {
+    position: absolute;
+    z-index: 5;
+    background: var(--surface-drop-target);
+    outline: 1px dashed var(--accent);
+    outline-offset: -3px;
+    pointer-events: none;
+}
+
+.pane-drop-hint-left,
+.pane-drop-hint-right {
+    top: 0;
+    bottom: 0;
+    width: 50%;
+}
+
+.pane-drop-hint-left {
+    left: 0;
+}
+
+.pane-drop-hint-right {
+    right: 0;
+}
+
+.pane-drop-hint-top,
+.pane-drop-hint-bottom {
+    left: 0;
+    right: 0;
+    height: 50%;
+}
+
+.pane-drop-hint-top {
+    top: 0;
+}
+
+.pane-drop-hint-bottom {
+    bottom: 0;
+}
+
+/* The middle: opens the file in this pane rather than splitting. */
+.pane-drop-hint-centre {
+    inset: 0;
+}
+
 .editor-placeholder {
     flex: 1;
     display: flex;

@@ -190,7 +190,7 @@ function pressToggleShortcut(view: EditorView): void {
         keyCode: 68,
         ctrlKey: true,
         shiftKey: true,
-    } as KeyboardEventInit);
+    });
 
     runScopeHandlers(view, event, "editor");
 }
@@ -228,7 +228,10 @@ describe("driving diagnostics from the settings preference", () => {
 
     it("reports shortcut toggles so the preference can follow", () => {
         const changes: boolean[] = [];
-        const editor = mount({ initialVisible: false, onVisibilityChange: (v) => changes.push(v) });
+        const editor = mount({
+            initialVisible: false,
+            onVisibilityChange: (v) => changes.push(v),
+        });
 
         pressToggleShortcut(editor);
 

@@ -24,13 +24,13 @@ work belongs in a `ViewPlugin`. The preview is therefore split:
 
 The inline layer keeps **two** decoration sets: the replaces (also fed
 to `EditorView.atomicRanges`, so arrow keys hop over widgets) and the
-content marks from formatting commands, which must *not* be atomic or
+content marks from formatting commands, which must _not_ be atomic or
 the cursor could never enter `\textbf{...}` content.
 
 ## Caching and update cost
 
 The block layer runs on selection changes as well as edits, because
-the cursor decides what is revealed. What it does *not* do is rescan:
+the cursor decides what is revealed. What it does _not_ do is rescan:
 `documentScanField` holds the masked text and the results of every
 whole-document scan, and recomputes **only on `docChanged`**. A cursor
 move cannot change where the math is, only which of it is revealed.
@@ -40,13 +40,13 @@ must hand back the very same scan object.
 
 Measured on a 2,400-line, 56 KB document:
 
-| | rescanning per move | cached scan |
-|---|---|---|
-| Cursor move | 2.87 ms | **2.09 ms** |
+|             | rescanning per move | cached scan |
+| ----------- | ------------------- | ----------- |
+| Cursor move | 2.87 ms             | **2.09 ms** |
 
-So the scan is real but it is *not* the dominant cost. The remaining
+So the scan is real but it is _not_ the dominant cost. The remaining
 ~2 ms is rebuilding the whole-document decoration set, which has to
-happen because reveal state changed somewhere. Making *that*
+happen because reveal state changed somewhere. Making _that_
 incremental — recomputing only the constructs whose reveal state
 actually flipped — is the next lever if editing large documents ever
 feels heavy, and it is a substantially riskier change than this one.
@@ -66,23 +66,23 @@ prior claim — quadratic in the number of rendered constructs.
 Block-layer replaces are published to `EditorView.atomicRanges`
 **selectively**, via the `atomic` flag on `addReplace`:
 
-| Replace | Atomic | Why |
-|---|---|---|
-| Heading's hidden `\section{` and `}` | yes | One arrow press crosses them; the cursor still lands on the title text, which is what reveals the heading. |
-| `\item` marker | yes | One press crosses the marker; clicking still reveals the token. |
-| Hidden `\begin`/`\end` tag lines | **no** | Cursor contact with the tag line is the *only* way to reveal it. Atomic would make `\begin{...}` permanently uneditable by keyboard. |
-| Collapsed preamble | **no** | Same: entering it is what expands it. |
-| Tables, math environments | **no** | Same: the cursor must reach the region to reveal its source. |
+| Replace                              | Atomic | Why                                                                                                                                  |
+| ------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Heading's hidden `\section{` and `}` | yes    | One arrow press crosses them; the cursor still lands on the title text, which is what reveals the heading.                           |
+| `\item` marker                       | yes    | One press crosses the marker; clicking still reveals the token.                                                                      |
+| Hidden `\begin`/`\end` tag lines     | **no** | Cursor contact with the tag line is the _only_ way to reveal it. Atomic would make `\begin{...}` permanently uneditable by keyboard. |
+| Collapsed preamble                   | **no** | Same: entering it is what expands it.                                                                                                |
+| Tables, math environments            | **no** | Same: the cursor must reach the region to reveal its source.                                                                         |
 
 That distinction is load-bearing and easy to get wrong, so both
-directions are tested — the skips *and* the deliberate non-skips.
+directions are tested — the skips _and_ the deliberate non-skips.
 
 ### Reveal is frozen while dragging a selection
 
 Selecting across a block used to be impossible: the selection would
 collapse to a line or two. The cause was reveal itself. Hiding a
 block's `\begin`/`\end` lines is what makes it a block, so a drag
-growing into one un-hid those lines *mid-gesture* — the content below
+growing into one un-hid those lines _mid-gesture_ — the content below
 shifted down, the pointer ended up over a different line than the one
 it was travelling toward, and the selection ended wherever it landed.
 Dragging outside a block was unaffected, because revealing inline
@@ -98,7 +98,7 @@ opens as usual.
 Two details matter:
 
 - It listens for **`pointerdown`, not `mousedown`**. Pointer events
-  fire first, so the captured selection is the one from *before* the
+  fire first, so the captured selection is the one from _before_ the
   click. Capturing after CodeMirror has moved the cursor would freeze
   reveal at a cursor already inside the block — which reveals it, the
   very thing being avoided.
@@ -152,7 +152,7 @@ document — and is keyed to document changes only, since a cursor move
 cannot change which regions are inert. The inline layer then masks
 just its visible chunk, so its cost tracks the viewport rather than
 the document. The block layer masks everything, because it renders
-boxes, headings and markers across the whole file; making *that* scan
+boxes, headings and markers across the whole file; making _that_ scan
 incremental is separate work.
 
 Masking rebuilds text segment-wise: untouched spans between inert
@@ -172,7 +172,7 @@ What gets masked:
 - **Comments** — an unescaped `%` through the end of its line. `\%` is
   a literal percent; `\\%` is a line break followed by a real comment.
   The newline itself survives.
-- **Literal environments** — the *bodies* of `verbatim`, `verbatim*`,
+- **Literal environments** — the _bodies_ of `verbatim`, `verbatim*`,
   `Verbatim`, `Verbatim*`, `lstlisting`, `minted`, and `alltt`. Only
   the body: the `\begin`/`\end` tags stay visible so the environment
   still renders its box.
@@ -195,14 +195,14 @@ skipped and the source shows. Widgets return `ignoreEvent() → false`,
 so clicking any rendered widget puts the cursor inside it — revealing
 it on the next update. Granularity varies by feature:
 
-| Feature | Reveals when the selection touches |
-|---|---|
-| Inline/display math, symbols, chips, formatting | the whole command range |
-| Environments | the hidden `\begin`/`\end` **lines** only — editing the body must not un-box it |
-| Tables | anywhere in the environment (replaced wholesale) |
-| Preamble | the preamble region |
-| Headings | the heading **line** (the size class stays applied while editing) |
-| `\item` markers | the `\item` **token** only — editing item text keeps the marker |
+| Feature                                         | Reveals when the selection touches                                              |
+| ----------------------------------------------- | ------------------------------------------------------------------------------- |
+| Inline/display math, symbols, chips, formatting | the whole command range                                                         |
+| Environments                                    | the hidden `\begin`/`\end` **lines** only — editing the body must not un-box it |
+| Tables                                          | anywhere in the environment (replaced wholesale)                                |
+| Preamble                                        | the preamble region                                                             |
+| Headings                                        | the heading **line** (the size class stays applied while editing)               |
+| `\item` markers                                 | the `\item` **token** only — editing item text keeps the marker                 |
 
 ## Math
 
@@ -241,7 +241,7 @@ contains them.
 Table and math environments share one code path:
 `tryReplaceEnvironment` handles the reveal check, the "do the tag
 lines hold other content?" check and the block replace, while
-`buildEnvironmentWidget` decides *what* to render. Adding another
+`buildEnvironmentWidget` decides _what_ to render. Adding another
 whole-environment renderer means adding a branch there and nothing
 else.
 
@@ -261,13 +261,13 @@ directory as LaTeX does, and `convertFileSrc` turns the result into an
 nothing else.
 
 Three cases render a labelled placeholder rather than an image, so the
-author always sees *what* was referenced:
+author always sees _what_ was referenced:
 
-| Case | Shown |
-|---|---|
-| Path escapes the project with `..`, or no document is open | `🖼 path` |
+| Case                                                                                 | Shown    |
+| ------------------------------------------------------------------------------------ | -------- |
+| Path escapes the project with `..`, or no document is open                           | `🖼 path` |
 | Path has no file extension (LaTeX would probe for one; that needs filesystem access) | `🖼 path` |
-| Image fails to load — missing file, outside the asset scope | `⚠ path` |
+| Image fails to load — missing file, outside the asset scope                          | `⚠ path` |
 
 Without a resolver at all (plain browser, tests) every image is a
 placeholder, which keeps the preview usable outside Tauri.
@@ -322,10 +322,10 @@ have been perfectly legal.
 
 The environment pass has two treatments and they need different checks:
 
-| Treatment | Replaces | Correct check |
-|---|---|---|
-| Wholesale widget (`tryReplaceEnvironment`) | the entire environment | the whole range |
-| Box (hidden tags + `cm-env-line`) | the two tag lines only | the tag lines only |
+| Treatment                                  | Replaces               | Correct check      |
+| ------------------------------------------ | ---------------------- | ------------------ |
+| Wholesale widget (`tryReplaceEnvironment`) | the entire environment | the whole range    |
+| Box (hidden tags + `cm-env-line`)          | the two tag lines only | the tag lines only |
 
 The box treatment was guarded by the whole-range check, and it cost a
 real bug. Display math is claimed in an **earlier pass** than
@@ -335,7 +335,7 @@ environments, so a single `$$…$$` anywhere in the body made the
 document rendered as raw LaTeX.
 
 What made it look bizarre rather than obviously broken is that it
-inverted the reveal rule. Putting the cursor *inside* the maths
+inverted the reveal rule. Putting the cursor _inside_ the maths
 revealed them as source, so they claimed nothing, the check passed, and
 the document snapped into its rendered form. Clicking away broke it
 again.
@@ -402,7 +402,7 @@ They were missing entirely until the arXiv validation found
 `findTextReplacements.ts` renders the unglamorous, pervasive half of
 LaTeX prose: escaped punctuation (`\&`, `\%`, `\$`, `\_`, `\#`,
 `\{`, `\}`), em and en dashes (`---`, `--`), paired quotes
-(`` `` ``/`''`), ties (`~` → a real non-breaking space) and accents,
+(` ` ``/`''`), ties (`~` → a real non-breaking space) and accents,
 both bare (`\"o`) and braced (`\"{o}`), including the letter-named
 ones (`\c{c}`, `\v{s}`). Accented output is NFC-normalized so it is a
 single precomposed character rather than a combining pair.
@@ -439,7 +439,7 @@ math-interior matches, unclosed braces, and empty content.
 never matches) and resolves each against its **innermost** containing
 `itemize`/`enumerate` environment via `findEnvironments`. Itemize
 bullets vary by list depth (`•`, `◦`, `▪` cycling); enumerate labels
-follow LaTeX's counters — depth counts *enumerate* nesting only
+follow LaTeX's counters — depth counts _enumerate_ nesting only
 (`enumi`…`enumiv`), so `itemize > enumerate` gets `1.`, not `(a)`:
 depth 1 `1.`, depth 2 `(a)`, depth 3 `i.`, deeper `A.`. Indices count
 items per innermost environment, so nested lists restart and the outer
@@ -479,10 +479,10 @@ chip's interior is never double-rendered.
 
 ## Comments
 
-Comment *contents* are excluded from every scanner by the masking pass
+Comment _contents_ are excluded from every scanner by the masking pass
 described under [Inert regions](#inert-regions-comments-and-verbatim).
 
-Comment *styling* is theme-only: the `t.comment` highlight rule
+Comment _styling_ is theme-only: the `t.comment` highlight rule
 (`moonstoneTheme.ts`) is italic at `opacity: 0.6`. A decoration-based
 pass with cursor reveal was considered and rejected — dimmed text is
 still fully readable and editable, so the reveal machinery would add
@@ -526,7 +526,7 @@ spans worked.
 Cells render the same constructs as anywhere else — math, formatting
 commands, symbols and text-mode spellings. A table is replaced
 wholesale rather than decorated, so `renderCellContents` cannot reuse
-the decoration pipeline; it reuses the same *scanners* instead, sorts
+the decoration pipeline; it reuses the same _scanners_ instead, sorts
 their results by position and lets the first match win where they
 overlap. That way a cell means the same thing inside a table as
 outside one. Anything the parser doesn't understand (`\multirow`, nested
@@ -612,8 +612,8 @@ be, and a drag across a block must not be snapped back into it.
 
 ## Validated against a real paper
 
-Checked on 2026-07-27 against the arXiv source of *Attention Is All You
-Need* — ten files, 1,061 lines, a preamble with duplicate
+Checked on 2026-07-27 against the arXiv source of _Attention Is All You
+Need_ — ten files, 1,061 lines, a preamble with duplicate
 `\usepackage` lines, a bundled `.sty`, `subfiles` and fourteen
 `\newcommand` macros. No crashes and no console errors; headings, maths
 environments, images and citations all rendered.
@@ -621,11 +621,11 @@ environments, images and citations all rendered.
 Performance, measured on the same document (keystroke cost is the
 dispatch, where CodeMirror does its synchronous DOM work):
 
-| Document | First render | Keystroke median | Worst |
-|---|---|---|---|
-| 418 lines | 21ms | 1.4ms | 3.8ms |
-| 1,061 lines | 13ms | 1.8ms | 4.7ms |
-| 3,185 lines | 18ms | 4.0ms | 7.0ms |
+| Document    | First render | Keystroke median | Worst |
+| ----------- | ------------ | ---------------- | ----- |
+| 418 lines   | 21ms         | 1.4ms            | 3.8ms |
+| 1,061 lines | 13ms         | 1.8ms            | 4.7ms |
+| 3,185 lines | 18ms         | 4.0ms            | 7.0ms |
 
 Both the preview and the spell checker are scoped to the **viewport**,
 which is why first render barely grows with document length and why

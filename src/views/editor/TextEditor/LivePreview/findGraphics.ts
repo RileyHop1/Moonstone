@@ -49,7 +49,7 @@ export function findGraphicsRanges(
     for (const match of text.matchAll(GRAPHICS_PATTERN)) {
         const rawPath = match[2];
         const matchStart = match.index;
-        if (rawPath === undefined || matchStart === undefined) continue;
+        if (rawPath === undefined) continue;
 
         // `\\includegraphics` is a line break followed by a word.
         if (matchStart > 0 && text[matchStart - 1] === "\\") continue;

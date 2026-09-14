@@ -11,11 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { DockSide } from "../shared/useDockDrag";
-import {
-    MIN_PANEL_WIDTH_PX,
-    clampPanelWidth,
-    usePanelResize,
-} from "../shared/usePanelResize";
+import { MIN_PANEL_WIDTH_PX, clampPanelWidth, usePanelResize } from "../shared/usePanelResize";
 import "../styles/ResizablePanel.css";
 
 /** Props for {@link ResizablePanel}. */
@@ -39,12 +35,7 @@ const COLLAPSED_RAIL_PX = 26;
  * @param props - Initial width, dock side, label and contents.
  * @returns The panel element.
  */
-export function ResizablePanel({
-    initialWidth,
-    side,
-    label,
-    children,
-}: ResizablePanelProps) {
+export function ResizablePanel({ initialWidth, side, label, children }: ResizablePanelProps) {
     // The width the user asked for, which outlives a window too narrow
     // to honour it: shrinking the window and widening it again gives
     // their choice back rather than quietly keeping the squeezed value.

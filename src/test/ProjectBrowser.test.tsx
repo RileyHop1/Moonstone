@@ -110,7 +110,9 @@ describe("ProjectBrowser", () => {
         mockCommands({ list_projects: () => [], list_templates: () => TEMPLATES });
         renderWithProviders(<ProjectBrowser />);
 
-        fireEvent.click(await screen.findByRole("button", { name: "Create your first project" }));
+        fireEvent.click(
+            await screen.findByRole("button", { name: "Create your first project" }),
+        );
         await screen.findByText("Blank document");
         fireEvent.change(screen.getByPlaceholderText("Project name"), {
             target: { value: "bad/name" },
@@ -212,7 +214,9 @@ describe("ProjectBrowser", () => {
 
         const { navigateCalls } = renderWithProviders(<ProjectBrowser />);
 
-        fireEvent.click(await screen.findByRole("button", { name: "Create your first project" }));
+        fireEvent.click(
+            await screen.findByRole("button", { name: "Create your first project" }),
+        );
         await screen.findByText("Blank document");
         fireEvent.change(screen.getByPlaceholderText("Project name"), {
             target: { value: "fresh" },

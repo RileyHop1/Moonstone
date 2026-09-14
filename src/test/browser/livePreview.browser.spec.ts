@@ -86,7 +86,7 @@ async function roundTripFailures(page: Page): Promise<string[]> {
                 // `false` is the mode CodeMirror's own hover logic uses.
                 const pos = view.posAtCoords({ x, y }, false);
 
-                if (pos === null || pos < line.from || pos > line.to) {
+                if (pos < line.from || pos > line.to) {
                     failures.push(
                         `line ${line.number} ("${line.text.slice(0, 24)}") ` +
                             `at y=${y.toFixed(1)} of ${start.top.toFixed(1)}..${start.bottom.toFixed(1)} ` +
@@ -238,11 +238,12 @@ test.describe("selection inside an environment box", () => {
     ): Promise<{ top: number; width: number }[]> {
         await page.evaluate(
             ([anchor, head]) => {
-                const view = (window as { moonstoneView?: import("@codemirror/view").EditorView })
-                    .moonstoneView;
+                const view = (
+                    window as { moonstoneView?: import("@codemirror/view").EditorView }
+                ).moonstoneView;
                 if (!view) throw new Error("Editor is not mounted");
                 view.focus();
-                view.dispatch({ selection: { anchor: anchor as number, head: head as number } });
+                view.dispatch({ selection: { anchor: anchor!, head: head! } });
             },
             [from, to],
         );
@@ -383,11 +384,14 @@ test.describe("live preview geometry", () => {
             if (!view) throw new Error("Editor is not mounted");
 
             return Array.from(view.dom.querySelectorAll(".cm-widgetBuffer + *, .cm-line ~ div"))
-                .concat(Array.from(view.dom.querySelectorAll(".cm-preamble-row, .cm-math-block")))
+                .concat(
+                    Array.from(view.dom.querySelectorAll(".cm-preamble-row, .cm-math-block")),
+                )
                 .filter((element) => {
                     const style = getComputedStyle(element);
                     return (
-                        parseFloat(style.marginTop) !== 0 || parseFloat(style.marginBottom) !== 0
+                        parseFloat(style.marginTop) !== 0 ||
+                        parseFloat(style.marginBottom) !== 0
                     );
                 })
                 .map((element) => `${element.tagName}.${element.className}`);

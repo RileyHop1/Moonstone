@@ -43,7 +43,7 @@ export function findEnvironments(docText: string): readonly EnvRange[] {
     for (const match of docText.matchAll(ENV_TOKEN_PATTERN)) {
         const [token, keyword, name] = match;
         const tokenStart = match.index;
-        if (keyword === undefined || name === undefined || tokenStart === undefined) continue;
+        if (keyword === undefined || name === undefined) continue;
 
         if (keyword === "begin") {
             openStack.push({
@@ -58,7 +58,7 @@ export function findEnvironments(docText: string): readonly EnvRange[] {
 
         // An \end must close the innermost open environment; anything
         // else is malformed LaTeX and is left un-rendered.
-        if (!innermost || innermost.name !== name) continue;
+        if (innermost?.name !== name) continue;
 
         openStack.pop();
         environments.push({

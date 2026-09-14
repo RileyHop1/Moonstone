@@ -105,7 +105,7 @@ export class SymbolWidget extends WidgetType {
      */
     constructor(
         private readonly symbol: string,
-        private readonly className: string = "cm-symbol",
+        private readonly className = "cm-symbol",
     ) {
         super();
     }

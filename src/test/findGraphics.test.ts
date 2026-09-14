@@ -9,9 +9,7 @@ describe("findGraphicsRanges", () => {
     it("finds a bare command", () => {
         const ranges = findGraphicsRanges("\\includegraphics{plot.png}", 0, []);
 
-        expect(ranges).toEqual([
-            { from: 0, to: 26, path: "plot.png", options: null },
-        ]);
+        expect(ranges).toEqual([{ from: 0, to: 26, path: "plot.png", options: null }]);
     });
 
     it("captures the optional argument", () => {

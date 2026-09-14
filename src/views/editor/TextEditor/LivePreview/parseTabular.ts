@@ -23,7 +23,7 @@ export interface TabularCell {
 export type TabularRows = readonly (readonly TabularCell[])[];
 
 /** Constructs the parser cannot lay out; their presence aborts parsing. */
-const UNSUPPORTED_PATTERN = /\\begin\{/;
+const UNSUPPORTED_MARKER = "\\begin{";
 
 /** Matches the head of a `\multicolumn{n}{spec}` command. */
 const MULTICOLUMN_PATTERN = /^\\multicolumn\{(\d+)\}\{([^}]*)\}/;
@@ -47,7 +47,7 @@ const MULTIROW_PATTERN = /^\\multirow\*?\{(\d+)\}\{[^}]*\}(\[[^\]]*\])?/;
  * @returns The cell grid, or null when the content is unsupported.
  */
 export function parseTabular(interior: string): TabularRows | null {
-    if (UNSUPPORTED_PATTERN.test(interior)) return null;
+    if (interior.includes(UNSUPPORTED_MARKER)) return null;
 
     // Drop `[pos]` and the `{|c|c|}` column spec after \begin{tabular}.
     const body = interior.replace(/^\s*(\[[^\]]*\])?\s*\{[^}]*\}/, "");
@@ -250,7 +250,7 @@ function splitCells(row: string): readonly string[] {
     let current = "";
 
     for (let index = 0; index < row.length; index++) {
-        const char = row[index];
+        const char = row[index] ?? "";
 
         // Keep escaped characters (e.g. \&) inside the current cell.
         if (char === "\\") {

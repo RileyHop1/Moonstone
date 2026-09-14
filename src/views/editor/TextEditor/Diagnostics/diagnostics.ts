@@ -18,8 +18,8 @@
 
 import { StateEffect, StateField } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
-import { EditorView, ViewPlugin, keymap } from "@codemirror/view";
-import type { ViewUpdate } from "@codemirror/view";
+import { ViewPlugin, keymap } from "@codemirror/view";
+import type { ViewUpdate, EditorView } from "@codemirror/view";
 import { collectDiagnostics } from "./collectDiagnostics";
 import type { DiagnosticReport } from "./collectDiagnostics";
 import "./diagnostics.css";

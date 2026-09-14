@@ -36,9 +36,9 @@ describe("findSymbolRanges", () => {
     });
 
     it("maps a representative sample of symbols", () => {
-        expect(SYMBOLS["leq"]).toBe("≤");
-        expect(SYMBOLS["infty"]).toBe("∞");
-        expect(SYMBOLS["Rightarrow"]).toBe("⇒");
-        expect(SYMBOLS["Omega"]).toBe("Ω");
+        expect(SYMBOLS.leq).toBe("≤");
+        expect(SYMBOLS.infty).toBe("∞");
+        expect(SYMBOLS.Rightarrow).toBe("⇒");
+        expect(SYMBOLS.Omega).toBe("Ω");
     });
 });

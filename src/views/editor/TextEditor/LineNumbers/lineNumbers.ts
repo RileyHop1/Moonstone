@@ -59,11 +59,13 @@ class LineNumberMarker extends GutterMarker {
  * @returns A marker per line, or an empty set when the built-in
  *   absolute numbers are already correct.
  */
+const NO_MARKERS = RangeSet.of<GutterMarker>([]);
+
 function buildMarkers(state: EditorState, mode: LineNumberMode): RangeSet<GutterMarker> {
     // Absolute numbering is what the gutter does unaided, so it needs
     // no markers at all — and costs nothing per keystroke.
     if (!usesRelativeNumbers(mode, state.field(insertModeField, false) ?? true)) {
-        return RangeSet.empty;
+        return NO_MARKERS;
     }
 
     const cursorLine = state.doc.lineAt(state.selection.main.head).number;

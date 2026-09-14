@@ -3,19 +3,19 @@
 Seven palettes, all named for the moon, selected in **Settings →
 General → Theme** and persisted with the other settings.
 
-| Theme | Character |
-|---|---|
-| **Dark** | The default moonstone: blue-black body, silver-blue sheen |
-| **Light** | The same stone in daylight — milky blue-white |
-| **Blood Moon** | Lunar eclipse; copper-red on a red-black body |
-| **Blue Moon** | Rarer and colder: saturated royal navy, vivid azure |
-| **Harvest Moon** | Low autumn moon; amber and gold, the only theme with no blue |
-| **New Moon** | The moon unlit: near-black and monochrome, for OLED |
-| **Eclipse** | Totality: pure black behind pure white, vivid syntax. High contrast (AAA) |
+| Theme            | Character                                                                 |
+| ---------------- | ------------------------------------------------------------------------- |
+| **Dark**         | The default moonstone: blue-black body, silver-blue sheen                 |
+| **Light**        | The same stone in daylight — milky blue-white                             |
+| **Blood Moon**   | Lunar eclipse; copper-red on a red-black body                             |
+| **Blue Moon**    | Rarer and colder: saturated royal navy, vivid azure                       |
+| **Harvest Moon** | Low autumn moon; amber and gold, the only theme with no blue              |
+| **New Moon**     | The moon unlit: near-black and monochrome, for OLED                       |
+| **Eclipse**      | Totality: pure black behind pure white, vivid syntax. High contrast (AAA) |
 
 `dark` and `light` keep their plain ids because they are already
 persisted in users' settings files; renaming them would silently reset
-everyone to the default. Their *labels* are what the settings list
+everyone to the default. Their _labels_ are what the settings list
 shows, so the naming can be revisited without a migration.
 
 ## How a theme is applied
@@ -49,7 +49,7 @@ dark value, which is the bug this whole area was born from.
 
 This is not tidiness. Interactive tints were originally written as
 literals — `rgba(169, 198, 255, 0.08)` — in eight different files.
-That is the *dark* accent, so in the light theme every hover,
+That is the _dark_ accent, so in the light theme every hover,
 selection, active line and drop target was a pale blue wash on a
 near-white background: present in the DOM, invisible on screen. "The
 light theme looks washed out" was that, measured.
@@ -66,13 +66,13 @@ are on screen while a test looks.
 
 ## Tokens
 
-| Group | Variables |
-|---|---|
-| Surfaces | `--bg-app`, `--bg-sidebar`, `--bg-editor`, `--bg-preview`, `--bg-titlebar` |
-| Text | `--text-primary`, `--text-secondary`, `--error-color` |
-| Identity | `--accent`, `--accent-rgb`, `--border-color`, `--glow`, `--sheen` |
+| Group       | Variables                                                                                                                                                 |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Surfaces    | `--bg-app`, `--bg-sidebar`, `--bg-editor`, `--bg-preview`, `--bg-titlebar`                                                                                |
+| Text        | `--text-primary`, `--text-secondary`, `--error-color`                                                                                                     |
+| Identity    | `--accent`, `--accent-rgb`, `--border-color`, `--glow`, `--sheen`                                                                                         |
 | Interactive | `--surface-hover`, `--surface-selected`, `--surface-active-line`, `--surface-selection`, `--surface-drop-target`, `--surface-error-tint`, `--shadow-menu` |
-| Syntax | `--syn-keyword`, `--syn-name`, `--syn-variable`, `--syn-string`, `--syn-number`, `--syn-comment`, `--syn-operator`, `--syn-heading`, `--syn-invalid` |
+| Syntax      | `--syn-keyword`, `--syn-name`, `--syn-variable`, `--syn-string`, `--syn-number`, `--syn-comment`, `--syn-operator`, `--syn-heading`, `--syn-invalid`      |
 
 `--accent-rgb` holds bare channels (`47 86 173`) so a token can mix its
 own alpha with `rgb(var(--accent-rgb) / 0.18)`. Use a **semantic**
@@ -111,13 +111,13 @@ cannot express. `isDarkTheme(theme)` picks between them.
 in the browser for **every** registered palette — five checks each, so
 a new theme cannot ship below the bar the first two set:
 
-| Check | Floor |
-|---|---|
-| Body text on every surface it appears on | 4.5:1 (WCAG AA) |
-| Syntax colours against the editor background | 4.5:1 |
-| Comments (deliberately dimmed) | 3:1 |
-| Borders against their surface | 1.05:1 |
-| Hover / selection / active-line tints | 1.05:1 |
+| Check                                        | Floor           |
+| -------------------------------------------- | --------------- |
+| Body text on every surface it appears on     | 4.5:1 (WCAG AA) |
+| Syntax colours against the editor background | 4.5:1           |
+| Comments (deliberately dimmed)               | 3:1             |
+| Borders against their surface                | 1.05:1          |
+| Hover / selection / active-line tints        | 1.05:1          |
 
 The last figure is not a WCAG number — no standard sets a floor for
 decorative tints. It is a regression guard, and it is calibrated:

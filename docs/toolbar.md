@@ -23,11 +23,11 @@ The editor renders in one of three modes, switchable from both this
 control and the **View** menu (which shows a checkmark on the active
 mode). Mode is per-editor state and resets to **Live** each session.
 
-| Mode | Behavior |
-|---|---|
-| **Source** | Raw LaTeX, nothing rendered, editable. |
-| **Live** | Obsidian-style preview: renders when the cursor is away, reveals source at the cursor. |
-| **Read Only** | Everything rendered, no cursor-reveal, not editable. |
+| Mode          | Behavior                                                                               |
+| ------------- | -------------------------------------------------------------------------------------- |
+| **Source**    | Raw LaTeX, nothing rendered, editable.                                                 |
+| **Live**      | Obsidian-style preview: renders when the cursor is away, reveals source at the cursor. |
+| **Read Only** | Everything rendered, no cursor-reveal, not editable.                                   |
 
 Under the hood a CodeMirror `Compartment` (`viewMode.ts`) swaps the
 preview configuration in place — `previewExtensionForMode(mode)` — so

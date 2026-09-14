@@ -31,8 +31,7 @@ export interface SectionRange {
  * backslash), but ordering by length keeps that from being an accident
  * waiting on the next command added.
  */
-const SECTION_PATTERN =
-    /\\(subsubsection|subsection|section|subparagraph|paragraph)\*?\{/g;
+const SECTION_PATTERN = /\\(subsubsection|subsection|section|subparagraph|paragraph)\*?\{/g;
 
 /** Command name → heading level. */
 const SECTION_LEVELS: Record<string, SectionLevel> = {
@@ -62,7 +61,7 @@ export function findSections(docText: string): readonly SectionRange[] {
     for (const match of docText.matchAll(SECTION_PATTERN)) {
         const commandName = match[1];
         const matchStart = match.index;
-        if (commandName === undefined || matchStart === undefined) continue;
+        if (commandName === undefined) continue;
 
         const level = SECTION_LEVELS[commandName];
         if (level === undefined) continue;

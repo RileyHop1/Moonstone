@@ -62,6 +62,7 @@ export function ProjectBrowser() {
 
         void (async () => {
             const result = await listProjects();
+            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the cleanup below assigns to this flag, which ESLint's flow analysis does not follow
             if (cancelled) return;
 
             setProjects(
@@ -142,7 +143,15 @@ export function ProjectBrowser() {
         <div className="project-browser">
             <h1 className="project-browser-title">Projects</h1>
 
-            {renderContent(projects, openProject, openMenu, () => setIsDialogOpen(true), loadProjects)}
+            {renderContent(
+                projects,
+                openProject,
+                openMenu,
+                () => setIsDialogOpen(true),
+                () => {
+                    void loadProjects();
+                },
+            )}
 
             {isDialogOpen && (
                 <NewProjectDialog

@@ -45,7 +45,7 @@ export function validateEntryName(name: string): string | null {
     }
 
     if (FORBIDDEN_NAME_CHARS.test(name)) {
-        return 'Name can\'t contain / \\ : * ? " < > |';
+        return "Name can't contain / \\ : * ? \" < > |";
     }
 
     if (CONTROL_CHARS.test(name)) return "Name can't contain control characters";

@@ -99,7 +99,7 @@ export function findFormatRanges(
     for (const match of text.matchAll(FORMAT_PATTERN)) {
         const commandName = match[1];
         const matchStart = match.index;
-        if (commandName === undefined || matchStart === undefined) continue;
+        if (commandName === undefined) continue;
 
         const style = FORMAT_STYLES[commandName];
         if (style === undefined) continue;

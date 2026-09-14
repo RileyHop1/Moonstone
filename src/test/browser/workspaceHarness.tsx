@@ -118,7 +118,9 @@ function mountHarness(): void {
 
     createRoot(root).render(
         <StrictMode>
-            <div className={`project-page${side === "right" ? " project-page-dock-right" : ""}`}>
+            <div
+                className={`project-page${side === "right" ? " project-page-dock-right" : ""}`}
+            >
                 <div className="project-workspace">
                     <ResizablePanel
                         initialWidth={initialWidth}

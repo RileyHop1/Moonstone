@@ -56,7 +56,9 @@ describe("findMacros", () => {
     it("keeps the star on a starred operator", () => {
         const source = String.raw`\DeclareMathOperator*{\argmin}{arg\,min}`;
 
-        expect(findMacros(source)).toEqual({ "\\argmin": String.raw`\operatorname*{arg\,min}` });
+        expect(findMacros(source)).toEqual({
+            "\\argmin": String.raw`\operatorname*{arg\,min}`,
+        });
     });
 
     it("does not mistake \\renewcommand for \\newcommand", () => {

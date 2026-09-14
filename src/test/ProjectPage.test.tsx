@@ -301,7 +301,12 @@ describe("ProjectPage", () => {
         });
         renderWithProviders(<ProjectPage project={PROJECT} />);
 
-        const dataTransfer = { setData: vi.fn(), getData: () => "", effectAllowed: "", dropEffect: "" };
+        const dataTransfer = {
+            setData: vi.fn(),
+            getData: () => "",
+            effectAllowed: "",
+            dropEffect: "",
+        };
         fireEvent.dragStart(await screen.findByText("demo.tex"), { dataTransfer });
         fireEvent.drop(screen.getByText("chapters"), { dataTransfer });
 

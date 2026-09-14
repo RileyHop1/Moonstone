@@ -27,13 +27,7 @@ import {
     renameEntry,
     saveFile,
 } from "../../shared/tauri";
-import type {
-    FileNode,
-    LoadState,
-    ProjectInfo,
-    Reference,
-    ViewMode,
-} from "../../shared/types";
+import type { FileNode, LoadState, ProjectInfo, Reference, ViewMode } from "../../shared/types";
 import { useDockDrag } from "../../shared/useDockDrag";
 import type { DockSide } from "../../shared/useDockDrag";
 import { openSearchPanel } from "@codemirror/search";
@@ -50,10 +44,7 @@ import {
     spellCheckCompartment,
     spellCheckExtensionForEnabled,
 } from "../editor/TextEditor/SpellCheck";
-import {
-    referencesCompartment,
-    referencesExtension,
-} from "../editor/TextEditor/References";
+import { referencesCompartment, referencesExtension } from "../editor/TextEditor/References";
 import {
     lineNumbersCompartment,
     lineNumbersExtensionForMode,
@@ -234,6 +225,7 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
 
         void (async () => {
             const result = await listProjectFiles(project.path);
+            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the cleanup below assigns to this flag, which ESLint's flow analysis does not follow
             if (cancelled) return;
 
             if (!result.ok) {
@@ -259,7 +251,6 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
     useEffect(() => {
         void refreshReferences();
     }, [refreshReferences]);
-
 
     const save = useCallback(async (): Promise<void> => {
         const view = viewRef.current;
@@ -339,7 +330,8 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
             const openPath = openFileRef.current?.path;
             const deletedOpenFile =
                 openPath !== undefined &&
-                (openPath === operation.path || openPath.startsWith(`${operation.path}\\`) ||
+                (openPath === operation.path ||
+                    openPath.startsWith(`${operation.path}\\`) ||
                     openPath.startsWith(`${operation.path}/`));
             if (deletedOpenFile) {
                 setOpenFile(null);
@@ -531,7 +523,9 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
     const { isDragging, hoverSide, handleProps } = useDockDrag(setDockSide);
 
     return (
-        <div className={`project-page${dockSide === "right" ? " project-page-dock-right" : ""}`}>
+        <div
+            className={`project-page${dockSide === "right" ? " project-page-dock-right" : ""}`}
+        >
             <Toolbar
                 isDirty={isDirty}
                 hasOpenFile={openFile !== null}
@@ -581,7 +575,9 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
                             onSaveRequested={() => void save()}
                         />
                     ) : (
-                        <div className="editor-placeholder">Select a file to start editing.</div>
+                        <div className="editor-placeholder">
+                            Select a file to start editing.
+                        </div>
                     )}
                 </section>
             </div>

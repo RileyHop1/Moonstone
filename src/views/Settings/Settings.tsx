@@ -47,8 +47,7 @@ export function Settings() {
 
     // Settings is a detour, not a destination: leaving returns to the
     // work it was opened from, and says so.
-    const backLabel =
-        returnPage.kind === "project" ? returnPage.project.name : "projects";
+    const backLabel = returnPage.kind === "project" ? returnPage.project.name : "projects";
 
     return (
         <div className="settings-page">

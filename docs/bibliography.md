@@ -65,7 +65,7 @@ hiding the good entries above it.
   author/year summary shown beside each completion.
 - `references.ts` — the CodeMirror extension. Registered through
   `EditorState.languageData` rather than `autocompletion`'s `override`,
-  so it *adds* to the editor's existing completion sources instead of
+  so it _adds_ to the editor's existing completion sources instead of
   replacing them. `filter: false` is set on the result because ranking
   already ran across every field, and CodeMirror's own filter only sees
   labels — it would drop everything matched by title or author.
@@ -78,8 +78,8 @@ neither showed up in tests that call the source directly.
 
 1. **`latex()` must be configured with `enableAutocomplete: false`**
    (in `TextEditor.tsx`). The package otherwise installs its own
-   `autocompletion({override: […]})`, and `override` *replaces every
-   other completion source* — silently disabling reference search. Its
+   `autocompletion({override: […]})`, and `override` _replaces every
+   other completion source_ — silently disabling reference search. Its
    LaTeX completions are registered through language data separately,
    so turning this off loses nothing; `basicSetup`'s autocompletion
    still offers them alongside ours.

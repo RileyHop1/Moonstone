@@ -77,11 +77,7 @@ const REF_KINDS: Record<string, RefKind> = {
 };
 
 /** Kinds whose argument is a single opaque string, not a key list. */
-const SINGLE_ARGUMENT_KINDS: ReadonlySet<RefKind> = new Set([
-    "url",
-    "href",
-    "footnote",
-]);
+const SINGLE_ARGUMENT_KINDS: ReadonlySet<RefKind> = new Set(["url", "href", "footnote"]);
 
 /**
  * Scans text for renderable reference commands.
@@ -106,7 +102,7 @@ export function findRefRanges(
         const kind = REF_KINDS[match[1] ?? ""];
         const firstArgument = match[4];
         const matchStart = match.index;
-        if (kind === undefined || firstArgument === undefined || matchStart === undefined) {
+        if (kind === undefined || firstArgument === undefined) {
             continue;
         }
 

@@ -72,7 +72,7 @@ export function findCitationContext(text: string, position: number): CitationCon
 
     // The nearest brace is the innermost one still open; a closing
     // brace after it means the group has already ended.
-    if (before.indexOf("}", openIndex) !== -1) return null;
+    if (before.includes("}", openIndex)) return null;
 
     const command = CITATION_COMMAND.exec(before.slice(0, openIndex));
     if (!command?.[1] || !isCitationCommand(command[1])) return null;

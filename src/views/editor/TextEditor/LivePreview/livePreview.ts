@@ -715,13 +715,7 @@ function collectListItemDecorations(build: BlockBuild): void {
         // Atomic: one arrow press crosses the marker rather than
         // stepping through the hidden `\item`. Clicking it still
         // reveals the token.
-        addReplace(
-            build,
-            item.from,
-            item.to,
-            true,
-            new ListMarkerWidget(item.marker),
-        );
+        addReplace(build, item.from, item.to, true, new ListMarkerWidget(item.marker));
     }
 }
 
@@ -849,9 +843,10 @@ function addReplace(
     widget?: WidgetType,
     block = false,
 ): void {
-    const decoration = Decoration.replace(
-        widget ? { widget, block } : { block },
-    ).range(from, to);
+    const decoration = Decoration.replace(widget ? { widget, block } : { block }).range(
+        from,
+        to,
+    );
 
     build.decorations.push(decoration);
     if (atomic) build.atomic.push(decoration);
@@ -867,11 +862,7 @@ function addReplace(
  * @param hiddenLineNumbers - Lines already hidden.
  * @param lineNumber - The 1-based line to hide.
  */
-function hideLine(
-    build: BlockBuild,
-    hiddenLineNumbers: Set<number>,
-    lineNumber: number,
-): void {
+function hideLine(build: BlockBuild, hiddenLineNumbers: Set<number>, lineNumber: number): void {
     if (hiddenLineNumbers.has(lineNumber)) return;
     hiddenLineNumbers.add(lineNumber);
 

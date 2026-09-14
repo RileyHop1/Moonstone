@@ -78,12 +78,14 @@ describe("the gutter", () => {
         try {
             view.dispatch({ selection: { anchor: view.state.doc.line(cursorLine).from } });
 
-            return [...view.dom.querySelectorAll(".cm-lineNumbers .cm-gutterElement")]
-                .map((element) => element.textContent ?? "")
-                // The gutter carries a hidden spacer element sized to the
-                // widest number, which is not one of the rendered lines.
-                .filter((text) => text.length > 0)
-                .slice(1);
+            return (
+                [...view.dom.querySelectorAll(".cm-lineNumbers .cm-gutterElement")]
+                    .map((element) => element.textContent ?? "")
+                    // The gutter carries a hidden spacer element sized to the
+                    // widest number, which is not one of the rendered lines.
+                    .filter((text) => text.length > 0)
+                    .slice(1)
+            );
         } finally {
             view.destroy();
             parent.remove();

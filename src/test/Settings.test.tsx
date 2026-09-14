@@ -80,8 +80,8 @@ describe("Settings", () => {
                 editorFontSize: 14,
                 modalMode: "none",
                 spellCheckEnabled: true,
-            lineNumberMode: "absolute",
-            showDiagnostics: false,
+                lineNumberMode: "absolute",
+                showDiagnostics: false,
             },
         });
     });
@@ -112,8 +112,8 @@ describe("Settings", () => {
                     editorFontSize: 24,
                     modalMode: "none",
                     spellCheckEnabled: true,
-                lineNumberMode: "absolute",
-                showDiagnostics: false,
+                    lineNumberMode: "absolute",
+                    showDiagnostics: false,
                 },
             });
         });
@@ -133,8 +133,8 @@ describe("Settings", () => {
                         editorFontSize: 14,
                         modalMode: "vim",
                         spellCheckEnabled: true,
-                    lineNumberMode: "absolute",
-                    showDiagnostics: false,
+                        lineNumberMode: "absolute",
+                        showDiagnostics: false,
                     },
                 });
             });
@@ -153,8 +153,8 @@ describe("Settings", () => {
                         editorFontSize: 14,
                         modalMode: "none",
                         spellCheckEnabled: false,
-                    lineNumberMode: "absolute",
-                    showDiagnostics: false,
+                        lineNumberMode: "absolute",
+                        showDiagnostics: false,
                     },
                 });
             });
@@ -193,7 +193,7 @@ describe("Settings", () => {
                         modalMode: "vim",
                         spellCheckEnabled: true,
                         lineNumberMode: "relative",
-                    showDiagnostics: false,
+                        showDiagnostics: false,
                     },
                 });
             });

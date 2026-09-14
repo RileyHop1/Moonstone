@@ -84,11 +84,7 @@ export function findInertRegions(docText: string): InertRegions {
  * @param regions - Inert regions for the whole document.
  * @returns The masked chunk, identical in length to the input.
  */
-export function maskChunk(
-    chunk: string,
-    chunkFrom: number,
-    regions: InertRegions,
-): string {
+export function maskChunk(chunk: string, chunkFrom: number, regions: InertRegions): string {
     const overlapping = collectOverlapping(chunk.length, chunkFrom, regions);
     if (overlapping.length === 0) return chunk;
 
@@ -257,7 +253,7 @@ function findVerbatimEnvironmentRanges(
     for (const match of text.matchAll(ENV_BEGIN_PATTERN)) {
         const name = match[1];
         const matchStart = match.index;
-        if (name === undefined || matchStart === undefined) continue;
+        if (name === undefined) continue;
         if (!VERBATIM_ENVIRONMENTS.has(name)) continue;
         if (containsPosition(comments, matchStart)) continue;
 
@@ -281,16 +277,13 @@ function findVerbatimEnvironmentRanges(
  * @param comments - Comment intervals to ignore.
  * @returns The argument intervals.
  */
-function findVerbRanges(
-    text: string,
-    comments: readonly Interval[],
-): readonly Interval[] {
+function findVerbRanges(text: string, comments: readonly Interval[]): readonly Interval[] {
     const ranges: Interval[] = [];
 
     for (const match of text.matchAll(VERB_PATTERN)) {
         const delimiter = match[1];
         const matchStart = match.index;
-        if (delimiter === undefined || matchStart === undefined) continue;
+        if (delimiter === undefined) continue;
         if (containsPosition(comments, matchStart)) continue;
 
         const contentFrom = matchStart + match[0].length;

@@ -9,18 +9,18 @@ and the project opens ready to write.
 Ten templates, offered in this order — blank first, then the document
 kinds people reach for most:
 
-| Template | Files | What it gives you |
-|---|---|---|
-| Blank document | 1 | An empty `article` with a title and nothing else |
-| Academic article | 2 | Abstract, numbered sections, `references.bib` |
-| Report | 1 | `report` class, chapters, table of contents, appendix |
-| Thesis / dissertation | 7 | Title page, abstract, one file per chapter, bibliography |
-| Presentation | 1 | Beamer, 16:9, overlays and a two-column frame |
-| Homework / problem set | 1 | Numbered problems with `solution` environments |
-| Lecture notes | 1 | `amsthm` theorem/definition/proof environments |
-| CV / résumé | 1 | One-page CV, standard packages only |
-| Cover letter | 1 | `letter` class with sender and recipient blocks |
-| Book | 3 | Front matter, parts, per-chapter files, running heads |
+| Template               | Files | What it gives you                                        |
+| ---------------------- | ----- | -------------------------------------------------------- |
+| Blank document         | 1     | An empty `article` with a title and nothing else         |
+| Academic article       | 2     | Abstract, numbered sections, `references.bib`            |
+| Report                 | 1     | `report` class, chapters, table of contents, appendix    |
+| Thesis / dissertation  | 7     | Title page, abstract, one file per chapter, bibliography |
+| Presentation           | 1     | Beamer, 16:9, overlays and a two-column frame            |
+| Homework / problem set | 1     | Numbered problems with `solution` environments           |
+| Lecture notes          | 1     | `amsthm` theorem/definition/proof environments           |
+| CV / résumé            | 1     | One-page CV, standard packages only                      |
+| Cover letter           | 1     | `letter` class with sender and recipient blocks          |
+| Book                   | 3     | Front matter, parts, per-chapter files, running heads    |
 
 Templates deliberately stay close to the standard classes and widely
 installed packages, so a fresh project compiles on an ordinary TeX

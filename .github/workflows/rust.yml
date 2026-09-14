@@ -1,9 +1,9 @@
 name: Rust
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 env:
   CARGO_TERM_COLOR: always
 jobs:
@@ -11,9 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: src-tauri     
+        working-directory: src-tauri
     steps:
-      - uses: actions/checkout@v4        
+      - uses: actions/checkout@v4
 
       - name: Install Tauri system dependencies
         run: |

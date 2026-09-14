@@ -3,10 +3,12 @@
  * live-preview configuration at runtime, and the mode → extension
  * mapping behind the Source / Live / Read-only switch.
  *
- * The compartment is a module singleton, which is safe because exactly
- * one editor exists at a time (the project page mounts a single
- * `TextEditor`, remounted per file). If Moonstone ever shows two
- * editors at once, give each its own compartment instance instead.
+ * The compartment is a module singleton, and that is safe with any
+ * number of editors on screen. A `Compartment` is only an identity
+ * key: its *content* lives in each editor's state, so reconfiguring
+ * one editor leaves every other alone. Verified with two editors side
+ * by side before the split view was built — switching one to source
+ * mode left the other rendering.
  */
 
 import { Compartment, EditorState, Facet } from "@codemirror/state";

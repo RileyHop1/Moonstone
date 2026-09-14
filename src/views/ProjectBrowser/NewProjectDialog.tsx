@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
+import type { SyntheticEvent } from "react";
 import { validateEntryName } from "../../shared/nameValidation";
 import { createProject, listTemplates } from "../../shared/tauri";
 import { assertNever } from "../../shared/types";
@@ -71,7 +71,7 @@ export function NewProjectDialog({ onCreated, onCancel }: NewProjectDialogProps)
      *
      * @param event - The form submission event.
      */
-    async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    async function handleSubmit(event: SyntheticEvent<HTMLFormElement>): Promise<void> {
         event.preventDefault();
 
         const trimmed = name.trim();
@@ -129,7 +129,9 @@ export function NewProjectDialog({ onCreated, onCancel }: NewProjectDialogProps)
                                 onClick={() => setSelectedTemplateId(template.id)}
                             >
                                 <span className="template-option-header">
-                                    <span className="template-option-name">{template.name}</span>
+                                    <span className="template-option-name">
+                                        {template.name}
+                                    </span>
                                     <span className="template-option-count">
                                         {describeFileCount(template.fileCount)}
                                     </span>
@@ -158,7 +160,9 @@ export function NewProjectDialog({ onCreated, onCancel }: NewProjectDialogProps)
             <form
                 className="dialog-panel dialog-panel-wide"
                 onClick={(event) => event.stopPropagation()}
-                onSubmit={handleSubmit}
+                onSubmit={(event) => {
+                    void handleSubmit(event);
+                }}
             >
                 <h2 className="dialog-title">New Project</h2>
 

@@ -46,7 +46,6 @@ export function findListItems(docText: string): readonly ListItem[] {
 
     for (const match of docText.matchAll(ITEM_PATTERN)) {
         const matchStart = match.index;
-        if (matchStart === undefined) continue;
 
         // `\\item` is a line break followed by the word "item".
         if (matchStart > 0 && docText[matchStart - 1] === "\\") continue;
@@ -180,8 +179,7 @@ function countContaining(listEnvs: readonly EnvRange[], position: number): numbe
  */
 function countEnumerateDepth(listEnvs: readonly EnvRange[], position: number): number {
     return listEnvs.filter(
-        (env) =>
-            env.name === "enumerate" && position >= env.beginTo && position < env.endFrom,
+        (env) => env.name === "enumerate" && position >= env.beginTo && position < env.endFrom,
     ).length;
 }
 
@@ -242,4 +240,3 @@ function toRoman(value: number): string {
 
     return result;
 }
-

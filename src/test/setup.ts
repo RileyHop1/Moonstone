@@ -26,6 +26,7 @@ class InertResizeObserver implements ResizeObserver {
     disconnect(): void {}
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- lib.dom declares ResizeObserver unconditionally; jsdom does not provide one
 globalThis.ResizeObserver ??= InertResizeObserver;
 
 afterEach(() => {

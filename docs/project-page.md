@@ -56,7 +56,7 @@ makes the panel reusable for the second file window in the plan.
 **Dragging** the splitter on the panel's inner edge resizes it. The
 editor is a flex child that grows, so it absorbs exactly what the panel
 gives up without any coordination between them. Docked right, the
-panel grows as the pointer moves *left*; the hook inverts the delta
+panel grows as the pointer moves _left_; the hook inverts the delta
 from the `side` prop rather than the layout guessing.
 
 **Two floors, both enforced** (`clampPanelWidth`): the panel never goes

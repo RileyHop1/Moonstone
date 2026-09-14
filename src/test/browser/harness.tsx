@@ -67,11 +67,7 @@ const DEFAULT_DOC = [
  * @param fallback - Value used when the parameter is missing or invalid.
  * @returns The chosen value.
  */
-function readEnum<T extends string>(
-    name: string,
-    allowed: readonly T[],
-    fallback: T,
-): T {
+function readEnum<T extends string>(name: string, allowed: readonly T[], fallback: T): T {
     const raw = new URLSearchParams(window.location.search).get(name);
     const match = allowed.find((value) => value === raw);
 
@@ -132,7 +128,9 @@ function mountHarness(): void {
                     ["none", "vim", "helix"],
                     "none",
                 )}
-                initialSpellCheckEnabled={readEnum("spell", ["on", "off"] as const, "on") === "on"}
+                initialSpellCheckEnabled={
+                    readEnum("spell", ["on", "off"] as const, "on") === "on"
+                }
                 initialTheme={theme}
                 initialLineNumberMode={readEnum<LineNumberMode>(
                     "lines",

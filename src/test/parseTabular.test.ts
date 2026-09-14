@@ -54,7 +54,9 @@ describe("parseTabular", () => {
     it("reads alignment through vertical rules in the spec", () => {
         const interior = "{cc}\n\\multicolumn{2}{|r|}{x} \\\\\n";
 
-        expect(parseTabular(interior)).toEqual([[{ source: "x", span: 2, rowSpan: 1, align: "right" }]]);
+        expect(parseTabular(interior)).toEqual([
+            [{ source: "x", span: 2, rowSpan: 1, align: "right" }],
+        ]);
     });
 
     it("keeps nested braces inside multicolumn content", () => {
@@ -77,7 +79,9 @@ describe("parseTabular", () => {
     });
 
     it("returns null for unsupported constructs", () => {
-        expect(parseTabular("{cc}\n\\begin{tabular}{c}\nnested\n\\end{tabular} \\\\\n")).toBeNull();
+        expect(
+            parseTabular("{cc}\n\\begin{tabular}{c}\nnested\n\\end{tabular} \\\\\n"),
+        ).toBeNull();
     });
 
     describe("multirow", () => {
@@ -110,7 +114,8 @@ describe("parseTabular", () => {
         });
 
         it("handles a span of three", () => {
-            const interior = "{ll}\n\\multirow{3}{*}{A} & 1 \\\\\n & 2 \\\\\n & 3 \\\\\nB & 4 \\\\\n";
+            const interior =
+                "{ll}\n\\multirow{3}{*}{A} & 1 \\\\\n & 2 \\\\\n & 3 \\\\\nB & 4 \\\\\n";
 
             expect(parseTabular(interior)).toEqual([
                 [spanning("A", 3), cell("1")],

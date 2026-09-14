@@ -81,7 +81,10 @@ function buildInsertMenu({ editor }: MenuContext): Menu {
         items: [
             { label: "Math", action: editor ? () => editor.insertSnippet("inlineMath") : null },
             { label: "Tables", action: editor ? () => editor.insertSnippet("table") : null },
-            { label: "Template", action: editor ? () => editor.insertSnippet("template") : null },
+            {
+                label: "Template",
+                action: editor ? () => editor.insertSnippet("template") : null,
+            },
         ],
     };
 }

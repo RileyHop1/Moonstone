@@ -9,8 +9,8 @@
 
 import { StateEffect, StateField } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
-import { EditorView, ViewPlugin } from "@codemirror/view";
-import type { PluginValue, ViewUpdate } from "@codemirror/view";
+import { ViewPlugin } from "@codemirror/view";
+import type { PluginValue, ViewUpdate, EditorView } from "@codemirror/view";
 import { getCM } from "@replit/codemirror-vim";
 import type { ModalMode } from "../../../../shared/types";
 
@@ -54,7 +54,7 @@ export function detectInsertMode(view: EditorView, modalMode: ModalMode): boolea
             return true;
 
         case "vim":
-            return getCM(view)?.state?.vim?.insertMode === true;
+            return getCM(view)?.state.vim?.insertMode === true;
 
         case "helix":
             return !view.scrollDOM.classList.contains(HELIX_BLOCK_CURSOR_CLASS);

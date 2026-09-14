@@ -75,7 +75,9 @@ async function centreOfWord(page: Page, word: string): Promise<Point> {
  * @param page - The Playwright page.
  * @returns The box, or null when the popup is closed.
  */
-async function tooltipBox(page: Page): Promise<{ x: number; y: number; width: number; height: number } | null> {
+async function tooltipBox(
+    page: Page,
+): Promise<{ x: number; y: number; width: number; height: number } | null> {
     return page.locator(TOOLTIP).first().boundingBox();
 }
 
@@ -162,9 +164,10 @@ test.describe("spell-check correction popup", () => {
             if ((await page.locator(TOOLTIP).count()) === 0) closedAt.push(point);
         }
 
-        expect(closedAt, "popup closed on the way from a clicked word to the corrections").toEqual(
-            [],
-        );
+        expect(
+            closedAt,
+            "popup closed on the way from a clicked word to the corrections",
+        ).toEqual([]);
     });
 
     test("applies a correction when its button is clicked", async ({ page }) => {

@@ -137,6 +137,7 @@ export function SettingsProvider({ children }: { readonly children: ReactNode })
 
         void (async () => {
             const result = await getSettings();
+            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the cleanup below assigns to this flag, which ESLint's flow analysis does not follow
             if (cancelled || !result.ok) return;
 
             setSettings(normalizeSettings(result.data));

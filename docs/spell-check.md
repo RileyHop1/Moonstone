@@ -25,16 +25,16 @@ a wall of false positives trains the author to ignore the underlines.
 
 `findProseWords.ts` therefore skips:
 
-| Skipped | Example |
-|---|---|
-| Commands | `\textbf`, `\maketitle` |
-| Identifier-style arguments | `\ref{sec:intro}`, `\begin{itemize}`, `\includegraphics{figs/plot.png}`, `\usepackage{amsmath}` |
-| Code arguments | `\texttt{getElementById}` |
-| Math | `$x_{ij}$`, `$$\sum_k a_k$$` |
-| Comments and verbatim bodies | reusing the preview's `maskChunk` |
-| Words under three letters, containing digits, or all-caps | `an`, `h2o`, `HTML` |
+| Skipped                                                   | Example                                                                                         |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Commands                                                  | `\textbf`, `\maketitle`                                                                         |
+| Identifier-style arguments                                | `\ref{sec:intro}`, `\begin{itemize}`, `\includegraphics{figs/plot.png}`, `\usepackage{amsmath}` |
+| Code arguments                                            | `\texttt{getElementById}`                                                                       |
+| Math                                                      | `$x_{ij}$`, `$$\sum_k a_k$$`                                                                    |
+| Comments and verbatim bodies                              | reusing the preview's `maskChunk`                                                               |
+| Words under three letters, containing digits, or all-caps | `an`, `h2o`, `HTML`                                                                             |
 
-Prose *inside* commands is still checked — `\textbf{important words}`
+Prose _inside_ commands is still checked — `\textbf{important words}`
 is real text, and so is a section title.
 
 Two deliberate fallbacks, both matching the preview's philosophy that

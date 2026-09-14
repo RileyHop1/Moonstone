@@ -152,11 +152,7 @@ export function applyTextReplacements(source: string): string {
  * @param to - Span end.
  * @returns True on any intersection.
  */
-function overlapsExcluded(
-    exclude: readonly Interval[],
-    from: number,
-    to: number,
-): boolean {
+function overlapsExcluded(exclude: readonly Interval[], from: number, to: number): boolean {
     return exclude.some((interval) => interval.from < to && interval.to > from);
 }
 

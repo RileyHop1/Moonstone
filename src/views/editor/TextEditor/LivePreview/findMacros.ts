@@ -110,7 +110,7 @@ export function findMacros(text: string): MacroTable {
         const isOperator = match[1] === "DeclareMathOperator";
         const starred = match[2] === "*";
 
-        const name = readMacroName(text, (match.index ?? 0) + match[0].length);
+        const name = readMacroName(text, match.index + match[0].length);
         if (!name) continue;
 
         const bodyStart = skipOptionalArguments(text, name.end);
@@ -125,9 +125,7 @@ export function findMacros(text: string): MacroTable {
 
         // `\DeclareMathOperator{\argmax}{arg\,max}` declares an
         // operator, which KaTeX spells `\operatorname`.
-        macros[name.name] = isOperator
-            ? `\\operatorname${starred ? "*" : ""}{${body}}`
-            : body;
+        macros[name.name] = isOperator ? `\\operatorname${starred ? "*" : ""}{${body}}` : body;
     }
 
     return macros;

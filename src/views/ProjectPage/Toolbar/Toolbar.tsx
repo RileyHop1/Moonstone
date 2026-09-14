@@ -67,7 +67,13 @@ const SNIPPET_BUTTONS: readonly SnippetButton[] = [
  * @param props - Editor state and actions.
  * @returns The toolbar element.
  */
-export function Toolbar({ isDirty, hasOpenFile, viewMode, actions, statusMessage }: ToolbarProps) {
+export function Toolbar({
+    isDirty,
+    hasOpenFile,
+    viewMode,
+    actions,
+    statusMessage,
+}: ToolbarProps) {
     // Read-only mode is non-editable, so snippet insertion is disabled.
     const canEdit = hasOpenFile && viewMode !== "readonly";
 

@@ -8,10 +8,9 @@
  * (experimental, selection-first). Only built-in keybindings are
  * enabled — custom mappings and persistence are out of scope.
  *
- * The compartment is a module singleton, which is safe because exactly
- * one editor exists at a time (the project page mounts a single
- * `TextEditor`, remounted per file). If Moonstone ever shows two
- * editors at once, give each its own compartment instance instead.
+ * The compartment is a module singleton, which is safe with any number
+ * of editors on screen: a `Compartment` is only an identity key, and
+ * its content lives in each editor's own state. See `viewMode.ts`.
  */
 
 import { Compartment, Facet } from "@codemirror/state";

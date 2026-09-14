@@ -130,9 +130,13 @@ View modes (Source/Live/Read-Only) deliberately stayed in the View menu
 and toolbar — those are per-document state you switch constantly, not a
 preference.
 
-`ProjectPage` reads both from `useSettings()` and reconfigures the
-editor's compartments when they change, so a change applies to the open
-document immediately without losing the document or undo history.
+`ProjectPage` reads both from `useSettings()` into a single
+`EditorConfiguration` object. Each editor applies that itself — see
+`src/views/editor/TextEditor/editorConfiguration.ts` — so a change
+applies immediately to _every_ open editor without losing the document
+or undo history. The page deliberately does not hold an `EditorView` in
+order to change a setting; that is what makes more than one editor on
+screen possible.
 
 ## How it flows
 

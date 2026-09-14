@@ -20,9 +20,9 @@ preserves the document and undo history — no remount.
   vim/helix is ever active, so there is no keymap conflict.
 - The mode is a **user preference**, stored in `AppSettings`, not
   per-session editor state. `ProjectPage` reads it from `useSettings()`
-  and dispatches `modalCompartment.reconfigure(...)` when it changes,
-  so switching applies to the open document immediately without a
-  remount. It is deliberately not in `EditorActions`: there is one
+  into the `EditorConfiguration`, and each editor reconfigures
+  `modalCompartment` itself when it changes, so switching applies to
+  every open document immediately without a remount. It is deliberately not in `EditorActions`: there is one
   place to change it, the settings page.
 
 ### Vim

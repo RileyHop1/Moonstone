@@ -97,9 +97,11 @@ per-keystroke cost does not grow with the document.
 
 Like the view mode, modal mode and spell checker, the reference list
 lives in a **compartment**. `ProjectPage` loads the bibliography when
-the project opens and reconfigures the compartment when it changes, so
-saving a `.bib` makes its new entries citable immediately without
-rebuilding the editor or losing undo history.
+the project opens and puts it in the `EditorConfiguration` it hands
+each editor; the editor reconfigures its own compartment when that
+changes (see `editorConfiguration.ts`). So saving a `.bib` makes its new
+entries citable immediately, in every open editor, without rebuilding
+anything or losing undo history.
 
 ## Not included
 

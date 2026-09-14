@@ -5,6 +5,11 @@
  * passes the initial document and remounts (via a React `key`) when a
  * different file opens, which also gives each file its own undo
  * history.
+ *
+ * It is *not* stateless about settings. The editor owns applying its
+ * own {@link EditorConfiguration}, so a parent showing several editors
+ * at once simply hands each the same object instead of dispatching
+ * into each view itself.
  */
 
 import { useEffect, useRef } from "react";
@@ -12,57 +17,34 @@ import { EditorView, basicSetup } from "codemirror";
 import { keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import { latex } from "codemirror-lang-latex";
-import type { ModalMode, Theme, ViewMode } from "../../../shared/types";
-import { moonstoneThemeForMode, themeCompartment } from "./moonstoneTheme";
-import type { ImageSourceResolver, LinkOpener } from "./LivePreview";
-import { previewCompartment, previewExtensionForMode } from "./viewMode";
-import { modalCompartment, modalExtensionForMode } from "./modalMode";
 import { editorDiagnostics } from "./Diagnostics";
-import { spellCheckCompartment, spellCheckExtensionForEnabled } from "./SpellCheck";
-import { referencesCompartment, referencesExtension } from "./References";
-import { lineNumbersCompartment, lineNumbersExtensionForMode } from "./LineNumbers";
-import type { LineNumberMode, Reference } from "../../../shared/types";
+import { editorExtensions, reconfigurationEffects } from "./editorConfiguration";
+import type { EditorConfiguration } from "./editorConfiguration";
 import "./TextEditor.css";
 
 /** Props for {@link TextEditor}. */
 export interface TextEditorProps {
     /** Document contents the editor starts with. */
     readonly initialDoc: string;
-    /** View mode the editor mounts in (compartment reconfigures later). */
-    readonly initialViewMode: ViewMode;
-    /** Modal editing mode at mount (compartment reconfigures later). */
-    readonly initialModalMode: ModalMode;
-    /** Whether spell checking is on at mount. */
-    readonly initialSpellCheckEnabled: boolean;
     /**
-     * Palette the editor mounts with (compartment reconfigures later).
-     * CodeMirror's `dark` flag is baked into a theme extension, so the
-     * editor needs telling — the CSS variables alone are not enough.
+     * The settings this editor runs under. Applied at mount and
+     * re-applied whenever the object changes, so the parent never
+     * needs to hold the view to change a setting.
      */
-    readonly initialTheme: Theme;
-    /** How lines are numbered at mount. */
-    readonly initialLineNumberMode: LineNumberMode;
-    /** Whether the diagnostic overlay is shown at mount. */
-    readonly initialShowDiagnostics: boolean;
+    readonly configuration: EditorConfiguration;
     /** Called when the diagnostics shortcut toggles the overlay. */
     readonly onDiagnosticsToggled: (visible: boolean) => void;
-    /**
-     * References offered for `\cite{…}` at mount; the page reconfigures
-     * the compartment when the project's bibliography changes.
-     */
-    readonly initialReferences: readonly Reference[];
-    /**
-     * Resolves `\includegraphics` paths to loadable URLs. Omitted,
-     * images render as placeholders.
-     */
-    readonly resolveImageSource?: ImageSourceResolver;
-    /**
-     * Opens `\url`/`\href` targets. Omitted, link chips render without
-     * an open affordance.
-     */
-    readonly openLink?: LinkOpener;
     /** Receives the created EditorView so the parent can drive it. */
     readonly onViewReady: (view: EditorView) => void;
+    /**
+     * Called with the view just before it is destroyed.
+     *
+     * The counterpart to {@link onViewReady}: without it a parent
+     * holding views by key keeps entries for editors that no longer
+     * exist. CodeMirror silently ignores a dispatch to a destroyed
+     * view, so a stale entry fails invisibly rather than loudly.
+     */
+    readonly onViewDestroyed?: ((view: EditorView) => void) | undefined;
     /** Called whenever the document changes (parent tracks dirtiness). */
     readonly onDocChanged: () => void;
     /** Called when the user presses Ctrl/Cmd+S. */
@@ -72,49 +54,38 @@ export interface TextEditorProps {
 /**
  * Mounts a CodeMirror editor for one file.
  *
- * @param props - Initial document and lifecycle callbacks.
+ * @param props - Initial document, settings and lifecycle callbacks.
  * @returns The editor host element.
  */
 export function TextEditor({
     initialDoc,
-    initialViewMode,
-    initialModalMode,
-    initialSpellCheckEnabled,
-    initialTheme,
-    initialLineNumberMode,
-    initialShowDiagnostics,
+    configuration,
     onDiagnosticsToggled,
-    initialReferences,
-    resolveImageSource,
-    openLink,
     onViewReady,
+    onViewDestroyed,
     onDocChanged,
     onSaveRequested,
 }: TextEditorProps) {
     const hostRef = useRef<HTMLDivElement | null>(null);
+    const viewRef = useRef<EditorView | null>(null);
 
     // Keep the latest callbacks in refs so the editor is created once
     // per mount instead of rebuilding when a parent re-renders.
     const onViewReadyRef = useRef(onViewReady);
+    const onViewDestroyedRef = useRef(onViewDestroyed);
     const onDocChangedRef = useRef(onDocChanged);
     const onSaveRequestedRef = useRef(onSaveRequested);
-    const initialViewModeRef = useRef(initialViewMode);
-    const initialModalModeRef = useRef(initialModalMode);
-    const resolveImageSourceRef = useRef(resolveImageSource);
-    const openLinkRef = useRef(openLink);
-    const initialSpellCheckRef = useRef(initialSpellCheckEnabled);
-    const initialThemeRef = useRef(initialTheme);
-    const initialReferencesRef = useRef(initialReferences);
-    const initialShowDiagnosticsRef = useRef(initialShowDiagnostics);
     const onDiagnosticsToggledRef = useRef(onDiagnosticsToggled);
-    onDiagnosticsToggledRef.current = onDiagnosticsToggled;
-    const initialLineNumbersRef = useRef({
-        mode: initialLineNumberMode,
-        modalMode: initialModalMode,
-    });
     onViewReadyRef.current = onViewReady;
+    onViewDestroyedRef.current = onViewDestroyed;
     onDocChangedRef.current = onDocChanged;
     onSaveRequestedRef.current = onSaveRequested;
+    onDiagnosticsToggledRef.current = onDiagnosticsToggled;
+
+    // The configuration the live view is actually running under, which
+    // is what the next update diffs against. A ref rather than state:
+    // applying it is a side effect on CodeMirror, not a render input.
+    const appliedRef = useRef(configuration);
 
     useEffect(() => {
         if (!hostRef.current) return;
@@ -122,9 +93,7 @@ export function TextEditor({
         const editor = new EditorView({
             doc: initialDoc,
             extensions: [
-                // Modal keymap first: Vim/Helix register high-precedence
-                // keymaps that must see keys before the default bindings.
-                modalCompartment.of(modalExtensionForMode(initialModalModeRef.current)),
+                ...editorExtensions(appliedRef.current),
                 basicSetup,
                 latex({
                     autoCloseTags: true,
@@ -139,27 +108,11 @@ export function TextEditor({
                     // offers them alongside ours.
                     enableAutocomplete: false,
                 }),
-                themeCompartment.of(moonstoneThemeForMode(initialThemeRef.current)),
-                previewCompartment.of(
-                    previewExtensionForMode(
-                        initialViewModeRef.current,
-                        resolveImageSourceRef.current,
-                        openLinkRef.current,
-                    ),
-                ),
-                spellCheckCompartment.of(
-                    spellCheckExtensionForEnabled(initialSpellCheckRef.current),
-                ),
-                referencesCompartment.of(referencesExtension(initialReferencesRef.current)),
-                lineNumbersCompartment.of(
-                    lineNumbersExtensionForMode(
-                        initialLineNumbersRef.current.mode,
-                        initialLineNumbersRef.current.modalMode,
-                    ),
-                ),
                 editorDiagnostics({
-                    initialVisible: initialShowDiagnosticsRef.current,
-                    onVisibilityChange: (visible) => onDiagnosticsToggledRef.current(visible),
+                    initialVisible: appliedRef.current.showDiagnostics,
+                    onVisibilityChange: (visible) => {
+                        onDiagnosticsToggledRef.current(visible);
+                    },
                 }),
                 EditorView.updateListener.of((update) => {
                     if (update.docChanged) onDocChangedRef.current();
@@ -180,12 +133,29 @@ export function TextEditor({
             parent: hostRef.current,
         });
 
+        viewRef.current = editor;
         onViewReadyRef.current(editor);
 
         return () => {
+            // Told before the destroy, so the parent can drop its
+            // reference while the view is still a valid argument.
+            onViewDestroyedRef.current?.(editor);
+            viewRef.current = null;
             editor.destroy();
         };
     }, [initialDoc]);
+
+    // Apply settings changes in place, preserving the document and undo
+    // history — a remount would lose both.
+    useEffect(() => {
+        const view = viewRef.current;
+        if (!view) return;
+
+        const effects = reconfigurationEffects(appliedRef.current, configuration);
+        appliedRef.current = configuration;
+
+        if (effects.length > 0) view.dispatch({ effects });
+    }, [configuration]);
 
     return <div ref={hostRef} className="view-container-text-editor" />;
 }

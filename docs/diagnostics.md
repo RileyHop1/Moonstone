@@ -14,10 +14,14 @@ Two entry points, kept in step with each other:
 - **`Ctrl+Shift+D`** (`Cmd+Shift+D` on macOS), for reaching it without
   leaving the document.
 
-The preference is the source of truth: `ProjectPage` calls
-`setDiagnosticsVisible(view, showDiagnostics)` whenever it changes, and
-the editor mounts with `editorDiagnostics({ initialVisible })` so the
-panel never flashes off before a dispatch turns it on.
+The preference is the source of truth: it travels in the
+`EditorConfiguration`, and each editor dispatches
+`diagnosticsVisibilityEffect(visible)` when it changes — in the same
+dispatch as any other setting that changed with it. The editor still
+mounts with `editorDiagnostics({ initialVisible })` so the panel never
+flashes off before that dispatch turns it on. Visibility is a state
+field rather than a compartment, which is why it needs its own effect
+instead of a reconfigure.
 
 The shortcut does **both** — it flips the editor immediately and
 reports the new value through `onVisibilityChange`, which the project

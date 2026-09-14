@@ -33,6 +33,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import type { EditorView } from "@codemirror/view";
 import { TextEditor } from "../../views/editor/TextEditor/TextEditor";
+import type { EditorConfiguration } from "../../views/editor/TextEditor/editorConfiguration";
 import { normalizeTheme } from "../../shared/themes";
 import type { LineNumberMode, ModalMode, ViewMode } from "../../shared/types";
 import "../../styles/styles.css";
@@ -114,32 +115,29 @@ function mountHarness(): void {
 
     const harnessWindow = window as HarnessWindow;
 
+    // Built once rather than inline in the JSX: the editor re-applies
+    // its configuration whenever the object changes, and a fresh
+    // literal per render would reconfigure on every render.
+    const configuration: EditorConfiguration = {
+        viewMode: readEnum<ViewMode>("view", ["source", "live", "readonly"], "live"),
+        modalMode: readEnum<ModalMode>("modal", ["none", "vim", "helix"], "none"),
+        spellCheckEnabled: readEnum("spell", ["on", "off"] as const, "on") === "on",
+        theme,
+        lineNumberMode: readEnum<LineNumberMode>(
+            "lines",
+            ["absolute", "relative", "mixed"],
+            "absolute",
+        ),
+        showDiagnostics: false,
+        references: [],
+    };
+
     createRoot(root).render(
         <StrictMode>
             <TextEditor
                 initialDoc={doc}
-                initialViewMode={readEnum<ViewMode>(
-                    "view",
-                    ["source", "live", "readonly"],
-                    "live",
-                )}
-                initialModalMode={readEnum<ModalMode>(
-                    "modal",
-                    ["none", "vim", "helix"],
-                    "none",
-                )}
-                initialSpellCheckEnabled={
-                    readEnum("spell", ["on", "off"] as const, "on") === "on"
-                }
-                initialTheme={theme}
-                initialLineNumberMode={readEnum<LineNumberMode>(
-                    "lines",
-                    ["absolute", "relative", "mixed"],
-                    "absolute",
-                )}
-                initialShowDiagnostics={false}
+                configuration={configuration}
                 onDiagnosticsToggled={() => {}}
-                initialReferences={[]}
                 onViewReady={(view) => {
                     harnessWindow.moonstoneView = view;
                     placeCursor(view, params.get("cursor"));

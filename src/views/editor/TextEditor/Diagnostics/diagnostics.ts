@@ -46,6 +46,22 @@ const diagnosticsVisibleField = StateField.define<boolean>({
 });
 
 /**
+ * Builds the effect that shows or hides the diagnostic panel.
+ *
+ * Exposed separately from {@link setDiagnosticsVisible} so diagnostics
+ * can be reconfigured in the same dispatch as every other editor
+ * setting, rather than needing a dispatch of its own. Visibility is a
+ * state field rather than a compartment, so it cannot be reconfigured
+ * the way the other settings are.
+ *
+ * @param visible - True to show the panel.
+ * @returns The effect to dispatch.
+ */
+export function diagnosticsVisibilityEffect(visible: boolean): StateEffect<boolean> {
+    return setVisibilityEffect.of(visible);
+}
+
+/**
  * Shows or hides the diagnostic panel.
  *
  * The intended entry point for UI outside the editor (the settings
@@ -55,7 +71,7 @@ const diagnosticsVisibleField = StateField.define<boolean>({
  * @param visible - True to show the panel.
  */
 export function setDiagnosticsVisible(view: EditorView, visible: boolean): void {
-    view.dispatch({ effects: setVisibilityEffect.of(visible) });
+    view.dispatch({ effects: diagnosticsVisibilityEffect(visible) });
 }
 
 /**

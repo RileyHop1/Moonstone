@@ -8,10 +8,10 @@
  */
 
 import { EditorPane } from "./EditorPane";
-import type { PaneDocument, PaneEditorSettings } from "./EditorPane";
+import type { PaneDocument } from "./EditorPane";
 import type { DropSide, PaneId, PaneNode } from "./paneLayout";
 import type { EditorView } from "@codemirror/view";
-import type { ImageSourceResolver, LinkOpener } from "../editor/TextEditor/LivePreview";
+import type { EditorConfiguration } from "../editor/TextEditor/editorConfiguration";
 
 /** Props for {@link PaneTree}. */
 export interface PaneTreeProps {
@@ -25,13 +25,13 @@ export interface PaneTreeProps {
     readonly activePaneId: PaneId;
     /** False when only one pane is open, hiding its close button. */
     readonly canClose: boolean;
-    readonly settings: PaneEditorSettings;
-    readonly resolveImageSource?: ImageSourceResolver;
-    readonly openLink?: LinkOpener;
+    /** Settings every pane's editor runs under. */
+    readonly configuration: EditorConfiguration;
     readonly onActivate: (paneId: PaneId) => void;
     readonly onDropFile: (paneId: PaneId, side: DropSide | null, path: string) => void;
     readonly onClose: (paneId: PaneId) => void;
     readonly onViewReady: (paneId: PaneId, view: EditorView) => void;
+    readonly onViewDestroyed: (paneId: PaneId) => void;
     readonly onDocChanged: (paneId: PaneId) => void;
     readonly onSaveRequested: (paneId: PaneId) => void;
     readonly onDiagnosticsToggled: (visible: boolean) => void;
@@ -52,13 +52,12 @@ export function PaneTree({ node, ...shared }: PaneTreeProps) {
                 isActive={node.id === shared.activePaneId}
                 isDirty={shared.dirtyPanes.has(node.id)}
                 canClose={shared.canClose}
-                settings={shared.settings}
-                resolveImageSource={shared.resolveImageSource}
-                openLink={shared.openLink}
+                configuration={shared.configuration}
                 onActivate={shared.onActivate}
                 onDropFile={shared.onDropFile}
                 onClose={shared.onClose}
                 onViewReady={shared.onViewReady}
+                onViewDestroyed={shared.onViewDestroyed}
                 onDocChanged={shared.onDocChanged}
                 onSaveRequested={shared.onSaveRequested}
                 onDiagnosticsToggled={shared.onDiagnosticsToggled}

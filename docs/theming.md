@@ -98,8 +98,9 @@ It was hardcoded `true`, so the light theme was light everywhere except
 the parts the app does not style itself — CodeMirror's own tooltips and
 panel chrome stayed dark. `moonstoneThemeForMode(theme)` now returns
 the matching variant, held in `themeCompartment` and reconfigured by
-`ProjectPage` when the setting changes, alongside the other
-compartments (view mode, modal mode, spell check, line numbers).
+each editor when the setting changes, alongside the other compartments
+(view mode, modal mode, spell check, line numbers) — all driven from
+one `EditorConfiguration` object rather than an effect per setting.
 
 There are still only **two** editor theme extensions no matter how many
 palettes exist, because the light/dark split is the only thing CSS

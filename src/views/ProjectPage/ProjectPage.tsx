@@ -31,24 +31,9 @@ import type { FileNode, LoadState, ProjectInfo, Reference, ViewMode } from "../.
 import { useDockDrag } from "../../shared/useDockDrag";
 import type { DockSide } from "../../shared/useDockDrag";
 import { openSearchPanel } from "@codemirror/search";
-import { setDiagnosticsVisible } from "../editor/TextEditor/Diagnostics";
 import { TextEditor } from "../editor/TextEditor";
-import {
-    DEFAULT_VIEW_MODE,
-    previewCompartment,
-    previewExtensionForMode,
-} from "../editor/TextEditor/viewMode";
-import { modalCompartment, modalExtensionForMode } from "../editor/TextEditor/modalMode";
-import { moonstoneThemeForMode, themeCompartment } from "../editor/TextEditor/moonstoneTheme";
-import {
-    spellCheckCompartment,
-    spellCheckExtensionForEnabled,
-} from "../editor/TextEditor/SpellCheck";
-import { referencesCompartment, referencesExtension } from "../editor/TextEditor/References";
-import {
-    lineNumbersCompartment,
-    lineNumbersExtensionForMode,
-} from "../editor/TextEditor/LineNumbers";
+import type { EditorConfiguration } from "../editor/TextEditor/editorConfiguration";
+import { DEFAULT_VIEW_MODE } from "../editor/TextEditor/viewMode";
 import { SNIPPETS, insertSnippetIntoView } from "../editor/TextEditor/snippets";
 import { FileBrowser } from "./FileBrowser";
 import type { FileOperation } from "./FileBrowser";
@@ -448,69 +433,32 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
         [openFile?.path],
     );
 
-    // Swap the preview configuration in place when the mode changes,
-    // preserving the document and undo history (a remount would lose
-    // both). No-ops when no file is open yet.
-    useEffect(() => {
-        viewRef.current?.dispatch({
-            effects: previewCompartment.reconfigure(
-                previewExtensionForMode(viewMode, resolveImageSource, openExternalLink),
-            ),
-        });
-    }, [viewMode, resolveImageSource]);
-
-    // Swap the modal keymap (vim/helix/none) in place, preserving
-    // document and undo history.
-    useEffect(() => {
-        viewRef.current?.dispatch({
-            effects: modalCompartment.reconfigure(modalExtensionForMode(modalMode)),
-        });
-    }, [modalMode]);
-
-    // Hand the editor the current bibliography in place, so references
-    // added while the project is open become citable immediately.
-    useEffect(() => {
-        viewRef.current?.dispatch({
-            effects: referencesCompartment.reconfigure(referencesExtension(references)),
-        });
-    }, [references]);
-
-    // Line numbering follows both its own setting and the modal mode,
-    // since "mixed" is defined in terms of the modal editor's state.
-    useEffect(() => {
-        viewRef.current?.dispatch({
-            effects: lineNumbersCompartment.reconfigure(
-                lineNumbersExtensionForMode(lineNumberMode, modalMode),
-            ),
-        });
-    }, [lineNumberMode, modalMode]);
-
-    // Show or hide the diagnostic overlay in place.
-    useEffect(() => {
-        const view = viewRef.current;
-        if (!view) return;
-
-        setDiagnosticsVisible(view, showDiagnostics);
-    }, [showDiagnostics]);
-
-    // Swap the editor's palette in place. The CSS variables restyle
-    // themselves, but CodeMirror's `dark` flag lives in the theme
-    // extension and decides which half of every `&dark`/`&light` rule
-    // applies — so it has to be reconfigured, not just repainted.
-    useEffect(() => {
-        viewRef.current?.dispatch({
-            effects: themeCompartment.reconfigure(moonstoneThemeForMode(theme)),
-        });
-    }, [theme]);
-
-    // Turn spell checking on or off in place.
-    useEffect(() => {
-        viewRef.current?.dispatch({
-            effects: spellCheckCompartment.reconfigure(
-                spellCheckExtensionForEnabled(spellCheckEnabled),
-            ),
-        });
-    }, [spellCheckEnabled]);
+    // The settings every editor on this page runs under. The editor
+    // applies these itself, so the page does not hold a view in order
+    // to change a setting — which is what lets a second editor exist.
+    const configuration = useMemo<EditorConfiguration>(
+        () => ({
+            viewMode,
+            modalMode,
+            spellCheckEnabled,
+            theme,
+            lineNumberMode,
+            showDiagnostics,
+            references,
+            resolveImageSource,
+            openLink: openExternalLink,
+        }),
+        [
+            viewMode,
+            modalMode,
+            spellCheckEnabled,
+            theme,
+            lineNumberMode,
+            showDiagnostics,
+            references,
+            resolveImageSource,
+        ],
+    );
 
     // Make the hotbar's Save/Undo/Redo/Insert items work while this
     // page is open.
@@ -556,20 +504,19 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
                             // Remount per file: clean editor + fresh undo history.
                             key={openFile.path}
                             initialDoc={openFile.initialDoc}
-                            initialViewMode={viewMode}
-                            initialModalMode={modalMode}
-                            initialSpellCheckEnabled={spellCheckEnabled}
-                            initialTheme={theme}
-                            initialLineNumberMode={lineNumberMode}
-                            initialShowDiagnostics={showDiagnostics}
+                            configuration={configuration}
                             onDiagnosticsToggled={(visible) =>
                                 updateSettings({ showDiagnostics: visible })
                             }
-                            initialReferences={references}
-                            resolveImageSource={resolveImageSource}
-                            openLink={openExternalLink}
                             onViewReady={(view) => {
                                 viewRef.current = view;
+                            }}
+                            onViewDestroyed={() => {
+                                // Without this the page keeps pointing at a
+                                // destroyed editor after the open file is
+                                // deleted; CodeMirror swallows the dispatch,
+                                // so the staleness never surfaces.
+                                viewRef.current = null;
                             }}
                             onDocChanged={() => setIsDirty(true)}
                             onSaveRequested={() => void save()}

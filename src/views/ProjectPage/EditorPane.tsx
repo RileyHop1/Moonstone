@@ -13,25 +13,13 @@ import { useCallback, useRef, useState } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
 import type { EditorView } from "@codemirror/view";
 import { TextEditor } from "../editor/TextEditor";
-import type { ImageSourceResolver, LinkOpener } from "../editor/TextEditor/LivePreview";
-import type { LineNumberMode, ModalMode, Reference, Theme, ViewMode } from "../../shared/types";
+import type { EditorConfiguration } from "../editor/TextEditor/editorConfiguration";
 import type { DropSide, PaneId } from "./paneLayout";
 
 /** The document a pane has open. */
 export interface PaneDocument {
     readonly path: string;
     readonly initialDoc: string;
-}
-
-/** Editor configuration shared by every pane. */
-export interface PaneEditorSettings {
-    readonly viewMode: ViewMode;
-    readonly modalMode: ModalMode;
-    readonly spellCheckEnabled: boolean;
-    readonly theme: Theme;
-    readonly lineNumberMode: LineNumberMode;
-    readonly showDiagnostics: boolean;
-    readonly references: readonly Reference[];
 }
 
 /** Props for {@link EditorPane}. */
@@ -45,9 +33,12 @@ export interface EditorPaneProps {
     readonly isDirty: boolean;
     /** True when more than one pane is open, so closing is offered. */
     readonly canClose: boolean;
-    readonly settings: PaneEditorSettings;
-    readonly resolveImageSource?: ImageSourceResolver;
-    readonly openLink?: LinkOpener;
+    /**
+     * Settings for this pane's editor. Live, not initial-only: the
+     * editor re-applies them itself, so every pane follows a theme or
+     * mode change rather than only the one that happens to be focused.
+     */
+    readonly configuration: EditorConfiguration;
     /** Called when the user interacts with this pane. */
     readonly onActivate: (paneId: PaneId) => void;
     /**
@@ -58,6 +49,9 @@ export interface EditorPaneProps {
     readonly onDropFile: (paneId: PaneId, side: DropSide | null, path: string) => void;
     readonly onClose: (paneId: PaneId) => void;
     readonly onViewReady: (paneId: PaneId, view: EditorView) => void;
+    /** Called when this pane's editor is torn down, so the parent can
+     * drop the view it was handed. */
+    readonly onViewDestroyed: (paneId: PaneId) => void;
     readonly onDocChanged: (paneId: PaneId) => void;
     readonly onSaveRequested: (paneId: PaneId) => void;
     readonly onDiagnosticsToggled: (visible: boolean) => void;
@@ -109,13 +103,12 @@ export function EditorPane({
     isActive,
     isDirty,
     canClose,
-    settings,
-    resolveImageSource,
-    openLink,
+    configuration,
     onActivate,
     onDropFile,
     onClose,
     onViewReady,
+    onViewDestroyed,
     onDocChanged,
     onSaveRequested,
     onDiagnosticsToggled,
@@ -190,17 +183,14 @@ export function EditorPane({
                     // history, matching what a newly opened file means.
                     key={paneDocument.path}
                     initialDoc={paneDocument.initialDoc}
-                    initialViewMode={settings.viewMode}
-                    initialModalMode={settings.modalMode}
-                    initialSpellCheckEnabled={settings.spellCheckEnabled}
-                    initialTheme={settings.theme}
-                    initialLineNumberMode={settings.lineNumberMode}
-                    initialShowDiagnostics={settings.showDiagnostics}
+                    configuration={configuration}
                     onDiagnosticsToggled={onDiagnosticsToggled}
-                    initialReferences={settings.references}
-                    resolveImageSource={resolveImageSource}
-                    openLink={openLink}
-                    onViewReady={(view) => onViewReady(paneId, view)}
+                    onViewReady={(view) => {
+                        onViewReady(paneId, view);
+                    }}
+                    onViewDestroyed={() => {
+                        onViewDestroyed(paneId);
+                    }}
                     onDocChanged={() => onDocChanged(paneId)}
                     onSaveRequested={() => onSaveRequested(paneId)}
                 />

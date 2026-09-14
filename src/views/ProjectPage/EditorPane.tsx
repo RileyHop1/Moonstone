@@ -3,10 +3,16 @@
  * editor itself, and the drop zones that split it.
  *
  * Dropping is driven entirely by the pane's own drag events rather than
- * shared "a drag is happening" state. The file browser already puts the
- * dragged path on the `dataTransfer`, so a pane can work out on its own
- * whether something is over it and which edge — which keeps the project
- * page from having to broadcast drag state to every pane.
+ * shared "a drag is happening" state. The file browser marks its drags
+ * with a private MIME type (see `shared/dragPayload.ts`), so a pane can
+ * work out on its own whether something is over it, whether it is
+ * something it can accept, and which edge — which keeps the project page
+ * from having to broadcast drag state to every pane.
+ *
+ * Every drop is validated. A pane accepts only a drag the file browser
+ * started, carrying a file rather than a directory; anything else —
+ * a text selection dragged inside an editor, a file from the desktop —
+ * is left alone for whoever else wants it.
  */
 
 import { useCallback, useRef, useState } from "react";
@@ -14,6 +20,7 @@ import type { DragEvent as ReactDragEvent } from "react";
 import type { EditorView } from "@codemirror/view";
 import { TextEditor } from "../editor/TextEditor";
 import type { EditorConfiguration } from "../editor/TextEditor/editorConfiguration";
+import { hasFileDragPayload, readFileDragPayload } from "../../shared/dragPayload";
 import type { DropSide, PaneId } from "./paneLayout";
 
 /** The document a pane has open. */
@@ -116,12 +123,54 @@ export function EditorPane({
     const [hoverSide, setHoverSide] = useState<DropSide | "centre" | null>(null);
     const paneRef = useRef<HTMLElement | null>(null);
 
+    // The pane's rectangle, measured once when a drag arrives rather
+    // than on every `dragover`. `dragover` fires continuously while the
+    // pointer is over the pane, and `getBoundingClientRect` forces
+    // layout each time.
+    const boundsRef = useRef<DOMRect | null>(null);
+
+    // `dragleave` bubbles, so it fires when the pointer crosses into a
+    // descendant — the header, or any of CodeMirror's DOM. Counting
+    // enter/leave pairs instead of clearing on the first leave is what
+    // stops the drop hint blinking as the pointer moves over the editor.
+    const dragDepthRef = useRef(0);
+
+    const handleDragEnter = useCallback((event: ReactDragEvent<HTMLElement>) => {
+        if (!hasFileDragPayload(event.dataTransfer)) return;
+
+        dragDepthRef.current += 1;
+        if (dragDepthRef.current === 1) {
+            boundsRef.current = paneRef.current?.getBoundingClientRect() ?? null;
+        }
+    }, []);
+
+    const handleDragLeave = useCallback((event: ReactDragEvent<HTMLElement>) => {
+        if (!hasFileDragPayload(event.dataTransfer)) return;
+
+        dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+        if (dragDepthRef.current === 0) {
+            boundsRef.current = null;
+            setHoverSide(null);
+        }
+    }, []);
+
     const handleDragOver = useCallback((event: ReactDragEvent<HTMLElement>) => {
-        const bounds = paneRef.current?.getBoundingClientRect();
+        // Only drags the file browser started are ours to take. Without
+        // this check a text selection dragged inside an editor — which
+        // CodeMirror puts on `text/plain` — would be treated as a path.
+        if (!hasFileDragPayload(event.dataTransfer)) return;
+
+        const bounds = boundsRef.current;
         if (!bounds) return;
 
         // Without this the browser refuses the drop outright.
         event.preventDefault();
+
+        // Opening a file in a pane leaves the file tree untouched, so
+        // this is a copy, not a move. The source declares `copyMove`,
+        // which is what lets both this and the browser's own move
+        // targets work — an incompatible `dropEffect` resolves to
+        // `"none"` and then no `drop` event fires at all.
         event.dataTransfer.dropEffect = "copy";
 
         setHoverSide(edgeAt(event, bounds) ?? "centre");
@@ -129,11 +178,19 @@ export function EditorPane({
 
     const handleDrop = useCallback(
         (event: ReactDragEvent<HTMLElement>) => {
-            const bounds = paneRef.current?.getBoundingClientRect();
-            const path = event.dataTransfer.getData("text/plain");
+            const bounds = boundsRef.current;
+            const payload = readFileDragPayload(event.dataTransfer);
+
+            dragDepthRef.current = 0;
+            boundsRef.current = null;
             setHoverSide(null);
 
-            if (!bounds || path === "") return;
+            if (!bounds || payload === null) return;
+
+            // A pane shows one file; there is nothing sensible to do
+            // with a directory dropped on it.
+            if (payload.kind !== "file") return;
+
             event.preventDefault();
             // Stops the file browser's own move handler from also
             // claiming a drop that landed on the editor.
@@ -142,7 +199,7 @@ export function EditorPane({
             onActivate(paneId);
             // A null side means the middle, which opens the file here
             // rather than splitting.
-            onDropFile(paneId, edgeAt(event, bounds), path);
+            onDropFile(paneId, edgeAt(event, bounds), payload.path);
         },
         [onActivate, onDropFile, paneId],
     );
@@ -155,8 +212,9 @@ export function EditorPane({
             className={`editor-pane${isActive ? " editor-pane-active" : ""}`}
             onPointerDownCapture={() => onActivate(paneId)}
             onFocusCapture={() => onActivate(paneId)}
+            onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
-            onDragLeave={() => setHoverSide(null)}
+            onDragLeave={handleDragLeave}
             onDrop={handleDrop}
         >
             <header className="editor-pane-header">

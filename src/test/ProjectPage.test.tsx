@@ -14,6 +14,7 @@ import { ProjectPage } from "../views/ProjectPage";
 import type { FileNode, ProjectInfo } from "../shared/types";
 import { invokeMock, mockCommands, resetInvokeMock } from "./mockTauri";
 import { renderWithProviders } from "./testUtils";
+import { makeDataTransfer } from "./dataTransfer";
 
 vi.mock("@tauri-apps/api/core", async () => {
     const { invokeMock: mock } = await import("./mockTauri");
@@ -301,13 +302,13 @@ describe("ProjectPage", () => {
         });
         renderWithProviders(<ProjectPage project={PROJECT} />);
 
-        const dataTransfer = {
-            setData: vi.fn(),
-            getData: () => "",
-            effectAllowed: "",
-            dropEffect: "",
-        };
+        // A stub that actually stores what the drag source writes: the
+        // browser marks its drags with a private MIME type, and the drop
+        // target reads it back to decide whether the drag is one of ours.
+        const dataTransfer = makeDataTransfer();
+
         fireEvent.dragStart(await screen.findByText("demo.tex"), { dataTransfer });
+        fireEvent.dragOver(screen.getByText("chapters"), { dataTransfer });
         fireEvent.drop(screen.getByText("chapters"), { dataTransfer });
 
         await waitFor(() => {

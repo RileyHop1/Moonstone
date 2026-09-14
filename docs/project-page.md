@@ -33,6 +33,13 @@ Rename / Delete. Deletes are confirmed and go to the **recycle bin**
   `move_entry` command. The UI and backend both reject moving a folder
   into itself/a descendant and refuse to overwrite an existing name;
   dropping onto the current folder is a no-op.
+- **The drag payload is typed** (`src/shared/dragPayload.ts`). Drags
+  starting in the file browser are marked with a private MIME type,
+  `application/x-moonstone-path`, carrying the entry's kind as well as
+  its path; every drop target validates what it reads. A bare
+  `text/plain` path is written too, but only so a drag _out_ of the app
+  produces something sensible — nothing inside the app trusts it.
+  See "Why the payload is typed" below.
 - An open file follows its own (or an ancestor directory's) rename or
   move without losing unsaved edits (`renamedOpenFilePath`).
 
@@ -126,9 +133,44 @@ The same actions are registered into the app-actions context so the
 GlobalHotBar menus (File > Save, Edit > Undo, Insert > Math, …) work
 while this page is open and render disabled elsewhere.
 
+## Why the payload is typed
+
+A `DataTransfer` is a public channel, and everything dropped on the app
+arrives as `text/plain`: a text selection dragged inside an editor, a
+file from the desktop, a link from another window. The file browser
+originally wrote a bare path there, and drop targets read it straight
+back, so nothing could tell a file path from a dragged paragraph of
+prose — dropping one would ask the backend to open it as a file.
+
+Three things follow from marking the drag instead:
+
+- **Drop targets check `dataTransfer.types`** during `dragover`. The
+  payload's _contents_ are deliberately unreadable at that point —
+  browsers withhold `getData` until the drop so pages cannot snoop on
+  drags passing over them — but the list of formats is available, which
+  is enough to decide whether to accept.
+- **The entry's kind travels with its path.** Directory rows are
+  draggable so they can be moved between folders, but an editor pane
+  shows one file and has nothing to do with a folder, so it refuses
+  anything that is not `kind: "file"`.
+- **`effectAllowed` is `"copyMove"`.** The two drop targets want
+  different things: the file browser _moves_ an entry, while a pane
+  _opens_ it and leaves the tree alone. Declaring only one makes the
+  browser silently cancel the other — a `dragover` whose `dropEffect` is
+  incompatible with `effectAllowed` resolves to `"none"`, and then **no
+  `drop` event fires at all**. This is a good candidate for "the drop
+  does nothing and there is no error anywhere".
+
+**Testing note:** jsdom has no `DataTransfer`, and `fireEvent.drop` will
+accept any object in its place. A stub whose `setData` records without
+storing — and which has no `types` — lets a drag test pass while the
+code under test cannot read back what the source wrote. Use
+`src/test/dataTransfer.ts`, which actually stores.
+
 ## Files
 
 - `src/views/ProjectPage/ProjectPage.tsx` — state + orchestration
+- `src/shared/dragPayload.ts` — the typed drag payload and its validation
 - `src/views/ProjectPage/FileBrowser/` — tree panel (+ `RenameInput.tsx`)
 - `src/views/ProjectPage/Toolbar/` — action row
 - `src/shared/useDockDrag.ts` — drag-to-dock hook
@@ -136,7 +178,8 @@ while this page is open and render disabled elsewhere.
 - `src/components/ResizablePanel.tsx` — resizable, collapsible panel
 - `src/styles/ResizablePanel.css` — panel and splitter styling
 - `src-tauri/src/file_manager.rs` — `move_entry` and other file commands
-- Tests: `src/test/ProjectPage.test.tsx`,
+- Tests: `src/test/ProjectPage.test.tsx`, `src/test/dragPayload.test.ts`,
+  `src/test/EditorPane.test.tsx`,
   `src/test/usePanelResize.test.ts` (clamp arithmetic),
   `src/test/browser/fileBrowserPanel.browser.spec.ts` (drag, collapse,
   truncation)

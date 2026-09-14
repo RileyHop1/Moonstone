@@ -14,6 +14,7 @@ import { ContextMenu } from "../../../components/ContextMenu";
 import type { ContextMenuItem } from "../../../components/ContextMenu";
 import { RenameInput } from "./RenameInput";
 import type { DockDragHandleProps } from "../../../shared/useDockDrag";
+import { hasFileDragPayload, writeFileDragPayload } from "../../../shared/dragPayload";
 import { assertNever } from "../../../shared/types";
 import type { FileNode, LoadState } from "../../../shared/types";
 import "./FileBrowser.css";
@@ -222,10 +223,17 @@ export function FileBrowser({
                 className="file-browser-body"
                 // Dropping on the empty body moves the entry to the root.
                 onDragOver={(event) => {
-                    if (rootPath !== null && draggedPath !== null) event.preventDefault();
+                    if (rootPath === null || draggedPath === null) return;
+                    if (!hasFileDragPayload(event.dataTransfer)) return;
+
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
                 }}
-                onDrop={() => {
-                    if (rootPath !== null) handleDropOnDir(rootPath);
+                onDrop={(event) => {
+                    if (rootPath === null) return;
+                    if (!hasFileDragPayload(event.dataTransfer)) return;
+
+                    handleDropOnDir(rootPath);
                 }}
             >
                 {renderTree(tree, interaction)}
@@ -419,8 +427,10 @@ function FileTreeNode({ node, depth, interaction }: FileTreeNodeProps) {
     const dragProps = {
         draggable: true,
         onDragStart: (event: ReactDragEvent) => {
-            event.dataTransfer.setData("text/plain", node.path);
-            event.dataTransfer.effectAllowed = "move";
+            // The kind travels with the path so a drop target can refuse
+            // what it cannot handle — an editor pane cannot open a
+            // directory — without having to look the path up again.
+            writeFileDragPayload(event.dataTransfer, { kind: node.kind, path: node.path });
             interaction.onDragStartNode(node.path);
         },
         onDragEnd: interaction.onDragEnd,
@@ -458,11 +468,16 @@ function FileTreeNode({ node, depth, interaction }: FileTreeNodeProps) {
                 onClick={() => interaction.onToggleDirectory(node.path)}
                 onContextMenu={(event) => interaction.onOpenMenu(event, node)}
                 onDragOver={(event) => {
+                    if (!hasFileDragPayload(event.dataTransfer)) return;
+
                     event.preventDefault();
                     event.stopPropagation();
+                    event.dataTransfer.dropEffect = "move";
                     interaction.onDragOverDir(node.path);
                 }}
                 onDrop={(event) => {
+                    if (!hasFileDragPayload(event.dataTransfer)) return;
+
                     event.preventDefault();
                     event.stopPropagation();
                     interaction.onDropOnDir(node.path);

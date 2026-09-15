@@ -8,6 +8,43 @@
 
 ---
 
+## Development
+
+```bash
+npm install
+npm run tectonic:fetch   # downloads the bundled LaTeX engine (~20 MB)
+npm run tauri dev
+```
+
+`tectonic:fetch` is not optional: `tauri.conf.json` declares the engine as a sidecar, and the build fails without it. It is fetched rather than committed because it is 20 MB per platform and reproducible from an upstream release.
+
+| Command                | What it does                          |
+| ---------------------- | ------------------------------------- |
+| `npm test`             | Unit tests (vitest + jsdom)           |
+| `npm run test:browser` | Browser tests (Playwright + Chromium) |
+| `npm run typecheck`    | `tsc --noEmit`                        |
+| `npm run lint`         | ESLint                                |
+| `npm run format:check` | Prettier                              |
+| `cargo test`           | Backend tests, from `src-tauri/`      |
+
+### Documentation
+
+Every feature has a design note in [`docs/`](docs/). The ones to start with:
+
+| Doc                                                  | Covers                                                          |
+| ---------------------------------------------------- | --------------------------------------------------------------- |
+| [backend commands](docs/backend-commands.md)         | Every Tauri command, its arguments, and the path security rules |
+| [IPC boundary](docs/ipc-boundary.md)                 | How responses are validated on the way in                       |
+| [live preview](docs/live-preview.md)                 | The two-layer rendering engine — the biggest piece here         |
+| [editor configuration](docs/editor-configuration.md) | How settings reach a running editor, and per-pane settings      |
+| [split panes](docs/split-panes.md)                   | The pane tree, drag-to-split, and the splitter                  |
+| [PDF compilation](docs/pdf-compilation.md)           | The Tectonic sidecar, and why it is a sidecar                   |
+| [file types](docs/file-types.md)                     | What the editor does with a `.tex` versus a `.bib`              |
+| [browser tests](docs/browser-tests.md)               | What Playwright covers that jsdom structurally cannot           |
+| [releasing](docs/releasing.md)                       | Cutting a release                                               |
+
+---
+
 ## Table of Contents
 
 1. [Vision & Goals](#1-vision--goals)
@@ -119,10 +156,15 @@ A built-in library of commonly used LaTeX snippets (matrices, equations, figure 
 
 **Renderer** — takes parsed math nodes and renders them using KaTeX (primary, for performance) with MathJax as a fallback for complex expressions KaTeX doesn't support.
 
-**Rust Backend** — all file system operations are handled in Rust and exposed to the frontend via Tauri's command API. The backend is split into two modules:
+**Rust Backend** — all file system operations are handled in Rust and exposed to the frontend via Tauri's command API. Every command is documented in [backend commands](docs/backend-commands.md); the modules are:
 
-- `file_manager` — low-level file and directory operations. Creates `.tex` files and subdirectories, validates inputs, and emits Tauri events (`file-created`, `directory-created`) so the frontend can react to changes.
-- `project_manager` — manages the concept of a project, which is a named root directory containing one or more `.tex` files. On creation, a project initialises its directory and seeds it with an initial file via `file_manager`. The `Project` struct tracks metadata including name, path, creation date, last modified date, and file count.
+- `paths` — resolves the Moonstone root and validates every user-supplied path against it, so no command can be talked into touching a file outside the projects directory. Also the single place that decides how a path is spelled when it crosses to the frontend.
+- `file_manager` — low-level file and directory operations. Creates files and subdirectories, validates inputs, and emits Tauri events (`file-created`, `directory-created`) so the frontend can react to changes.
+- `project_manager` — manages the concept of a project, which is a named root directory containing one or more `.tex` files. On creation, a project initialises its directory and seeds it with a template via `templates`. The `Project` struct tracks metadata including name, path, creation date, last modified date, and file count.
+- `templates` — the bundled project templates and the substitution that seeds a new project from one.
+- `bibliography` — parses every `.bib` file in a project into one key-sorted list, so `\cite{…}` completion does not care which file an entry was filed in.
+- `compiler` — runs the bundled Tectonic engine and turns its output into structured diagnostics.
+- `settings` — loads and saves user preferences, failing soft to defaults.
 
 ### 4.1 Frontend Structure
 
@@ -264,7 +306,7 @@ A formal `CONTRIBUTING.md` with code style guidelines, PR workflow, and a develo
 
 The following are explicitly not goals for Moonstone, at least through v1.0:
 
-- **Being a full TeX distribution.** Moonstone is an editor. It may integrate with a locally installed TeX distribution for PDF export, but it will not bundle one.
+- **Being a full TeX distribution.** Moonstone is an editor. It bundles the [Tectonic](https://tectonic-typesetting.github.io/) engine so that compiling works out of the box — a user should not have to install a multi-gigabyte TeX distribution before their first PDF — but it does not aim to replace TeX Live for people who already have one and know what they want from it. See [PDF compilation](docs/pdf-compilation.md).
 - **Cloud sync or collaboration.** Moonstone is a local desktop tool. Real-time multiplayer editing is not planned.
 - **Supporting non-LaTeX markup.** Moonstone focuses exclusively on LaTeX/TeX. Markdown support is not planned.
 - **A mobile app.** Desktop only for the foreseeable future.

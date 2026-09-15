@@ -10,6 +10,7 @@ import { convertFileSrc, invoke, isTauri } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
     parseArrayOf,
+    parseCompileOutcome,
     parseFileNode,
     parseNothing,
     parseProjectInfo,
@@ -30,6 +31,7 @@ import {
 } from "./paths";
 import type {
     AppSettings,
+    CompileOutcome,
     FileNode,
     ProjectInfo,
     Reference,
@@ -223,6 +225,26 @@ export function listTemplates(): Promise<Result<readonly TemplateInfo[]>> {
  */
 export function listReferences(projectPath: string): Promise<Result<readonly Reference[]>> {
     return invokeCommand("list_references", parseArrayOf(parseReference), { projectPath });
+}
+
+/**
+ * Compiles a project to PDF with the bundled LaTeX engine.
+ *
+ * A document that fails to typeset is **not** an error here: that comes
+ * back as `Ok` with diagnostics, usually alongside a best-effort PDF.
+ * The `Err` case is reserved for not being able to compile at all — a
+ * missing file, an engine that would not start, a compile that ran too
+ * long.
+ *
+ * @param projectPath - Absolute path of the project directory.
+ * @param mainFile - The document to compile, relative to the project.
+ * @returns What the compilation produced.
+ */
+export function compileProject(
+    projectPath: string,
+    mainFile: string,
+): Promise<Result<CompileOutcome>> {
+    return invokeCommand("compile_project", parseCompileOutcome, { projectPath, mainFile });
 }
 
 /**

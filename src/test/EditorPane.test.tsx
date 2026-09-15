@@ -24,6 +24,7 @@ const CONFIGURATION: EditorConfiguration = {
     showDiagnostics: false,
     references: [],
     profile: DEFAULT_EDITOR_PROFILE,
+    isFrozen: false,
 };
 
 /**

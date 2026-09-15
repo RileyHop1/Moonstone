@@ -15,5 +15,5 @@
  * hooks the host fills in.
  */
 
-export { livePreview } from "./livePreview";
+export { frozenFacet, livePreview } from "./livePreview";
 export type { ImageSourceResolver, LinkOpener, LivePreviewOptions } from "./livePreview";

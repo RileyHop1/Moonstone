@@ -36,6 +36,7 @@ import type { DockSide } from "../../shared/useDockDrag";
 import type { FileNode, LoadState } from "../../shared/types";
 import type { EditorConfiguration } from "../../views/editor/TextEditor/editorConfiguration";
 import { editorProfileForPath } from "../../views/editor/TextEditor/editorProfile";
+import type { PaneConfigurationKey } from "../../views/ProjectPage/usePaneConfigurations";
 import "../../styles/styles.css";
 import "../../views/ProjectPage/ProjectPage.css";
 
@@ -59,7 +60,7 @@ const SHARED_SETTINGS = {
     lineNumberMode: "absolute",
     showDiagnostics: false,
     references: [],
-} as const satisfies Omit<EditorConfiguration, "profile">;
+} as const satisfies Omit<EditorConfiguration, "profile" | "isFrozen">;
 
 /**
  * Configurations by path, built once each.
@@ -69,24 +70,26 @@ const SHARED_SETTINGS = {
  * runs in a plain browser. What matters for these specs is the shape —
  * one stable object per open path — which this reproduces.
  */
-const CONFIGURATIONS = new Map<string | null, EditorConfiguration>();
+const CONFIGURATIONS = new Map<string, EditorConfiguration>();
 
 /**
- * The configuration a pane showing `path` runs under.
+ * The configuration a pane runs under.
  *
- * @param path - The open document's path, or null for an empty pane.
- * @returns That file's configuration; the same object every time.
+ * @param key - The pane's document and whether it is frozen.
+ * @returns That pane's configuration; the same object every time.
  */
-function configurationFor(path: string | null): EditorConfiguration {
-    const cached = CONFIGURATIONS.get(path);
+function configurationFor({ path, isFrozen }: PaneConfigurationKey): EditorConfiguration {
+    const cacheKey = `${isFrozen ? "frozen" : "live"}:${path ?? ""}`;
+    const cached = CONFIGURATIONS.get(cacheKey);
     if (cached) return cached;
 
     const built: EditorConfiguration = {
         ...SHARED_SETTINGS,
         profile: editorProfileForPath(path),
+        isFrozen,
     };
 
-    CONFIGURATIONS.set(path, built);
+    CONFIGURATIONS.set(cacheKey, built);
     return built;
 }
 

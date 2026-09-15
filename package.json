@@ -16,7 +16,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:browser": "playwright test",
-    "version:set": "node scripts/setVersion.mjs"
+    "version:set": "node scripts/setVersion.mjs",
+    "tectonic:fetch": "node scripts/fetchTectonic.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "6.20.0",

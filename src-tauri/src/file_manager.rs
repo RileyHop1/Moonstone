@@ -275,7 +275,7 @@ pub async fn create_file_with_contents_impl(
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok(full_path.to_string_lossy().to_string())
+    Ok(paths::to_display_string(&full_path))
 }
 
 /// Renames a file or directory inside the Moonstone root.
@@ -397,7 +397,7 @@ pub fn rename_entry_impl(entry: &Path, new_name: &str) -> Result<String, String>
 
     std::fs::rename(entry, &target).map_err(|e| e.to_string())?;
 
-    Ok(target.to_string_lossy().to_string())
+    Ok(paths::to_display_string(&target))
 }
 
 /// Moves `source` into `dest_dir`, keeping its name.
@@ -424,7 +424,7 @@ pub fn move_entry_impl(source: &Path, dest_dir: &Path) -> Result<String, String>
 
     // Dropped onto its own current folder: nothing to do.
     if source.parent() == Some(dest_dir) {
-        return Ok(source.to_string_lossy().to_string());
+        return Ok(paths::to_display_string(source));
     }
 
     // A directory cannot be moved into itself or one of its descendants.
@@ -443,7 +443,7 @@ pub fn move_entry_impl(source: &Path, dest_dir: &Path) -> Result<String, String>
 
     std::fs::rename(source, &target).map_err(|e| e.to_string())?;
 
-    Ok(target.to_string_lossy().to_string())
+    Ok(paths::to_display_string(&target))
 }
 
 /// Computes the final name for a rename: directories keep the name as
@@ -547,7 +547,7 @@ pub async fn create_directory_impl(parent: &Path, dir_name: &str) -> Result<Stri
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok(full_path.to_string_lossy().to_string())
+    Ok(paths::to_display_string(&full_path))
 }
 
 /// Recursively builds the [`FileNode`] tree rooted at `directory`.
@@ -698,7 +698,7 @@ fn build_directory_node(directory: &Path, depth: u32) -> Result<FileNode, String
         } else {
             files.push(FileNode::File {
                 name,
-                path: path.to_string_lossy().to_string(),
+                path: crate::paths::to_display_string(&path),
             });
         }
     }
@@ -714,7 +714,7 @@ fn build_directory_node(directory: &Path, depth: u32) -> Result<FileNode, String
 
     Ok(FileNode::Directory {
         name: dir_name,
-        path: directory.to_string_lossy().to_string(),
+        path: crate::paths::to_display_string(directory),
         children: directories,
     })
 }

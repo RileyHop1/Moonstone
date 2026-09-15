@@ -47,6 +47,7 @@ function buildFileMenu({ actions, editor, navigate }: MenuContext): Menu {
             { label: "Open Project", action: () => navigate({ kind: "browser" }) },
             { label: "New File", action: editor ? editor.newFile : null },
             { label: "Save", action: editor ? editor.save : null },
+            { label: "Compile", action: editor ? editor.compile : null },
             { label: "Recent Projects", action: null },
         ],
     };

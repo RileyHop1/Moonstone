@@ -16,7 +16,15 @@
  * turns that into an ordinary, displayable error.
  */
 
-import type { FileNode, ProjectInfo, Reference, StoredSettings, TemplateInfo } from "./types";
+import type {
+    CompileDiagnostic,
+    CompileOutcome,
+    FileNode,
+    ProjectInfo,
+    Reference,
+    StoredSettings,
+    TemplateInfo,
+} from "./types";
 
 /** Turns unknown JSON into a value of a known shape, or null. */
 export type Parser<T> = (value: unknown) => T | null;
@@ -230,4 +238,78 @@ export const parseStoredSettings: Parser<StoredSettings> = (value) => {
         lineNumberMode: value.lineNumberMode,
         showDiagnostics: value.showDiagnostics,
     };
+};
+
+/**
+ * Reads a field that is either a string or explicitly null.
+ *
+ * Distinct from {@link stringField}: an absent field is a shape
+ * mismatch, whereas `null` is a real answer the backend gives — "no PDF
+ * was produced", "there is no log".
+ *
+ * @param source - The object to read from.
+ * @param key - The field name.
+ * @returns The string, null when the backend sent null, or `undefined`
+ *   when the field is missing or the wrong type.
+ */
+function nullableStringField(
+    source: Record<string, unknown>,
+    key: string,
+): string | null | undefined {
+    const value = source[key];
+
+    if (value === null) return null;
+
+    return typeof value === "string" ? value : undefined;
+}
+
+/**
+ * Parses one compile diagnostic.
+ *
+ * @param value - The raw response.
+ * @returns The diagnostic, or null when the shape is wrong.
+ */
+export const parseCompileDiagnostic: Parser<CompileDiagnostic> = (value) => {
+    if (!isRecord(value)) return null;
+
+    const severity = value.severity;
+    const file = stringField(value, "file");
+    const message = stringField(value, "message");
+    const rawLine = value.line;
+
+    if (severity !== "error" && severity !== "warning") return null;
+    if (file === null || message === null) return null;
+
+    // The engine reports no line for its own failures, which is a real
+    // answer rather than a malformed one.
+    const line =
+        rawLine === null
+            ? null
+            : typeof rawLine === "number" && Number.isFinite(rawLine)
+              ? rawLine
+              : undefined;
+
+    if (line === undefined) return null;
+
+    return { severity, file, line, message };
+};
+
+/**
+ * Parses the result of a compilation.
+ *
+ * @param value - The raw response.
+ * @returns The outcome, or null when the shape is wrong.
+ */
+export const parseCompileOutcome: Parser<CompileOutcome> = (value) => {
+    if (!isRecord(value)) return null;
+
+    const pdfPath = nullableStringField(value, "pdfPath");
+    const logPath = nullableStringField(value, "logPath");
+    const diagnostics = parseArrayOf(parseCompileDiagnostic)(value.diagnostics);
+
+    if (pdfPath === undefined || logPath === undefined || diagnostics === null) {
+        return null;
+    }
+
+    return { pdfPath, logPath, diagnostics };
 };

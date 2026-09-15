@@ -36,8 +36,8 @@ import type { EditorConfiguration } from "../views/editor/TextEditor/editorConfi
 const { usePaneConfigurations } = await import("../views/ProjectPage/usePaneConfigurations");
 const { editorProfileForExtension } = await import("../views/editor/TextEditor/editorProfile");
 
-/** Everything the hook takes: a configuration minus its per-file parts. */
-type SharedSettings = Omit<EditorConfiguration, "profile" | "resolveImageSource">;
+/** Everything the hook takes: a configuration minus its per-pane parts. */
+type SharedSettings = Omit<EditorConfiguration, "profile" | "resolveImageSource" | "isFrozen">;
 
 /** Settings shared by every pane, at known values. */
 const SHARED: SharedSettings = {
@@ -62,6 +62,20 @@ function pathOf(url: string | null): string | null {
     return decodeURIComponent(url.replace("asset://localhost/", ""));
 }
 
+/**
+ * The lookup key for the focused pane showing `path`.
+ *
+ * Most of these tests are about the file, not the freeze state, and
+ * spelling the whole key out at every call site would bury which of
+ * the two a given test is actually exercising.
+ *
+ * @param path - The open document's path, or null for an empty pane.
+ * @returns The key.
+ */
+function active(path: string | null) {
+    return { path, isFrozen: false };
+}
+
 describe("usePaneConfigurations", () => {
     it("resolves each pane's images against that pane's own directory", () => {
         // The bug: both panes used to resolve against the active
@@ -69,8 +83,8 @@ describe("usePaneConfigurations", () => {
         // `chapters/`.
         const { result } = renderHook(() => usePaneConfigurations(SHARED));
 
-        const chapter = result.current("/project/chapters/intro.tex");
-        const appendix = result.current("/project/appendix/extra.tex");
+        const chapter = result.current(active("/project/chapters/intro.tex"));
+        const appendix = result.current(active("/project/appendix/extra.tex"));
 
         expect(pathOf(chapter.resolveImageSource?.("plot.png") ?? null)).toBe(
             "/project/chapters/plot.png",
@@ -83,17 +97,17 @@ describe("usePaneConfigurations", () => {
     it("gives each pane the profile for its own file type", () => {
         const { result } = renderHook(() => usePaneConfigurations(SHARED));
 
-        expect(result.current("/project/main.tex").profile).toBe(
+        expect(result.current(active("/project/main.tex")).profile).toBe(
             editorProfileForExtension("tex"),
         );
-        expect(result.current("/project/refs.bib").profile).toBe(
+        expect(result.current(active("/project/refs.bib")).profile).toBe(
             editorProfileForExtension("bib"),
         );
     });
 
     it("carries the shared settings through unchanged", () => {
         const { result } = renderHook(() => usePaneConfigurations(SHARED));
-        const configuration = result.current("/project/main.tex");
+        const configuration = result.current(active("/project/main.tex"));
 
         expect(configuration.theme).toBe("dark");
         expect(configuration.spellCheckEnabled).toBe(true);
@@ -103,7 +117,9 @@ describe("usePaneConfigurations", () => {
     it("returns the same object for the same path", () => {
         const { result } = renderHook(() => usePaneConfigurations(SHARED));
 
-        expect(result.current("/project/main.tex")).toBe(result.current("/project/main.tex"));
+        expect(result.current(active("/project/main.tex"))).toBe(
+            result.current(active("/project/main.tex")),
+        );
     });
 
     it("keeps a pane's object stable when an unrelated pane opens a file", () => {
@@ -111,21 +127,21 @@ describe("usePaneConfigurations", () => {
         // the map, and pane 1's editor reconfigures every compartment
         // for a configuration that did not actually change.
         const { result, rerender } = renderHook(() => usePaneConfigurations(SHARED));
-        const before = result.current("/project/main.tex");
+        const before = result.current(active("/project/main.tex"));
 
-        result.current("/project/chapters/intro.tex");
+        result.current(active("/project/chapters/intro.tex"));
         rerender();
 
-        expect(result.current("/project/main.tex")).toBe(before);
+        expect(result.current(active("/project/main.tex"))).toBe(before);
     });
 
     it("keeps objects stable across a render that changes nothing", () => {
         const { result, rerender } = renderHook(() => usePaneConfigurations(SHARED));
-        const before = result.current("/project/main.tex");
+        const before = result.current(active("/project/main.tex"));
 
         rerender();
 
-        expect(result.current("/project/main.tex")).toBe(before);
+        expect(result.current(active("/project/main.tex"))).toBe(before);
     });
 
     it("rebuilds when the shared settings change, so panes follow a theme switch", () => {
@@ -133,10 +149,10 @@ describe("usePaneConfigurations", () => {
             ({ settings }: { settings: SharedSettings }) => usePaneConfigurations(settings),
             { initialProps: { settings: { ...SHARED } } },
         );
-        const before = result.current("/project/main.tex");
+        const before = result.current(active("/project/main.tex"));
 
         rerender({ settings: { ...SHARED, theme: "light" } });
-        const after = result.current("/project/main.tex");
+        const after = result.current(active("/project/main.tex"));
 
         expect(after).not.toBe(before);
         expect(after.theme).toBe("light");
@@ -144,9 +160,32 @@ describe("usePaneConfigurations", () => {
 
     it("gives an empty pane a configuration rather than failing", () => {
         const { result } = renderHook(() => usePaneConfigurations(SHARED));
-        const empty = result.current(null);
+        const empty = result.current(active(null));
 
         expect(empty.profile.usesLatexLanguage).toBe(false);
         expect(empty.resolveImageSource?.("plot.png")).toBeNull();
+    });
+
+    it("separates two panes on the same file by their freeze state", () => {
+        // Why the cache cannot be keyed on the path alone: the same
+        // file can be open in the focused pane and an unfocused one at
+        // the same time, and only one of them freezes.
+        const { result } = renderHook(() => usePaneConfigurations(SHARED));
+
+        const focused = result.current({ path: "/project/main.tex", isFrozen: false });
+        const background = result.current({ path: "/project/main.tex", isFrozen: true });
+
+        expect(focused.isFrozen).toBe(false);
+        expect(background.isFrozen).toBe(true);
+        expect(focused).not.toBe(background);
+    });
+
+    it("keeps each freeze state's object stable", () => {
+        // Focus moves back and forth constantly; a fresh object each
+        // time would reconfigure every compartment on every click.
+        const { result } = renderHook(() => usePaneConfigurations(SHARED));
+        const key = { path: "/project/main.tex", isFrozen: true };
+
+        expect(result.current(key)).toBe(result.current({ ...key }));
     });
 });

@@ -183,7 +183,7 @@ pub async fn rename_project_impl(project: &Path, new_name: &str) -> Result<Strin
         .ok_or_else(|| "The project has no name".to_string())?;
 
     if old_name == new_name {
-        return Ok(project.to_string_lossy().to_string());
+        return Ok(paths::to_display_string(project));
     }
 
     let parent = project
@@ -209,7 +209,7 @@ pub async fn rename_project_impl(project: &Path, new_name: &str) -> Result<Strin
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok(target.to_string_lossy().to_string())
+    Ok(paths::to_display_string(&target))
 }
 
 /// Errors unless `candidate` is a project directory: a directory
@@ -340,7 +340,7 @@ fn build_project_info(project_dir: &Path) -> Result<ProjectInfo, String> {
 
     Ok(ProjectInfo {
         name,
-        path: project_dir.to_string_lossy().to_string(),
+        path: paths::to_display_string(project_dir),
         last_modified,
         file_count,
     })

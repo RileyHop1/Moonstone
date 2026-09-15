@@ -15,6 +15,7 @@ function makeEditorActions(overrides?: Partial<EditorActions>): EditorActions {
         redo: vi.fn(),
         insertSnippet: vi.fn(),
         newFile: vi.fn(),
+        compile: vi.fn(),
         exitProject: vi.fn(),
         viewMode: "live",
         setViewMode: vi.fn(),
@@ -88,6 +89,20 @@ describe("buildMenus", () => {
         expect(findItem(context, "View", "Source").action).toBeNull();
         expect(findItem(context, "View", "Live Preview").action).toBeNull();
         expect(findItem(context, "View", "Read Only").action).toBeNull();
+    });
+
+    it("wires Compile to the editor", () => {
+        const editor = makeEditorActions();
+        const context = makeContext(editor);
+
+        findItem(context, "File", "Compile").action?.();
+
+        expect(editor.compile).toHaveBeenCalled();
+    });
+
+    it("disables Compile without an editor", () => {
+        // There is nothing to compile from the project browser.
+        expect(findItem(makeContext(null), "File", "Compile").action).toBeNull();
     });
 
     it("wires Find & Replace to the editor", () => {

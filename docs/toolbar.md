@@ -11,6 +11,11 @@ global hot bar menus use), so the toolbar and menus stay in sync.
   changes). Also `Ctrl+S`.
 - **Undo / Redo** — the CodeMirror history commands.
 - **🔍 Find** — opens the find-and-replace panel (see below).
+- **Compile** — saves the open file and builds it to PDF (see
+  [PDF compilation](pdf-compilation.md)). Saving first is deliberate:
+  compiling what is on disk while the author looks at something newer
+  reports errors against lines they cannot see. Disabled while a
+  compile is running, and the label says so.
 - **View-mode control** — the segmented `Src / Live / Read` switch.
 - **Snippet buttons** — insert LaTeX at the cursor (`$x$`, `$$`, table,
   Greek letters, `∑`, `∫`, fraction, `√`, document template). Disabled

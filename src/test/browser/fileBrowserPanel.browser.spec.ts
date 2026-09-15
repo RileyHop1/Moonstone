@@ -8,6 +8,7 @@
 
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { MIN_NEIGHBOUR_WIDTH_PX, MIN_PANEL_WIDTH_PX } from "../../shared/usePanelResize";
 
 /** The panel wrapping the file browser. */
 const PANEL = ".resizable-panel";
@@ -116,7 +117,16 @@ test.describe("file browser panel", () => {
 
         const width = await widthOf(page.locator(PANEL));
 
-        expect(width).toBeGreaterThan(100);
+        // Exactly the floor, not merely above some number below it.
+        // This used to assert `> 100`, which a regression dropping the
+        // floor to 110 would have sailed past.
+        //
+        // Asserting equality rather than `>=` is what keeps it from
+        // being tautological now that the constant is imported: what a
+        // browser test can check, and jsdom cannot, is that the layout
+        // *honours* the clamp. Whether 150 is the right number is
+        // pinned separately, in `usePanelResize.test.ts`.
+        expect(width).toBe(MIN_PANEL_WIDTH_PX);
         // Still draggable afterwards, which is the point of the floor.
         await expect(page.locator(GRIP)).toBeVisible();
 
@@ -129,7 +139,9 @@ test.describe("file browser panel", () => {
 
         await dragSplitter(page, 5000);
 
-        expect(await widthOf(page.locator(EDITOR))).toBeGreaterThan(200);
+        // The editor keeps exactly its reserved minimum — the other
+        // half of the same clamp.
+        expect(await widthOf(page.locator(EDITOR))).toBe(MIN_NEIGHBOUR_WIDTH_PX);
     });
 
     test("hides and restores the width it had", async ({ page }) => {

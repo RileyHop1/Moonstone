@@ -78,6 +78,51 @@ const revealFacet = Facet.define<boolean, boolean>({
 });
 
 /**
+ * Whether this editor is frozen: it keeps the look it last produced
+ * instead of re-rendering as the cursor moves.
+ *
+ * Set for every pane except the one the user is working in. With
+ * several files open, each keystroke would otherwise cost a rebuild in
+ * every pane, and the panes nobody is looking at pay the same price as
+ * the one they are.
+ *
+ * **A frozen editor never reveals.** That is not a side effect, it is
+ * the definition — and it is what makes the caching safe rather than
+ * merely cheap. Reveal is the only thing that makes the output depend
+ * on the selection, so with it off, a selection change provably cannot
+ * change what is rendered and skipping the rebuild is free. It also
+ * looks better: an unfocused pane showing raw `$x^2$` because its
+ * stale cursor happens to sit in a maths block is a wart, not a
+ * feature.
+ *
+ * What freezing does *not* cover is the document and the viewport.
+ * Both still rebuild — see {@link shouldRebuildInline}.
+ *
+ * Absent (a lone editor, tests, the browser harness), nothing is
+ * frozen.
+ */
+export const frozenFacet = Facet.define<boolean, boolean>({
+    combine: (values) => values[0] ?? false,
+});
+
+/**
+ * Whether the freeze state changed across a transaction.
+ *
+ * Focusing a pane has to rebuild *immediately*: the user is about to
+ * type, and the reveal that freezing suppressed has to come back
+ * before they do. The reconfiguring transaction carries no document
+ * change and no selection, so without this it would slip past every
+ * other guard.
+ *
+ * @param before - The state before the transaction.
+ * @param after - The state after it.
+ * @returns True when the editor froze or unfroze.
+ */
+function togglesFrozen(before: EditorState, after: EditorState): boolean {
+    return before.facet(frozenFacet) !== after.facet(frozenFacet);
+}
+
+/**
  * Turns an image path as written in LaTeX into a URL the webview can
  * load, or null when it cannot be resolved.
  *
@@ -118,6 +163,9 @@ const linkOpenerFacet = Facet.define<LinkOpener, LinkOpener | undefined>({
  * @returns True when the region should show as raw source.
  */
 function isRevealed(state: EditorState, from: number, to: number): boolean {
+    // A frozen editor holds its look, which means it shows no source.
+    if (state.facet(frozenFacet)) return false;
+
     if (!state.facet(revealFacet)) return false;
 
     // Frozen while a drag-selection is in progress, so revealing a
@@ -291,8 +339,44 @@ function collectFormattingDecorations(
     }
 }
 
-/** Viewport-limited plugin rendering inline math, formatting, and symbols. */
-const inlineMathPlugin = ViewPlugin.fromClass(
+/**
+ * Whether an update changes what the inline layer should render.
+ *
+ * @param update - The view update.
+ * @returns True when the decorations must be rebuilt.
+ */
+function shouldRebuildInline(update: ViewUpdate): boolean {
+    // Always, frozen or not. Decorations sit at document positions, and
+    // keeping stale ones over changed text would render the wrong
+    // characters — a rename repoints a file under a pane nobody is
+    // looking at, which is exactly when this would go unnoticed.
+    if (update.docChanged) return true;
+
+    if (togglesFrozen(update.startState, update.state)) return true;
+
+    // Frozen, so reveal is off and the selection cannot change the
+    // output. The *viewport* still can: this layer only decorates what
+    // is on screen, and an unfocused pane can still be scrolled or
+    // resized by dragging a splitter. Freezing that would show raw
+    // source wherever the user scrolled to.
+    if (update.state.facet(frozenFacet)) return update.viewportChanged;
+
+    return (
+        update.selectionSet || update.viewportChanged || updateTogglesPointerSelection(update)
+    );
+}
+
+/**
+ * Viewport-limited plugin rendering inline math, formatting, and
+ * symbols.
+ *
+ * Exported for the same reason as {@link documentScanField}: freezing
+ * is a claim about decorations *not* being rebuilt, and the only
+ * honest way to assert that is reference identity. Deliberately absent
+ * from the barrel — this is reachable by the module's own test, not by
+ * the app.
+ */
+export const inlineMathPlugin = ViewPlugin.fromClass(
     class {
         decorations: DecorationSet;
         atomic: DecorationSet;
@@ -304,12 +388,7 @@ const inlineMathPlugin = ViewPlugin.fromClass(
         }
 
         update(update: ViewUpdate) {
-            if (
-                update.docChanged ||
-                update.selectionSet ||
-                update.viewportChanged ||
-                updateTogglesPointerSelection(update)
-            ) {
+            if (shouldRebuildInline(update)) {
                 const sets = buildInlineDecorations(update.view);
                 this.decorations = sets.decorations;
                 this.atomic = sets.atomic;
@@ -935,14 +1014,30 @@ function collapsePreamble(build: BlockBuild, documentBeginFrom: number): void {
  * Rebuilds on selection as well as document changes, because the
  * cursor decides what is revealed — but the underlying scan is cached
  * in {@link documentScanField}, so a cursor move rebuilds decorations
- * without rescanning or re-masking the document.
+ * without rescanning or re-masking the document. Unless frozen, in
+ * which case it does not rebuild at all.
+ *
+ * Exported for tests, like {@link documentScanField}, and likewise not
+ * on the barrel.
  */
-const blockPreviewField = StateField.define<BlockDecorationSets>({
+export const blockPreviewField = StateField.define<BlockDecorationSets>({
     create: buildBlockDecorations,
 
     update(sets, transaction) {
+        // Always, frozen or not — see `shouldRebuildInline`.
+        if (transaction.docChanged) return buildBlockDecorations(transaction.state);
+
+        if (togglesFrozen(transaction.startState, transaction.state)) {
+            return buildBlockDecorations(transaction.state);
+        }
+
+        // Frozen: reveal is off, so the selection cannot change the
+        // output. Unlike the inline layer this scans the whole
+        // document, so the viewport is not a factor either — a frozen
+        // block layer rebuilds only when the text does.
+        if (transaction.state.facet(frozenFacet)) return sets;
+
         if (
-            transaction.docChanged ||
             transaction.selection ||
             // The transaction ending a drag carries no selection, but
             // hands reveal back to the live one.
@@ -950,6 +1045,7 @@ const blockPreviewField = StateField.define<BlockDecorationSets>({
         ) {
             return buildBlockDecorations(transaction.state);
         }
+
         return sets;
     },
 

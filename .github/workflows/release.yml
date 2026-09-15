@@ -184,22 +184,29 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # `sidecar` is the target the Tectonic binary is fetched for.
+          # It is spelled out even where `targets` is blank, because a
+          # host build still needs the sidecar named for its own triple.
           - name: Windows
             runner: windows-latest
             args: ""
             targets: ""
+            sidecar: x86_64-pc-windows-msvc
           - name: macOS (Apple Silicon)
             runner: macos-latest
             args: "--target aarch64-apple-darwin"
             targets: "aarch64-apple-darwin"
+            sidecar: aarch64-apple-darwin
           - name: macOS (Intel)
             runner: macos-latest
             args: "--target x86_64-apple-darwin"
             targets: "x86_64-apple-darwin"
+            sidecar: x86_64-apple-darwin
           - name: Linux
             runner: ubuntu-22.04
             args: ""
             targets: ""
+            sidecar: x86_64-unknown-linux-gnu
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -237,6 +244,20 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # The Tectonic sidecar, fetched for *this* matrix target rather
+      # than the host: the macOS jobs cross-compile, so the Intel build
+      # running on an Apple Silicon runner needs the Intel engine.
+      # `tauri.conf.json` declares it under `externalBin`, and the build
+      # fails outright without it.
+      - name: Cache the Tectonic sidecar
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/binaries
+          key: tectonic-${{ matrix.sidecar }}-${{ hashFiles('scripts/fetchTectonic.mjs') }}
+
+      - name: Fetch the Tectonic sidecar
+        run: npm run tectonic:fetch -- --target ${{ matrix.sidecar }}
 
       # Builds the frontend (through `beforeBuildCommand`), compiles the
       # Rust binary, bundles the installers, and uploads them to the

@@ -132,6 +132,7 @@ function mountHarness(): void {
         showDiagnostics: false,
         references: [],
         profile: DEFAULT_EDITOR_PROFILE,
+        isFrozen: false,
     };
 
     createRoot(root).render(

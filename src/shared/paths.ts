@@ -107,6 +107,30 @@ export function isAtOrInside(parent: string, candidate: string): boolean {
 }
 
 /**
+ * Expresses a path relative to a directory that contains it.
+ *
+ * The inverse of {@link join}, and the form the backend and the LaTeX
+ * engine both speak: a compile takes the main file relative to its
+ * project, and the engine reports diagnostics against project-relative
+ * names.
+ *
+ * Always returns forward slashes. That is the separator LaTeX writes
+ * and the one the engine reports back, so a relative path is compared
+ * against engine output more often than it is joined onto a Windows
+ * path.
+ *
+ * @param parent - The containing directory.
+ * @param path - A path inside it.
+ * @returns The relative path, or null when `path` is not inside
+ *   `parent`.
+ */
+export function relativeTo(parent: string, path: string): string | null {
+    if (!isInside(parent, path)) return null;
+
+    return normaliseSeparators(path).slice(normaliseSeparators(parent).length + 1);
+}
+
+/**
  * Rewrites a path after the entry it lives under has moved.
  *
  * @param path - The path to rewrite.

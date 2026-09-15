@@ -5,25 +5,25 @@
 //! [`paths`]), so there is no shared mutable state to guard.
 
 mod bibliography;
+mod compiler;
 mod file_manager;
 mod paths;
 mod project_manager;
 mod settings;
 mod templates;
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
 /// Builds and runs the Tauri application with all commands registered.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // Registered so Rust can start the Tectonic sidecar. The
+        // webview is granted no shell permission in
+        // `capabilities/default.json`, so the ability to run a process
+        // stays on this side of the IPC boundary.
+        .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
-            greet,
+            compiler::compile_project,
             file_manager::create_file,
             file_manager::create_directory,
             file_manager::list_project_files,

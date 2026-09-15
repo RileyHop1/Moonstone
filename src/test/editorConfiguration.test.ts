@@ -46,6 +46,7 @@ const BASE: EditorConfiguration = {
     showDiagnostics: false,
     references: [],
     profile: DEFAULT_EDITOR_PROFILE,
+    isFrozen: false,
 };
 
 /**
@@ -66,6 +67,7 @@ const CHANGES: Record<keyof EditorConfiguration, Partial<EditorConfiguration>> =
     resolveImageSource: { resolveImageSource: () => "moonstone://image" },
     openLink: { openLink: () => undefined },
     profile: { profile: editorProfileForExtension("csv") },
+    isFrozen: { isFrozen: true },
 };
 
 describe("reconfigurationEffects", () => {
@@ -128,7 +130,7 @@ describe("editorExtensions", () => {
     const BASE_SETUP: Extension = [];
 
     it("builds one extension per synced compartment, around the base setup", () => {
-        expect(editorExtensions(BASE, BASE_SETUP)).toHaveLength(8);
+        expect(editorExtensions(BASE, BASE_SETUP)).toHaveLength(9);
     });
 
     it("puts the modal keymap before the base setup and the language after", () => {

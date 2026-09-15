@@ -23,6 +23,8 @@ export interface ToolbarProps {
     readonly isDirty: boolean;
     /** True when a file is open in the editor. */
     readonly hasOpenFile: boolean;
+    /** True while a compile is running, so it cannot be started twice. */
+    readonly isCompiling: boolean;
     /**
      * The editor actions the buttons delegate to.
      *
@@ -76,7 +78,13 @@ const SNIPPET_BUTTONS: readonly SnippetButton[] = [
  * @param props - Editor state and actions.
  * @returns The toolbar element.
  */
-export function Toolbar({ isDirty, hasOpenFile, actions, statusMessage }: ToolbarProps) {
+export function Toolbar({
+    isDirty,
+    hasOpenFile,
+    isCompiling,
+    actions,
+    statusMessage,
+}: ToolbarProps) {
     // Read-only mode is non-editable, so snippet insertion is disabled.
     const canEdit = hasOpenFile && actions.viewMode !== "readonly";
 
@@ -117,6 +125,15 @@ export function Toolbar({ isDirty, hasOpenFile, actions, statusMessage }: Toolba
                 onClick={actions.findReplace}
             >
                 🔍
+            </button>
+            <button
+                type="button"
+                className="toolbar-button"
+                disabled={!hasOpenFile || isCompiling}
+                title="Compile this file to PDF"
+                onClick={actions.compile}
+            >
+                {isCompiling ? "Compiling…" : "Compile"}
             </button>
 
             <span className="toolbar-separator" />

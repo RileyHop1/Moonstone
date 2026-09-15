@@ -183,11 +183,20 @@ behind the parent's back.
 ## Each pane has its own settings
 
 `PaneTree` takes a `configurationFor` lookup rather than one shared
-configuration object, because two fields follow the **document** rather
-than the user: the file-type profile and the image resolver. See
+configuration object, because three fields follow the **pane** rather
+than the user: the file-type profile, the image resolver, and whether
+the pane is frozen. See
 [Per-pane configuration](editor-configuration.md#per-pane-configuration)
 — it exists because handing every pane the _active_ document's
 configuration was a real bug.
+
+**Only the focused pane renders live.** Every other pane holds the look
+it last produced: it still follows edits and still re-renders what you
+scroll into view, but it stops revealing source at its own cursor. So
+an unfocused pane shows a finished document rather than raw `$x^2$`
+wherever its cursor happens to sit. The mechanism, and the measurements
+behind it, are in
+[live preview](live-preview.md#freezing-an-unfocused-pane).
 
 ## Still to do
 

@@ -1,0 +1,273 @@
+# PDF compilation
+
+Turning a project into a PDF, using [Tectonic](https://tectonic-typesetting.github.io/)
+as the TeX engine.
+
+> **Status:** compiling works. A **Compile** button in the toolbar
+> builds the open document, artifacts stay hidden, and errors are
+> reported against their source line. Compile-on-save (D3) and the PDF
+> pane (D4) are still to come.
+
+## Why Tectonic
+
+A self-contained TeX engine written in Rust, forked from XeTeX. It
+fetches the support files a document actually needs from a TeXLive
+bundle and caches them, so a user installs Moonstone and compiles —
+there is no separate multi-gigabyte TeX distribution to install first.
+That is the whole reason it was chosen over shelling out to a system
+`pdflatex`.
+
+## The decision: sidecar, not the crate
+
+Tectonic publishes both a Rust library and a CLI. The spike was run to
+choose between them, because the choice lands on the release pipeline
+rather than on the app code.
+
+**Ship the CLI as a Tauri sidecar (`externalBin`).** The crate is not
+viable without rebuilding the release matrix around it.
+
+### The evidence
+
+**The `tectonic` crate needs five system C libraries.** It pulls in
+seven bridge crates:
+
+| Bridge crate                 | Native dependency                              |
+| ---------------------------- | ---------------------------------------------- |
+| `tectonic_bridge_harfbuzz`   | **vendored** (`external-harfbuzz` is opt-_in_) |
+| `tectonic_bridge_flate`      | pure Rust (`zlib-rs`)                          |
+| `tectonic_bridge_png`        | system `libpng`, via `pkg-config`              |
+| `tectonic_bridge_freetype2`  | system, via `pkg-config`                       |
+| `tectonic_bridge_graphite2`  | system, via `pkg-config`                       |
+| `tectonic_bridge_icu`        | system, via `pkg-config`                       |
+| `tectonic_bridge_fontconfig` | system, via `pkg-config`                       |
+
+Only harfbuzz has a vendoring toggle. The other five expose **no cargo
+features at all**, so there is no source-build fallback to turn on.
+
+Building `tectonic = "0.17"` on this Windows machine fails in
+`tectonic_bridge_png`'s build script:
+
+```
+called `Result::unwrap()` on an `Err` value: Could not run
+`pkg-config --libs --cflags libpng`
+The pkg-config command could not be found.
+```
+
+Windows alone would be solvable — vcpkg, a static triplet, and a long
+CI step, which is what upstream does for its own builds.
+
+**The macOS Intel target is what settles it.** `release.yml` builds four
+targets, and one of them cross-compiles `x86_64-apple-darwin` from an
+`macos-latest` (Apple Silicon) runner. Homebrew installs libraries for
+the host architecture; it cannot have arm64 and x86_64 versions of
+libpng, freetype, graphite2 and icu present at once. Cross-compiling
+vendored-C dependencies from an arm64 host is exactly the case the
+crate has no answer for.
+
+> Honest scope: the Windows failure above was reproduced locally. The
+> macOS cross-compile was **not** tested — there is no Apple hardware
+> here. It is an argument from how Homebrew and `pkg-config` work, not
+> a measurement. If someone later finds a way to make it build, the
+> trade-off is worth revisiting; the parsing layer in D2 is the only
+> thing that would be thrown away.
+
+**The sidecar has prebuilt binaries for every target we ship.** From
+the `tectonic@0.17.0` release:
+
+| Release target        | Asset                                             | Size    |
+| --------------------- | ------------------------------------------------- | ------- |
+| Windows               | `tectonic-0.17.0-x86_64-pc-windows-msvc.zip`      | 20.1 MB |
+| macOS (Apple Silicon) | `tectonic-0.17.0-aarch64-apple-darwin.tar.gz`     | 20.7 MB |
+| macOS (Intel)         | `tectonic-0.17.0-x86_64-apple-darwin.tar.gz`      | 20.8 MB |
+| Linux                 | `tectonic-0.17.0-x86_64-unknown-linux-gnu.tar.gz` | 21.7 MB |
+
+`cargo build` is untouched, so the release matrix keeps working exactly
+as it does today. The cost is the download size — roughly **20 MB
+compressed per installer**, 51 MB on disk for the Windows executable —
+and parsing CLI output instead of calling an API. That second cost is
+much smaller than it looks; see "Errors" below.
+
+## What the spike established
+
+### All ten bundled templates compile
+
+Every template in `src-tauri/templates/` builds a PDF, with SyncTeX:
+
+| Template     | Warm compile | Template      | Warm compile |
+| ------------ | ------------ | ------------- | ------------ |
+| article      | ~1 s         | homework      | ~2 s         |
+| blank        | ~1 s         | lecture-notes | ~1 s         |
+| book         | ~3 s         | presentation  | ~1.4 s       |
+| cover-letter | ~1 s         | report        | ~1 s         |
+| cv           | ~2 s         | thesis        | ~0.7 s       |
+
+No template needed changing. The `inputenc`/`fontenc` calls that looked
+like a risk — they are pdfTeX-era and redundant under XeTeX — are
+accepted without complaint.
+
+### First compile needs the network; after that it does not
+
+Tectonic downloads support files on demand and caches them:
+
+| Platform | Cache location                                  |
+| -------- | ----------------------------------------------- |
+| Windows  | `%LOCALAPPDATA%\TectonicProject\Tectonic\cache` |
+| macOS    | `~/Library/Caches/Tectonic`                     |
+| Linux    | `$XDG_CACHE_HOME/Tectonic`                      |
+
+The numbers that matter for first-run experience:
+
+- **First compile ever: 79 s**, almost all of it downloading.
+- **`presentation` (beamer): 29 s** the first time, 1.4 s after — beamer
+  pulls a large package set of its own.
+- Cache after all ten templates: **47 MB**.
+- `--only-cached` (`-C`) forces offline. A previously-compiled document
+  builds fine offline; one needing an unfetched package fails with a
+  TeX "file not found" rather than a network error.
+
+**This is a first-run problem D3 has to design for, not ignore.** A
+79-second wait with no explanation on the first save would read as a
+hang. Warming the cache during onboarding, or at minimum a progress
+message naming what is being fetched, belongs in that stage.
+
+### SyncTeX works
+
+`--synctex` produced `main.synctex.gz` for all ten templates, so
+error-to-source mapping is available.
+
+### Errors come out already normalised
+
+This is what makes the sidecar's "you have to parse text" cost small.
+Tectonic emits a one-line diagnostic per problem on **stderr**, ahead
+of the raw XeTeX log, in a fixed shape:
+
+```
+error: <file>:<line>: <message>
+```
+
+A document with three planted faults produced exactly three, with
+correct line numbers:
+
+```
+error: broken.tex:11: LaTeX Error: \begin{itemize} on input line 8 ended by \end{enumerate}.
+error: broken.tex:13: Undefined control sequence
+error: broken.tex:16: Missing $ inserted
+```
+
+Four details D2 must handle:
+
+1. **`-Z continue-on-errors` is required to get more than the first
+   one.** By default the engine halts at the first error, which would
+   make the diagnostics panel a one-item list.
+2. **With that flag, a PDF is still written.** The user gets a
+   best-effort render _and_ the error list, which is a far better
+   failure mode than a blank pane.
+3. **With that flag the exit code is 0 even when errors were issued**,
+   so the exit code is not the success signal — the parsed diagnostics
+   are. (Without it, a failed compile exits 1.)
+4. **Diagnostics repeat when TeX reruns** (a changed `.aux` triggers a
+   second pass), so they must be deduplicated on file + line + message.
+
+On Windows, stderr also carries a harmless
+`Fontconfig error: Cannot load default config file` on every run. It is
+not a compile failure — all ten templates emit it and all ten
+succeed — and the parser must not report it.
+
+### Artifacts can be contained
+
+`-o <dir>` puts every output in that directory and leaves the source
+tree untouched. Combined with `build_directory_node` already skipping
+dot-prefixed entries ([file_manager.rs:690](../src-tauri/src/file_manager.rs#L690)),
+compiling into `.moonstone-build/` keeps `.aux`, `.log` and the rest out
+of the file browser with no filtering rules to maintain.
+
+Two other flags worth knowing:
+
+- `--untrusted` disables `\write18` and other known-insecure features.
+  Projects are files on the user's disk that may have come from
+  anywhere, so this is the default D2 should take, with shell-escape an
+  explicit opt-in if it is ever wanted.
+- `-Z search-path` is how multi-directory projects (`book`, `thesis`)
+  would resolve includes if the working directory is not enough.
+
+## How it is wired
+
+Source: `src-tauri/src/compiler.rs`, `scripts/fetchTectonic.mjs`
+Tests: the `compiler_tests` module, `src/test/parseBackend.test.ts`
+
+**The engine is fetched, not committed.** `npm run tectonic:fetch`
+downloads the binary for the host target into `src-tauri/binaries/`,
+where Tauri's `externalBin` expects it; the directory is gitignored.
+Pass `--target` to fetch a different platform's build for a cross
+compile. Two portability details are baked into that script and both
+were found the hard way: on Windows it calls **System32's bsdtar by
+absolute path**, because a Git Bash shell shadows it with GNU tar which
+cannot read a zip at all; and it names the archive relative to a `cwd`,
+because GNU tar reads `C:\…` as a remote `host:path` and tries to open
+a network connection.
+
+**The webview cannot run anything.** `tauri-plugin-shell` is registered
+so Rust can start the sidecar, but no shell permission is granted in
+`capabilities/default.json`, so the ability to start a process stays on
+the backend side of the IPC boundary.
+
+**`compile_project` takes the project path and a main file relative to
+it**, validates both against the Moonstone root, and runs the engine
+with the flags in `engine_arguments` — every one of which is
+load-bearing and tested, because each is easy to drop by accident.
+Output lands in `.moonstone-build/`; the PDF is copied out beside the
+source, because it is the product rather than the noise, and because
+the file browser hides dot-directories.
+
+A document that fails to typeset is **not** a command failure. It comes
+back as `Ok` with diagnostics, usually alongside a best-effort PDF. The
+`Err` case is reserved for not being able to compile at all: a missing
+file, an engine that would not start, or a compile that exceeded the
+180-second timeout — which exists because a runaway macro makes TeX
+spin forever, and compile-on-save would leave it burning a core.
+
+### One path, spelled one way
+
+Compiling was the first thing to ask "is this open file inside this
+open project?", and the answer came back **no** for a file that plainly
+was. `list_project_files` canonicalizes through `ensure_within_root`,
+which on Windows yields `\\?\C:\…`; `list_projects` joins onto the
+plain root and does not. The same directory reached the frontend under
+two names.
+
+Every path that crosses the boundary now goes through
+`paths::to_display_string`, which drops the extended-length prefix.
+Nothing is lost — the prefix only raises the 260-character limit, and
+every command canonicalizes again on the way in — and the paths stay
+readable, which matters because they are shown in tooltips.
+
+## Still to do
+
+- **D3** — compile on save, debounced, with a toolbar status and a
+  setting to turn it off. Must have an answer for the 79-second first
+  compile.
+- **Diagnostics as a panel, not a status line.** The toolbar currently
+  shows the first error and a count. The diagnostics panel already
+  exists and is the natural home, with each entry clickable to its
+  source line. Note that a diagnostic's `file` may lack an extension
+  (`\input{chapters/one}` reports `chapters/one`), so resolving it to a
+  real file is the reader's job.
+- **Undefined references and citations are missing.** LaTeX reports
+  those as warnings that never reach Tectonic's normalised stderr —
+  they exist only in the `.log`, which is why `--keep-logs` is on and
+  `logPath` comes back with every outcome.
+- **D4** — a PDF pane. `PaneDocument` becomes a discriminated union;
+  the layout model and drop handling are untouched. WebView2 and
+  WKWebView display a PDF in an `<iframe>` natively, **WebKitGTK does
+  not**, so Linux needs bundled pdf.js — a known gap, not a surprise to
+  discover later.
+- **Verifying the sidecar on the real matrix.** It runs in dev on
+  Windows. No release has been built with `externalBin` wired in, so
+  `release.yml` still needs a `npm run tectonic:fetch --target …` step
+  per matrix entry, and that has not been exercised.
+- **The preview is more permissive than the engine.** Moonstone renders
+  `\alpha` in text mode; LaTeX refuses to compile it ("Missing $
+  inserted"). So a document can look finished in the editor and fail to
+  build. Found by compiling the Welcome project, whose scratch content
+  does exactly this. The bundled templates are unaffected — all ten
+  compile.

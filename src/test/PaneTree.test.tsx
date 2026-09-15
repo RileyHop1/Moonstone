@@ -21,6 +21,7 @@ import {
 import type { PaneId, PaneNode } from "../views/ProjectPage/paneLayout";
 import type { EditorConfiguration } from "../views/editor/TextEditor/editorConfiguration";
 import { editorProfileForPath } from "../views/editor/TextEditor/editorProfile";
+import type { PaneConfigurationKey } from "../views/ProjectPage/usePaneConfigurations";
 
 /** Settings shared by every pane, before the file type is known. */
 const SHARED_SETTINGS = {
@@ -31,17 +32,17 @@ const SHARED_SETTINGS = {
     lineNumberMode: "absolute",
     showDiagnostics: false,
     references: [],
-} as const satisfies Omit<EditorConfiguration, "profile">;
+} as const satisfies Omit<EditorConfiguration, "profile" | "isFrozen">;
 
 /**
- * Builds the configuration a pane showing `path` runs under, the way
- * the page does: per file, not per page.
+ * Builds the configuration a pane runs under, the way the page does:
+ * per file and per pane, not per page.
  *
- * @param path - The open document's path, or null for an empty pane.
- * @returns That file's configuration.
+ * @param key - The pane's document and whether it is frozen.
+ * @returns That pane's configuration.
  */
-function buildConfiguration(path: string | null): EditorConfiguration {
-    return { ...SHARED_SETTINGS, profile: editorProfileForPath(path) };
+function buildConfiguration({ path, isFrozen }: PaneConfigurationKey): EditorConfiguration {
+    return { ...SHARED_SETTINGS, profile: editorProfileForPath(path), isFrozen };
 }
 
 /**

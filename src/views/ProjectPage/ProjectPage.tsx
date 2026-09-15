@@ -16,6 +16,7 @@ import { useConfirm } from "../../components/useConfirm";
 import type { NameDialogResult } from "../../components/NameDialog";
 import { ResizablePanel } from "../../components/ResizablePanel";
 import { DEFAULT_FILE_EXTENSION } from "../../shared/fileTypes";
+import { relativeTo } from "../../shared/paths";
 import { useNavigation } from "../../shared/navigation";
 import { useAppActions } from "../../shared/appActions";
 import { useSettings } from "../../shared/settings";
@@ -27,6 +28,7 @@ import {
     listProjectFiles,
     listReferences,
     moveEntry,
+    compileProject,
     readFile,
     openExternalLink,
     renameEntry,
@@ -136,6 +138,7 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
     const [dialog, setDialog] = useState<FileDialogState | null>(null);
     const [viewMode, setViewMode] = useState<ViewMode>(DEFAULT_VIEW_MODE);
     const [references, setReferences] = useState<readonly Reference[]>([]);
+    const [isCompiling, setIsCompiling] = useState(false);
 
     // Modal editing and spell checking are user preferences, not
     // per-session editor state, so they come from settings and persist.
@@ -346,6 +349,61 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
     );
 
     /**
+     * Compiles the active pane's document to PDF.
+     *
+     * Saves first. Compiling what is on disk while the author looks at
+     * something newer on screen reports errors against lines they
+     * cannot see, which is worse than not compiling at all.
+     */
+    const compileActivePane = useCallback(async (): Promise<void> => {
+        const document = panesRef.current.documents.get(panesRef.current.activePaneId);
+        if (!document) return;
+
+        const mainFile = relativeTo(project.path, document.path);
+        if (mainFile === null) {
+            showStatus({ kind: "error", text: "That file is not part of this project" });
+            return;
+        }
+
+        await savePane(panesRef.current.activePaneId);
+
+        setIsCompiling(true);
+        const result = await compileProject(project.path, mainFile);
+        setIsCompiling(false);
+
+        if (!result.ok) {
+            showStatus({ kind: "error", text: `Compile failed: ${result.error}` });
+            return;
+        }
+
+        // The PDF lands beside the source, so the browser is a file out
+        // of date until it is reloaded. This happens even when the
+        // document had errors: the engine writes a best-effort PDF
+        // anyway, and hiding it would be pretending it does not exist.
+        if (result.data.pdfPath !== null) void refreshTree();
+
+        const errors = result.data.diagnostics.filter(
+            (diagnostic) => diagnostic.severity === "error",
+        );
+        const first = errors[0];
+
+        if (first) {
+            const where = first.line === null ? first.file : `${first.file}:${first.line}`;
+
+            showStatus({
+                kind: "error",
+                text: `${errors.length} error${errors.length === 1 ? "" : "s"} — ${where} ${first.message}`,
+            });
+            return;
+        }
+
+        showStatus({
+            kind: "info",
+            text: result.data.pdfPath ? "Compiled ✓" : "No PDF produced",
+        });
+    }, [project.path, savePane, showStatus, refreshTree]);
+
+    /**
      * Handles a file-management request from the browser: prompts for
      * names via dialog, performs a move, or confirms and deletes.
      */
@@ -473,6 +531,9 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
             newFile: () => {
                 setDialog({ kind: "newFile", parentDir: project.path });
             },
+            compile: () => {
+                void compileActivePane();
+            },
             exitProject: () => {
                 void (async () => {
                     if (!(await confirmDiscardChanges(null))) return;
@@ -488,7 +549,7 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
                 view.focus();
             },
         }),
-        [savePane, confirmDiscardChanges, navigate, project.path, viewMode],
+        [savePane, confirmDiscardChanges, compileActivePane, navigate, project.path, viewMode],
     );
 
     // The settings every editor on this page shares. The editor applies
@@ -539,6 +600,7 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
             <Toolbar
                 isDirty={panes.isActiveDirty}
                 hasOpenFile={panes.activeDocument !== null}
+                isCompiling={isCompiling}
                 actions={actions}
                 statusMessage={statusMessage}
             />

@@ -16,11 +16,33 @@ import type { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { assertNever } from "../../../shared/types";
 import type { ViewMode } from "../../../shared/types";
-import { livePreview } from "./LivePreview";
+import { frozenFacet, livePreview } from "./LivePreview";
 import type { ImageSourceResolver, LinkOpener } from "./LivePreview";
 
 /** Compartment holding whichever preview configuration is active. */
 export const previewCompartment = new Compartment();
+
+/**
+ * Compartment holding whether this editor is frozen.
+ *
+ * Deliberately *not* folded into {@link previewCompartment}, although
+ * it only affects the preview. Freezing changes every time the user
+ * moves between panes, and reconfiguring the preview compartment
+ * replaces the whole live-preview extension — a lot of churn for one
+ * boolean. Its own compartment makes focusing a pane the cheapest
+ * dispatch there is.
+ */
+export const frozenCompartment = new Compartment();
+
+/**
+ * The freeze extension for an editor.
+ *
+ * @param isFrozen - True for a pane the user is not working in.
+ * @returns The extension publishing it into editor state.
+ */
+export function frozenExtension(isFrozen: boolean): Extension {
+    return frozenFacet.of(isFrozen);
+}
 
 /** The mode every editor session starts in. */
 export const DEFAULT_VIEW_MODE: ViewMode = "live";

@@ -84,16 +84,22 @@ function sizeAt(node: PaneSplit, index: number): number {
 export function PaneTree({ node, size, ...shared }: PaneTreeProps) {
     if (node.kind === "leaf") {
         const document = shared.documents.get(node.id) ?? null;
+        const isActive = node.id === shared.activePaneId;
 
         return (
             <EditorPane
                 paneId={node.id}
                 size={size}
                 document={document}
-                isActive={node.id === shared.activePaneId}
+                isActive={isActive}
                 isDirty={shared.dirtyPanes.has(node.id)}
                 canClose={shared.canClose}
-                configuration={shared.configurationFor(document?.path ?? null)}
+                configuration={shared.configurationFor({
+                    path: document?.path ?? null,
+                    // Every pane but the focused one holds its
+                    // rendering — see `frozenFacet`.
+                    isFrozen: !isActive,
+                })}
                 onActivate={shared.onActivate}
                 onDropFile={shared.onDropFile}
                 onClose={shared.onClose}

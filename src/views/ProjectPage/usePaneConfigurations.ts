@@ -30,42 +30,61 @@ import { createImageSourceResolver } from "../../shared/tauri";
 import { editorProfileForPath } from "../editor/TextEditor/editorProfile";
 import type { EditorConfiguration } from "../editor/TextEditor/editorConfiguration";
 
-/**
- * Looks up the configuration for the file a pane has open.
- *
- * @param path - The open document's path, or null for an empty pane.
- * @returns That file's configuration. Calling twice with the same path
- *   returns the same object.
- */
-export type PaneConfigurationLookup = (path: string | null) => EditorConfiguration;
+/** What a pane needs a configuration for. */
+export interface PaneConfigurationKey {
+    /** The open document's path, or null for an empty pane. */
+    readonly path: string | null;
+    /** True when another pane has focus, so this one's preview holds. */
+    readonly isFrozen: boolean;
+}
 
 /**
- * Derives per-file configurations from the page's shared settings.
+ * Looks up the configuration for a pane.
+ *
+ * @param key - The pane's document and whether it is frozen.
+ * @returns Its configuration. Calling twice with the same key returns
+ *   the same object.
+ */
+export type PaneConfigurationLookup = (key: PaneConfigurationKey) => EditorConfiguration;
+
+/** The settings a page supplies; the rest are filled in per pane. */
+type SharedSettings = Omit<EditorConfiguration, "profile" | "resolveImageSource" | "isFrozen">;
+
+/**
+ * Derives per-pane configurations from the page's shared settings.
  *
  * @param base - The settings common to every pane. Everything except
- *   `profile` and `resolveImageSource`, which this fills in.
- * @returns A lookup from document path to configuration.
+ *   `profile`, `resolveImageSource` and `isFrozen`, which this fills
+ *   in.
+ * @returns A lookup from a pane's document and freeze state to its
+ *   configuration.
  */
-export function usePaneConfigurations(
-    base: Omit<EditorConfiguration, "profile" | "resolveImageSource">,
-): PaneConfigurationLookup {
+export function usePaneConfigurations(base: SharedSettings): PaneConfigurationLookup {
     return useMemo(() => {
         // Keyed by path rather than by pane, so two panes showing the
         // same file share one configuration and a pane keeps its object
         // when an unrelated pane opens something.
-        const byPath = new Map<string | null, EditorConfiguration>();
+        //
+        // Two caches rather than one keyed on a composite string:
+        // freezing is the *only* thing two panes on the same file can
+        // disagree about, and a pair of maps says so without having to
+        // pick a separator that a path cannot contain.
+        const frozen = new Map<string | null, EditorConfiguration>();
+        const live = new Map<string | null, EditorConfiguration>();
 
-        return (path) => {
-            const cached = byPath.get(path);
+        return ({ path, isFrozen }) => {
+            const cache = isFrozen ? frozen : live;
+            const cached = cache.get(path);
             if (cached) return cached;
 
             const built: EditorConfiguration = {
                 ...base,
                 profile: editorProfileForPath(path),
                 resolveImageSource: createImageSourceResolver(path),
+                isFrozen,
             };
 
-            byPath.set(path, built);
+            cache.set(path, built);
             return built;
         };
     }, [base]);

@@ -231,6 +231,51 @@ fn canonicalize_allowing_missing_leaf(candidate: &Path) -> Result<PathBuf, Strin
     Ok(canonical_parent.join(leaf))
 }
 
+/// Windows' extended-length path prefix, which `canonicalize` adds.
+const EXTENDED_LENGTH_PREFIX: &str = r"\\?\";
+
+/// Renders a path in the single form the frontend is given.
+///
+/// Every path that crosses the IPC boundary goes through here, because
+/// the frontend compares them to each other — "is this file inside that
+/// project?" — and two spellings of the same path make that comparison
+/// silently wrong.
+///
+/// The spelling that has to go is Windows' extended-length prefix.
+/// [`ensure_within_root`] canonicalizes, and on Windows canonicalizing
+/// `C:\Users\me\Documents\Moonstone\Thesis` yields
+/// `\\?\C:\Users\me\Documents\Moonstone\Thesis`. Paths built from the
+/// root *without* canonicalizing — the project list is one — keep the
+/// plain form, so the file tree and the project list disagreed about
+/// what the same directory is called. Nothing noticed until compiling
+/// asked whether the open file belonged to the open project, and was
+/// told no.
+///
+/// Dropping the prefix rather than adding it everywhere keeps the paths
+/// readable, which matters because they are shown in tooltips. Nothing
+/// is lost: the prefix only raises the 260-character path limit, and
+/// every command canonicalizes again on the way back in.
+///
+/// # Parameters
+///
+/// * `path` - The path to render.
+///
+/// # Returns
+///
+/// The path as a string, without the extended-length prefix.
+pub fn to_display_string(path: &Path) -> String {
+    let rendered = path.to_string_lossy().to_string();
+
+    match rendered.strip_prefix(EXTENDED_LENGTH_PREFIX) {
+        // UNC paths canonicalize to `\\?\UNC\server\share`, where
+        // dropping the prefix outright would leave `UNC\server\share`
+        // — not a path at all. Restoring the `\\` keeps it one.
+        Some(unc) if unc.starts_with("UNC\\") => format!(r"\\{}", &unc[4..]),
+        Some(local) => local.to_string(),
+        None => rendered,
+    }
+}
+
 #[cfg(test)]
 mod paths_tests {
     use super::*;
@@ -244,6 +289,60 @@ mod paths_tests {
 
         let result = ensure_within_root(dir.path(), &nested);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_to_display_string_drops_the_extended_length_prefix() {
+        // The bug this exists to stop: the file tree canonicalizes and
+        // the project list does not, so the same directory reached the
+        // frontend under two names and "is this file in this project?"
+        // answered no.
+        let dir = tempdir().unwrap();
+        let nested = dir.path().join("project");
+        std::fs::create_dir_all(&nested).unwrap();
+
+        let canonical = ensure_within_root(dir.path(), &nested).unwrap();
+        let displayed = to_display_string(&canonical);
+
+        assert!(!displayed.starts_with(r"\\?\"));
+        // Still the same directory, not merely a shorter string.
+        assert!(std::path::Path::new(&displayed).is_dir());
+    }
+
+    #[test]
+    fn test_to_display_string_agrees_across_the_two_ways_a_path_is_built() {
+        // The exact shape of the bug. `list_project_files` canonicalizes
+        // through `ensure_within_root`; `list_projects` joins onto the
+        // plain root and never canonicalizes. Both reach the frontend,
+        // which compares them — so both have to spell the directory the
+        // same way.
+        let dir = tempdir().unwrap();
+        let project = dir.path().join("Thesis");
+        std::fs::create_dir_all(&project).unwrap();
+
+        let through_the_tree = ensure_within_root(dir.path(), &project).unwrap();
+        let through_the_project_list = dir.path().join("Thesis");
+
+        assert_eq!(
+            to_display_string(&through_the_tree),
+            to_display_string(&through_the_project_list)
+        );
+    }
+
+    #[test]
+    fn test_to_display_string_leaves_a_plain_path_alone() {
+        let plain = std::path::Path::new("C:\\projects\\thesis\\main.tex");
+
+        assert_eq!(to_display_string(plain), "C:\\projects\\thesis\\main.tex");
+    }
+
+    #[test]
+    fn test_to_display_string_keeps_a_unc_path_usable() {
+        // `\\?\UNC\server\share` must not become `UNC\server\share`,
+        // which names nothing.
+        let unc = std::path::Path::new(r"\\?\UNC\server\share\thesis");
+
+        assert_eq!(to_display_string(unc), r"\\server\share\thesis");
     }
 
     #[test]

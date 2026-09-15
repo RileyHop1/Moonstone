@@ -28,7 +28,12 @@ import { modalCompartment, modalExtensionForMode } from "./modalMode";
 import { moonstoneThemeForMode, themeCompartment } from "./moonstoneTheme";
 import { referencesCompartment, referencesExtension } from "./References";
 import { spellCheckCompartment, spellCheckExtensionForEnabled } from "./SpellCheck";
-import { previewCompartment, previewExtensionForMode } from "./viewMode";
+import {
+    frozenCompartment,
+    frozenExtension,
+    previewCompartment,
+    previewExtensionForMode,
+} from "./viewMode";
 import type {
     LineNumberMode,
     ModalMode,
@@ -62,6 +67,13 @@ export interface EditorConfiguration {
      * settings are the same.
      */
     readonly profile: EditorProfile;
+    /**
+     * True for a pane the user is not working in: its preview holds
+     * the look it last produced instead of re-rendering as the cursor
+     * moves. Per-*pane* rather than per-file or per-preference — two
+     * panes on the same file differ here.
+     */
+    readonly isFrozen: boolean;
     /**
      * Resolves `\includegraphics` paths to loadable URLs. Omitted,
      * images render as placeholders.
@@ -128,6 +140,14 @@ const SYNCED: readonly SyncedCompartment[] = [
             previous.resolveImageSource !== next.resolveImageSource ||
             previous.openLink !== next.openLink ||
             previous.profile.usesPreview !== next.profile.usesPreview,
+    },
+    {
+        // Its own row, not folded into the preview's, because this is
+        // the one that changes every time the user clicks a different
+        // pane. See `frozenCompartment`.
+        compartment: frozenCompartment,
+        build: (configuration) => frozenExtension(configuration.isFrozen),
+        hasChanged: (previous, next) => previous.isFrozen !== next.isFrozen,
     },
     {
         compartment: modalCompartment,

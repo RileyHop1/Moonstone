@@ -31,6 +31,7 @@ const BASE: EditorConfiguration = {
     showDiagnostics: false,
     references: [],
     profile: DEFAULT_EDITOR_PROFILE,
+    isFrozen: false,
 };
 
 /** The document the configuration tests use when they do not care. */

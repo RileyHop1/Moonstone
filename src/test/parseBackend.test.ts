@@ -11,6 +11,7 @@
 import { describe, expect, it } from "vitest";
 import {
     parseArrayOf,
+    parseCompileOutcome,
     parseFileNode,
     parseProjectInfo,
     parseReference,
@@ -148,5 +149,109 @@ describe("parseStoredSettings", () => {
 
     it("rejects something that is not an object at all", () => {
         expect(parseStoredSettings("dark")).toBeNull();
+    });
+});
+
+describe("parseCompileOutcome", () => {
+    /** A complete, well-formed outcome from a successful compile. */
+    const CLEAN = {
+        pdfPath: "C:/projects/thesis/main.pdf",
+        logPath: "C:/projects/thesis/.moonstone-build/main.log",
+        diagnostics: [],
+    };
+
+    it("accepts a clean compile", () => {
+        expect(parseCompileOutcome(CLEAN)).toEqual({
+            pdfPath: "C:/projects/thesis/main.pdf",
+            logPath: "C:/projects/thesis/.moonstone-build/main.log",
+            diagnostics: [],
+        });
+    });
+
+    it("accepts a compile that produced no PDF", () => {
+        // Null is a real answer here, not a malformed one — the
+        // distinction most of this parser exists to make.
+        const outcome = parseCompileOutcome({ ...CLEAN, pdfPath: null, logPath: null });
+
+        expect(outcome).not.toBeNull();
+        expect(outcome?.pdfPath).toBeNull();
+    });
+
+    it("rejects an outcome missing its pdfPath field entirely", () => {
+        // Absent is a shape mismatch even though null is allowed.
+        expect(parseCompileOutcome({ logPath: null, diagnostics: [] })).toBeNull();
+    });
+
+    it("rejects a pdfPath that is neither a string nor null", () => {
+        expect(parseCompileOutcome({ ...CLEAN, pdfPath: 42 })).toBeNull();
+    });
+
+    it("reads a diagnostic", () => {
+        const outcome = parseCompileOutcome({
+            ...CLEAN,
+            diagnostics: [
+                {
+                    severity: "error",
+                    file: "main.tex",
+                    line: 11,
+                    message: "Missing $ inserted",
+                },
+            ],
+        });
+
+        expect(outcome?.diagnostics).toEqual([
+            { severity: "error", file: "main.tex", line: 11, message: "Missing $ inserted" },
+        ]);
+    });
+
+    it("reads a diagnostic with no line", () => {
+        // The engine reports no location for failures in itself.
+        const outcome = parseCompileOutcome({
+            ...CLEAN,
+            diagnostics: [
+                { severity: "error", file: "", line: null, message: "engine failed" },
+            ],
+        });
+
+        expect(outcome?.diagnostics[0]?.line).toBeNull();
+    });
+
+    it("rejects a severity it does not know", () => {
+        // A new severity added to the backend must not arrive typed as
+        // one of the two the UI switches on.
+        const outcome = parseCompileOutcome({
+            ...CLEAN,
+            diagnostics: [{ severity: "fatal", file: "main.tex", line: 1, message: "x" }],
+        });
+
+        expect(outcome).toBeNull();
+    });
+
+    it("rejects a line that is not a number", () => {
+        const outcome = parseCompileOutcome({
+            ...CLEAN,
+            diagnostics: [{ severity: "error", file: "main.tex", line: "11", message: "x" }],
+        });
+
+        expect(outcome).toBeNull();
+    });
+
+    it("rejects the whole list when one diagnostic is malformed", () => {
+        // A silently shortened error list is worse than an error
+        // message: the author fixes what they can see and cannot work
+        // out why it still will not build.
+        const outcome = parseCompileOutcome({
+            ...CLEAN,
+            diagnostics: [
+                { severity: "error", file: "main.tex", line: 1, message: "real" },
+                { severity: "error", file: "main.tex", line: 2 },
+            ],
+        });
+
+        expect(outcome).toBeNull();
+    });
+
+    it("rejects something that is not an object", () => {
+        expect(parseCompileOutcome("compiled")).toBeNull();
     });
 });

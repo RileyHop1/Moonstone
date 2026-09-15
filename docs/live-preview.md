@@ -120,6 +120,70 @@ Two details matter:
   which carries no selection change of its own; without that the frozen
   reveal would outlive the drag.
 
+## Freezing an unfocused pane
+
+Source: `frozenFacet` in `livePreview.ts`, `frozenCompartment` in
+`viewMode.ts`
+Tests: `src/test/livePreviewFreeze.test.ts`
+
+Every pane except the one the user is working in is **frozen**: it
+keeps the look it last produced instead of re-rendering as the cursor
+moves.
+
+Freezing, not snapshotting. Replacing an inactive pane with a static
+rendering would have cost its undo history, selection and scroll
+position on every focus change — exactly what the split-pane work went
+out of its way to preserve. A frozen pane keeps its `EditorView`; only
+the preview holds still.
+
+**A frozen editor never reveals**, and that is the definition rather
+than a side effect. Reveal is the only thing that makes the output
+depend on the selection, so with it off a selection change provably
+cannot change what is rendered, and skipping the rebuild is free
+rather than merely cheap.
+
+What still rebuilds:
+
+| Change              | Frozen                                                                                                                                                                                                                                                        |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Document            | **Always.** Decorations sit at document positions, and stale ones over changed text would render the wrong characters. A rename repoints a file under a pane nobody is watching — the one place this would go unnoticed.                                      |
+| Viewport            | **Inline layer only**, which is viewport-scoped. An unfocused pane can still be scrolled or resized by a splitter, and freezing that would show raw source wherever the user scrolled to. The block layer is whole-document, so the viewport is not a factor. |
+| Selection           | No. This is the saving.                                                                                                                                                                                                                                       |
+| Freezing/unfreezing | **Always, immediately.** Focusing a pane has to bring reveal back before the user types, and the reconfiguring transaction carries no document change and no selection — so without an explicit check it slips past every other guard.                        |
+
+### What it actually bought
+
+plan.md asked for this on performance grounds: _"having multiple
+windows scanned and rendered at once can be dangerous for
+performance"_. **That turned out not to be the case**, and the numbers
+are worth recording so nobody re-derives them.
+
+| Measurement                      | Result  |
+| -------------------------------- | ------- |
+| Keystroke, one pane open         | 1.16 ms |
+| Keystroke, four panes open       | 1.14 ms |
+| Cursor move in a **live** pane   | 0.82 ms |
+| Cursor move in a **frozen** pane | 0.32 ms |
+
+Four panes cost the same as one, because each pane is an independent
+`EditorView` over its own `EditorState`: a keystroke in one dispatches
+into that one alone, and the other three are never asked to do
+anything. There was no per-pane tax to remove.
+
+So the case for freezing rests on the other two things it does, and
+both are real:
+
+- **It looks right.** An unfocused pane used to show raw `$x^2$`
+  wherever its stale cursor happened to sit. Now it renders, which is
+  what _"render once and cache their look"_ asked for.
+- **2.6x on the transactions an unfocused pane still receives** — the
+  scroll wheel, a splitter drag, the click that focuses it. A real
+  saving on an already small number.
+
+`livePreviewPerformance.test.ts` keeps the four-pane cost flat rather
+than linear in the number of panes; if that ever changes, something
+has begun broadcasting transactions across panes.
+
 ## View modes
 
 The preview participates in three editor view modes, swapped at runtime

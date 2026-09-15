@@ -107,7 +107,7 @@ pub fn list_references_impl(project: &Path) -> Result<Vec<Reference>, String> {
             continue;
         };
 
-        let source_path = file.to_string_lossy().to_string();
+        let source_path = paths::to_display_string(file);
         let source_name = file
             .file_name()
             .map(|name| name.to_string_lossy().to_string())

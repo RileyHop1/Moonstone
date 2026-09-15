@@ -66,6 +66,8 @@ export interface ViewModeControl {
 export interface ProjectActions {
     /** Opens the new-file dialog for the project root. */
     readonly newFile: () => void;
+    /** Compiles the project to PDF. */
+    readonly compile: () => void;
     /** Leaves the project and returns to the browser. */
     readonly exitProject: () => void;
 }

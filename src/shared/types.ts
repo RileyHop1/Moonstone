@@ -139,6 +139,42 @@ export interface AppSettings {
     readonly showDiagnostics: boolean;
 }
 
+/** How serious a problem the LaTeX engine reported is. */
+export type DiagnosticSeverity = "error" | "warning";
+
+/** One problem the LaTeX engine reported while compiling. */
+export interface CompileDiagnostic {
+    readonly severity: DiagnosticSeverity;
+    /**
+     * The file the engine named, relative to the project, or empty when
+     * it reported no location.
+     *
+     * **May lack an extension.** TeX reports the name as written, so
+     * `\input{chapters/one}` yields `chapters/one`. Resolving that to a
+     * real file is the reader's job.
+     */
+    readonly file: string;
+    /** 1-based line, or null when the engine reported none. */
+    readonly line: number | null;
+    readonly message: string;
+}
+
+/** What one compilation produced. */
+export interface CompileOutcome {
+    /**
+     * Absolute path of the PDF, or null when none was produced.
+     *
+     * A PDF and errors are not mutually exclusive: the engine carries on
+     * past a recoverable error, so a broken document usually yields a
+     * best-effort PDF *and* a list of what is wrong.
+     */
+    readonly pdfPath: string | null;
+    readonly diagnostics: readonly CompileDiagnostic[];
+    /** Absolute path of the engine log, for what the parser could not
+     * turn into a diagnostic. */
+    readonly logPath: string | null;
+}
+
 /**
  * Lifecycle of asynchronously loaded data, so components render
  * loading/error/ready states exhaustively instead of juggling flags.

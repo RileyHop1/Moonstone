@@ -13,6 +13,7 @@ import {
     dirname,
     isAbsolute,
     isAtOrInside,
+    relativeTo,
     isInside,
     join,
     reparent,
@@ -165,5 +166,52 @@ describe("isAbsolute", () => {
         ["", false],
     ])("reads %s as %s", (path, expected) => {
         expect(isAbsolute(path)).toBe(expected);
+    });
+});
+
+describe("relativeTo", () => {
+    it("strips the containing directory", () => {
+        expect(relativeTo("C:/projects/thesis", "C:/projects/thesis/main.tex")).toBe(
+            "main.tex",
+        );
+    });
+
+    it("keeps intermediate directories", () => {
+        expect(relativeTo("C:/projects/thesis", "C:/projects/thesis/chapters/one.tex")).toBe(
+            "chapters/one.tex",
+        );
+    });
+
+    it("matches across mixed separators", () => {
+        // The backend returns backslashes; LaTeX and the compile engine
+        // speak forward slashes. Both reach this function.
+        expect(relativeTo("C:\\projects\\thesis", "C:/projects/thesis/main.tex")).toBe(
+            "main.tex",
+        );
+    });
+
+    it("always answers in forward slashes", () => {
+        // What the LaTeX engine reports diagnostics in, so a relative
+        // path is compared against engine output more often than it is
+        // joined onto a Windows path.
+        expect(
+            relativeTo("C:\\projects\\thesis", "C:\\projects\\thesis\\chapters\\one.tex"),
+        ).toBe("chapters/one.tex");
+    });
+
+    it("refuses a path outside the directory", () => {
+        expect(relativeTo("C:/projects/thesis", "C:/projects/other/main.tex")).toBeNull();
+    });
+
+    it("is not fooled by a sibling sharing a prefix", () => {
+        // `thesis-old` starts with `thesis`, which a naive prefix check
+        // would accept.
+        expect(relativeTo("C:/projects/thesis", "C:/projects/thesis-old/main.tex")).toBeNull();
+    });
+
+    it("refuses the directory itself", () => {
+        // A directory is not a file inside itself, and returning "" here
+        // would hand the compiler an empty main file.
+        expect(relativeTo("C:/projects/thesis", "C:/projects/thesis")).toBeNull();
     });
 });

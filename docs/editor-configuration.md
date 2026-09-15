@@ -42,10 +42,11 @@ applies its own.
 
 1. **`EditorConfiguration`** — a plain readonly object holding every
    live setting: view mode, modal mode, spell check, theme, line
-   numbering, diagnostics, references, `openLink`, and the two
-   **per-file** fields — `profile` and `resolveImageSource` — which
-   follow the document a pane has open rather than the user's
-   preferences. See [Per-pane configuration](#per-pane-configuration).
+   numbering, diagnostics, references, `openLink`, and the three
+   **per-pane** fields — `profile`, `resolveImageSource` and
+   `isFrozen` — which follow the document a pane has open and whether
+   it has focus, rather than the user's preferences. See
+   [Per-pane configuration](#per-pane-configuration).
 
 2. **`SYNCED`** — one row per compartment:
 
@@ -118,12 +119,13 @@ Source: `src/views/ProjectPage/usePaneConfigurations.ts`
 Tests: `src/test/usePaneConfigurations.test.ts`
 
 Most of a configuration is a preference and is the same in every pane.
-Two fields are not:
+Three fields are not:
 
-| Field                | Follows              | Why                                                                    |
-| -------------------- | -------------------- | ---------------------------------------------------------------------- |
-| `profile`            | the file's extension | A `.bib` must not be parsed as LaTeX — see [file types](file-types.md) |
-| `resolveImageSource` | the file's directory | `\includegraphics` paths are relative to the document                  |
+| Field                | Follows              | Why                                                                                                                 |
+| -------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `profile`            | the file's extension | A `.bib` must not be parsed as LaTeX — see [file types](file-types.md)                                              |
+| `resolveImageSource` | the file's directory | `\includegraphics` paths are relative to the document                                                               |
+| `isFrozen`           | which pane has focus | Every pane but the focused one holds its rendering — see [live preview](live-preview.md#freezing-an-unfocused-pane) |
 
 When the page gained a second pane it kept building **one**
 configuration from the _active_ document and handing it to every pane.
@@ -131,21 +133,28 @@ So an unfocused pane resolved its images against whichever directory
 the focused pane happened to be in — invisible until two files in
 different directories were open at once.
 
-`usePaneConfigurations(sharedSettings)` returns a lookup from document
-path to configuration. `PaneTree` calls it per leaf:
+`usePaneConfigurations(sharedSettings)` returns a lookup keyed on what
+a pane can differ by. `PaneTree` calls it per leaf:
 
 ```tsx
-configuration={shared.configurationFor(document?.path ?? null)}
+configuration={shared.configurationFor({
+    path: document?.path ?? null,
+    isFrozen: !isActive,
+})}
 ```
 
 **Identity is the subtle requirement.** `TextEditor` diffs the object
 it is handed, so a fresh configuration per render would reconfigure
 every compartment in every pane on every render — rebuilding preview
 decorations and resetting modal state. The cache lives inside the
-`useMemo` and is keyed by **path**, not by pane, so:
+`useMemo` and is keyed by **path plus freeze state** rather than by
+pane, so:
 
 - a pane keeps its object when an unrelated pane opens a file;
-- two panes showing the same file share one configuration;
+- two panes showing the same file share one configuration, unless one
+  of them has focus;
+- focus moving back and forth costs nothing, because both objects are
+  already built;
 - changing a setting rebuilds everything, which is what should happen.
 
 ## Adding a setting

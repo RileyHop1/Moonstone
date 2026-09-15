@@ -8,14 +8,19 @@ import type { MenuContext } from "../components/globalHotBarMenus";
 import type { EditorActions } from "../shared/appActions";
 
 /** A fully wired editor-actions stub. */
-function makeEditorActions(): EditorActions {
+function makeEditorActions(overrides?: Partial<EditorActions>): EditorActions {
     return {
         save: vi.fn(),
         undo: vi.fn(),
         redo: vi.fn(),
         insertSnippet: vi.fn(),
         newFile: vi.fn(),
+        compile: vi.fn(),
         exitProject: vi.fn(),
+        viewMode: "live",
+        setViewMode: vi.fn(),
+        findReplace: vi.fn(),
+        ...overrides,
     };
 }
 
@@ -30,7 +35,14 @@ function makeContext(editor: EditorActions | null): MenuContext {
         actions: { newProject: vi.fn(), editor },
         editor,
         navigate: vi.fn(),
-        settings: { theme: "dark", editorFontSize: 14 },
+        settings: {
+            theme: "dark",
+            editorFontSize: 14,
+            modalMode: "none",
+            spellCheckEnabled: true,
+            lineNumberMode: "absolute",
+            showDiagnostics: false,
+        },
         updateSettings: vi.fn(),
     };
 }
@@ -70,18 +82,77 @@ describe("buildMenus", () => {
         expect(editor.insertSnippet).toHaveBeenCalledWith("inlineMath");
     });
 
-    it("toggles the theme from the Settings menu", () => {
+    it("disables View and Find & Replace without an editor", () => {
         const context = makeContext(null);
 
-        findItem(context, "Settings", "Light/Dark").action?.();
+        expect(findItem(context, "Edit", "Find & Replace").action).toBeNull();
+        expect(findItem(context, "View", "Source").action).toBeNull();
+        expect(findItem(context, "View", "Live Preview").action).toBeNull();
+        expect(findItem(context, "View", "Read Only").action).toBeNull();
+    });
 
-        expect(context.updateSettings).toHaveBeenCalledWith({ theme: "light" });
+    it("wires Compile to the editor", () => {
+        const editor = makeEditorActions();
+        const context = makeContext(editor);
+
+        findItem(context, "File", "Compile").action?.();
+
+        expect(editor.compile).toHaveBeenCalled();
+    });
+
+    it("disables Compile without an editor", () => {
+        // There is nothing to compile from the project browser.
+        expect(findItem(makeContext(null), "File", "Compile").action).toBeNull();
+    });
+
+    it("wires Find & Replace to the editor", () => {
+        const editor = makeEditorActions();
+        const context = makeContext(editor);
+
+        findItem(context, "Edit", "Find & Replace").action?.();
+
+        expect(editor.findReplace).toHaveBeenCalled();
+    });
+
+    it("dispatches each view mode from the View menu", () => {
+        const editor = makeEditorActions();
+        const context = makeContext(editor);
+
+        findItem(context, "View", "Source").action?.();
+        findItem(context, "View", "Live Preview").action?.();
+        findItem(context, "View", "Read Only").action?.();
+
+        expect(editor.setViewMode).toHaveBeenNthCalledWith(1, "source");
+        expect(editor.setViewMode).toHaveBeenNthCalledWith(2, "live");
+        expect(editor.setViewMode).toHaveBeenNthCalledWith(3, "readonly");
+    });
+
+    it("checks the active view mode", () => {
+        const context = makeContext(makeEditorActions({ viewMode: "readonly" }));
+
+        expect(findItem(context, "View", "Source").checked).toBe(false);
+        expect(findItem(context, "View", "Live Preview").checked).toBe(false);
+        expect(findItem(context, "View", "Read Only").checked).toBe(true);
+    });
+
+    it("keeps preferences off the menus", () => {
+        // Edit modes, spell check and the theme toggle moved to the
+        // settings page; leaving duplicates here would be two places to
+        // change one preference.
+        const context = makeContext(makeEditorActions());
+        const labels = buildMenus(context).flatMap((menu) =>
+            menu.items.map((item) => item.label),
+        );
+
+        for (const label of ["Vim Mode", "Helix Mode", "Spell Check", "Light/Dark"]) {
+            expect(labels, label).not.toContain(label);
+        }
     });
 
     it("navigates to the settings page", () => {
         const context = makeContext(null);
 
-        findItem(context, "Settings", "Settings Menu").action?.();
+        findItem(context, "Settings", "Open Settings").action?.();
 
         expect(context.navigate).toHaveBeenCalledWith({ kind: "settings" });
     });

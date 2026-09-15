@@ -4,7 +4,44 @@
 
 **Status:** Early Prototyping  
 **Platform:** Standalone Desktop App  
-**License:** Open Source  
+**License:** Open Source
+
+---
+
+## Development
+
+```bash
+npm install
+npm run tectonic:fetch   # downloads the bundled LaTeX engine (~20 MB)
+npm run tauri dev
+```
+
+`tectonic:fetch` is not optional: `tauri.conf.json` declares the engine as a sidecar, and the build fails without it. It is fetched rather than committed because it is 20 MB per platform and reproducible from an upstream release.
+
+| Command                | What it does                          |
+| ---------------------- | ------------------------------------- |
+| `npm test`             | Unit tests (vitest + jsdom)           |
+| `npm run test:browser` | Browser tests (Playwright + Chromium) |
+| `npm run typecheck`    | `tsc --noEmit`                        |
+| `npm run lint`         | ESLint                                |
+| `npm run format:check` | Prettier                              |
+| `cargo test`           | Backend tests, from `src-tauri/`      |
+
+### Documentation
+
+Every feature has a design note in [`docs/`](docs/). The ones to start with:
+
+| Doc                                                  | Covers                                                          |
+| ---------------------------------------------------- | --------------------------------------------------------------- |
+| [backend commands](docs/backend-commands.md)         | Every Tauri command, its arguments, and the path security rules |
+| [IPC boundary](docs/ipc-boundary.md)                 | How responses are validated on the way in                       |
+| [live preview](docs/live-preview.md)                 | The two-layer rendering engine — the biggest piece here         |
+| [editor configuration](docs/editor-configuration.md) | How settings reach a running editor, and per-pane settings      |
+| [split panes](docs/split-panes.md)                   | The pane tree, drag-to-split, and the splitter                  |
+| [PDF compilation](docs/pdf-compilation.md)           | The Tectonic sidecar, and why it is a sidecar                   |
+| [file types](docs/file-types.md)                     | What the editor does with a `.tex` versus a `.bib`              |
+| [browser tests](docs/browser-tests.md)               | What Playwright covers that jsdom structurally cannot           |
+| [releasing](docs/releasing.md)                       | Cutting a release                                               |
 
 ---
 
@@ -31,6 +68,7 @@ Moonstone aims to make LaTeX editing feel modern and intuitive — removing the 
 The core inspiration is Obsidian's inline math preview, where expressions like `$$E = mc^2$$` are seamlessly replaced with their rendered output as you type. Moonstone extends this idea into a full-featured LaTeX editor built from the ground up for desktop.
 
 **Primary Goals:**
+
 - Real-time, inline rendering of LaTeX expressions without requiring a separate compile step
 - A clean, distraction-free writing experience
 - First-class support for full LaTeX documents (not just math snippets)
@@ -52,26 +90,33 @@ The core inspiration is Obsidian's inline math preview, where expressions like `
 ## 3. Core Features
 
 ### 3.1 Inline Live Preview (MVP)
+
 The defining feature of Moonstone. As the user types a LaTeX expression, it is rendered inline in real time. Clicking on a rendered expression reveals the raw source for editing, then snaps back to rendered form when focus moves away — mirroring Obsidian's behavior.
 
 Supported expression types at launch:
+
 - Inline math: `$...$`
 - Display math: `$$...$$` and `\[ ... \]`
 - Common environments: `equation`, `align`, `figure`, `table`
 
 ### 3.2 Full Document Support
+
 Moonstone is not just a math snippet tool. It handles full `.tex` files, including preambles, custom commands, `\include`/`\input`, and multi-file projects.
 
 ### 3.3 Source / Preview Toggle
+
 Users can switch between a raw source view and a full document preview at any time. The live preview mode is a hybrid: source text with inline-rendered expressions, not a completely compiled PDF view.
 
 ### 3.4 Error Highlighting
+
 Syntax errors and undefined commands are highlighted in the editor in real time, with human-readable explanations rather than raw TeX error logs.
 
 ### 3.5 Command Autocomplete
+
 An autocomplete system for LaTeX commands (`\frac`, `\begin{...}`, etc.) with documentation previews on hover.
 
 ### 3.6 Snippet Library
+
 A built-in library of commonly used LaTeX snippets (matrices, equations, figure templates) that users can insert and customize.
 
 ---
@@ -111,11 +156,15 @@ A built-in library of commonly used LaTeX snippets (matrices, equations, figure 
 
 **Renderer** — takes parsed math nodes and renders them using KaTeX (primary, for performance) with MathJax as a fallback for complex expressions KaTeX doesn't support.
 
-**Rust Backend** — all file system operations are handled in Rust and exposed to the frontend via Tauri's command API. The backend is split into two modules:
+**Rust Backend** — all file system operations are handled in Rust and exposed to the frontend via Tauri's command API. Every command is documented in [backend commands](docs/backend-commands.md); the modules are:
 
-- `file_manager` — low-level file and directory operations. Creates `.tex` files and subdirectories, validates inputs, and emits Tauri events (`file-created`, `directory-created`) so the frontend can react to changes.
-- `project_manager` — manages the concept of a project, which is a named root directory containing one or more `.tex` files. On creation, a project initialises its directory and seeds it with an initial file via `file_manager`. The `Project` struct tracks metadata including name, path, creation date, last modified date, and file count.
-
+- `paths` — resolves the Moonstone root and validates every user-supplied path against it, so no command can be talked into touching a file outside the projects directory. Also the single place that decides how a path is spelled when it crosses to the frontend.
+- `file_manager` — low-level file and directory operations. Creates files and subdirectories, validates inputs, and emits Tauri events (`file-created`, `directory-created`) so the frontend can react to changes.
+- `project_manager` — manages the concept of a project, which is a named root directory containing one or more `.tex` files. On creation, a project initialises its directory and seeds it with a template via `templates`. The `Project` struct tracks metadata including name, path, creation date, last modified date, and file count.
+- `templates` — the bundled project templates and the substitution that seeds a new project from one.
+- `bibliography` — parses every `.bib` file in a project into one key-sorted list, so `\cite{…}` completion does not care which file an entry was filed in.
+- `compiler` — runs the bundled Tectonic engine and turns its output into structured diagnostics.
+- `settings` — loads and saves user preferences, failing soft to defaults.
 
 ### 4.1 Frontend Structure
 
@@ -150,6 +199,7 @@ Moonstone uses a single-buffer model. There is one canonical document (the `.tex
 ### 5.2 Inline Edit Interaction
 
 When a user clicks a rendered expression in Live Preview Mode:
+
 1. The rendered output is replaced with the raw source, highlighted and focused.
 2. The cursor is placed at the nearest character to the click position.
 3. The expression re-renders live as edits are made.
@@ -191,14 +241,14 @@ Rendering is triggered on a short debounce (configurable, default ~150ms) after 
 
 ## 8. Tech Stack
 
-| Layer | Technology | Rationale |
-|---|---|---|
-| Desktop Shell | Tauri | Lightweight alternative to Electron; native OS integration via Rust backend |
-| Backend | Rust | Handles file I/O, parse-heavy operations, and performance-critical processing |
-| Editor Component | CodeMirror 6 | Highly extensible, performant, good LaTeX language support |
-| Math Rendering | KaTeX + MathJax fallback | KaTeX for speed; MathJax for coverage |
-| Frontend | React + TypeScript | Component model for the growing UI surface (panels, dialogs, settings); strong ecosystem |
-| Build Tool | Vite + Node | Fast HMR during development; Node for frontend tooling |
+| Layer            | Technology               | Rationale                                                                                |
+| ---------------- | ------------------------ | ---------------------------------------------------------------------------------------- |
+| Desktop Shell    | Tauri                    | Lightweight alternative to Electron; native OS integration via Rust backend              |
+| Backend          | Rust                     | Handles file I/O, parse-heavy operations, and performance-critical processing            |
+| Editor Component | CodeMirror 6             | Highly extensible, performant, good LaTeX language support                               |
+| Math Rendering   | KaTeX + MathJax fallback | KaTeX for speed; MathJax for coverage                                                    |
+| Frontend         | React + TypeScript       | Component model for the growing UI surface (panels, dialogs, settings); strong ecosystem |
+| Build Tool       | Vite + Node              | Fast HMR during development; Node for frontend tooling                                   |
 
 > **Note:** The tech stack is provisional during the prototyping phase. Decisions will be revisited before the first public release.
 
@@ -207,12 +257,14 @@ Rendering is triggered on a short debounce (configurable, default ~150ms) after 
 ## 9. Roadmap
 
 ### Phase 1 — Prototype (Current)
+
 - [ ] Basic Tauri app shell with a working text editor
 - [ ] Inline rendering of `$...$` and `$$...$$` math expressions using KaTeX
 - [ ] Click-to-edit interaction for rendered expressions
 - [ ] Basic error display for invalid expressions
 
 ### Phase 2 — Alpha
+
 - [ ] Full document parsing (preamble, environments, custom commands)
 - [ ] Incremental parse engine
 - [ ] Syntax highlighting and command autocomplete
@@ -221,6 +273,7 @@ Rendering is triggered on a short debounce (configurable, default ~150ms) after 
 - [ ] Configurable theme (light/dark)
 
 ### Phase 3 — Beta
+
 - [ ] Multi-file project support (`\input`, `\include`)
 - [ ] Snippet library
 - [ ] MathJax fallback rendering
@@ -229,6 +282,7 @@ Rendering is triggered on a short debounce (configurable, default ~150ms) after 
 - [ ] Performance profiling and optimization pass
 
 ### Phase 4 — v1.0
+
 - [ ] Plugin/extension API
 - [ ] Cross-platform installers (macOS, Windows, Linux)
 - [ ] Comprehensive documentation site
@@ -252,11 +306,11 @@ A formal `CONTRIBUTING.md` with code style guidelines, PR workflow, and a develo
 
 The following are explicitly not goals for Moonstone, at least through v1.0:
 
-- **Being a full TeX distribution.** Moonstone is an editor. It may integrate with a locally installed TeX distribution for PDF export, but it will not bundle one.
+- **Being a full TeX distribution.** Moonstone is an editor. It bundles the [Tectonic](https://tectonic-typesetting.github.io/) engine so that compiling works out of the box — a user should not have to install a multi-gigabyte TeX distribution before their first PDF — but it does not aim to replace TeX Live for people who already have one and know what they want from it. See [PDF compilation](docs/pdf-compilation.md).
 - **Cloud sync or collaboration.** Moonstone is a local desktop tool. Real-time multiplayer editing is not planned.
 - **Supporting non-LaTeX markup.** Moonstone focuses exclusively on LaTeX/TeX. Markdown support is not planned.
 - **A mobile app.** Desktop only for the foreseeable future.
 
 ---
 
-*Last updated: June 2026*
+_Last updated: June 2026_

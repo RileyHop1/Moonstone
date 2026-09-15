@@ -1,31 +1,51 @@
 /**
- * Project page: dockable file browser, toolbar, file management, and
- * the live-preview editor for one open file.
+ * Project page: dockable file browser, toolbar, file management, and a
+ * split editor area showing one or more files.
+ *
+ * The page orchestrates; it owns very little itself. Pane state lives in
+ * `usePaneWorkspace`, editor settings in `EditorConfiguration`, and the
+ * layout arithmetic in `paneLayout.ts`. What is left here is the
+ * project's own concerns: the file tree, the bibliography, file
+ * management dialogs, and the actions the toolbar registers.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { EditorView } from "@codemirror/view";
 import { redo, undo } from "@codemirror/commands";
 import { NameDialog } from "../../components/NameDialog";
+import { useConfirm } from "../../components/useConfirm";
+import type { NameDialogResult } from "../../components/NameDialog";
+import { ResizablePanel } from "../../components/ResizablePanel";
+import { DEFAULT_FILE_EXTENSION } from "../../shared/fileTypes";
+import { relativeTo } from "../../shared/paths";
 import { useNavigation } from "../../shared/navigation";
 import { useAppActions } from "../../shared/appActions";
+import { useSettings } from "../../shared/settings";
 import type { EditorActions, SnippetName } from "../../shared/appActions";
 import {
     createDirectory,
     createFile,
     deleteEntry,
     listProjectFiles,
+    listReferences,
+    moveEntry,
+    compileProject,
     readFile,
+    openExternalLink,
     renameEntry,
     saveFile,
 } from "../../shared/tauri";
-import type { FileNode, LoadState, ProjectInfo } from "../../shared/types";
+import type { FileNode, LoadState, ProjectInfo, Reference, ViewMode } from "../../shared/types";
 import { useDockDrag } from "../../shared/useDockDrag";
 import type { DockSide } from "../../shared/useDockDrag";
-import { TextEditor } from "../editor/TextEditor";
+import { openSearchPanel } from "@codemirror/search";
+import { DEFAULT_VIEW_MODE } from "../editor/TextEditor/viewMode";
 import { SNIPPETS, insertSnippetIntoView } from "../editor/TextEditor/snippets";
 import { FileBrowser } from "./FileBrowser";
 import type { FileOperation } from "./FileBrowser";
+import { PaneTree } from "./PaneTree";
+import { usePaneConfigurations } from "./usePaneConfigurations";
+import { usePaneWorkspace } from "./usePaneWorkspace";
+import type { DropSide, PaneId } from "./paneLayout";
 import { Toolbar } from "./Toolbar";
 import type { StatusMessage } from "./Toolbar";
 import "./ProjectPage.css";
@@ -34,26 +54,33 @@ import "./ProjectPage.css";
 export interface ProjectPageProps {
     /** The project being edited. */
     readonly project: ProjectInfo;
-}
-
-/** The file currently loaded into the editor. */
-interface OpenFile {
-    readonly path: string;
-    readonly initialDoc: string;
+    /**
+     * False while the page is mounted but covered — by settings, say.
+     * It keeps rendering so the open document survives, but stops
+     * claiming the hot bar's editor actions, which would otherwise
+     * edit a document the user cannot see.
+     */
+    readonly isActive?: boolean;
 }
 
 /** A pending name-prompt dialog for a file operation. */
 type FileDialogState =
     | { readonly kind: "newFile"; readonly parentDir: string }
-    | { readonly kind: "newFolder"; readonly parentDir: string }
-    | { readonly kind: "rename"; readonly path: string; readonly currentName: string };
+    | { readonly kind: "newFolder"; readonly parentDir: string };
 
 /** How long transient info status messages stay visible. */
 const STATUS_CLEAR_MS = 2000;
 
+/** Width the file browser opens at, before the user resizes it. */
+const DEFAULT_BROWSER_WIDTH_PX = 220;
+
 /**
- * Picks the file to auto-open for a freshly loaded project: the
- * root-level `<name>.tex` if present, else the first root-level file.
+ * Picks the file to auto-open for a freshly loaded project.
+ *
+ * Prefers a root-level `<name>.tex`, then a root-level `main.tex`, then
+ * the first root-level file — and failing all of those, searches the
+ * subdirectories. A project whose `.tex` files all live in `chapters/`
+ * otherwise opens to an empty editor.
  *
  * @param tree - The project's root directory node.
  * @param projectName - The project's name.
@@ -64,40 +91,75 @@ function findMainFilePath(tree: FileNode, projectName: string): string | null {
 
     const files = tree.children.filter((child) => child.kind === "file");
 
-    const mainFile = files.find((file) => file.name === `${projectName}.tex`);
-    if (mainFile) return mainFile.path;
+    const named = files.find((file) => file.name === `${projectName}.tex`);
+    if (named) return named.path;
 
-    return files[0]?.path ?? null;
+    const main = files.find((file) => file.name === "main.tex");
+    if (main) return main.path;
+
+    const rootFile = files[0];
+    if (rootFile) return rootFile.path;
+
+    return findFirstFile(tree);
+}
+
+/**
+ * The first file anywhere below a node, depth first.
+ *
+ * @param node - The node to search.
+ * @returns A file path, or null when the subtree holds none.
+ */
+function findFirstFile(node: FileNode): string | null {
+    if (node.kind === "file") return node.path;
+
+    for (const child of node.children) {
+        const found = findFirstFile(child);
+        if (found) return found;
+    }
+
+    return null;
 }
 
 /**
  * Renders the project page and owns its state: the file tree, the
- * open file, dirtiness, dock side, file-management dialogs, and the
- * editor actions it registers with the global hotbar.
+ * bibliography, dock side, file-management dialogs, and the editor
+ * actions it registers with the global hotbar.
  *
  * @param props - The project to display.
  * @returns The project page element.
  */
-export function ProjectPage({ project }: ProjectPageProps) {
+export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
     const { navigate } = useNavigation();
     const { registerEditor } = useAppActions();
 
     const [tree, setTree] = useState<LoadState<FileNode>>({ status: "loading" });
-    const [openFile, setOpenFile] = useState<OpenFile | null>(null);
-    const [isDirty, setIsDirty] = useState(false);
     const [dockSide, setDockSide] = useState<DockSide>("left");
     const [statusMessage, setStatusMessage] = useState<StatusMessage | null>(null);
     const [dialog, setDialog] = useState<FileDialogState | null>(null);
+    const [viewMode, setViewMode] = useState<ViewMode>(DEFAULT_VIEW_MODE);
+    const [references, setReferences] = useState<readonly Reference[]>([]);
+    const [isCompiling, setIsCompiling] = useState(false);
 
-    const viewRef = useRef<EditorView | null>(null);
+    // Modal editing and spell checking are user preferences, not
+    // per-session editor state, so they come from settings and persist.
+    const { settings, updateSettings } = useSettings();
+    const { modalMode, spellCheckEnabled, lineNumberMode, showDiagnostics, theme } = settings;
+
+    const { confirm, dialog: confirmationDialog } = useConfirm();
+    const panes = usePaneWorkspace();
+    const panesRef = useRef(panes);
+    panesRef.current = panes;
+
     const statusTimerRef = useRef<number | null>(null);
 
-    // Refs mirror state read inside stable callbacks so those
-    // callbacks never see stale values.
-    const isDirtyRef = useRef(isDirty);
-    isDirtyRef.current = isDirty;
-    const openFileRef = useRef<OpenFile | null>(openFile);
-    openFileRef.current = openFile;
+    /**
+     * Counts file-open requests so a slow one cannot overwrite a newer.
+     *
+     * Two quick clicks would otherwise resolve last-to-finish rather
+     * than last-clicked, and the editor would show whichever read
+     * happened to come back second.
+     */
+    const openRequestRef = useRef(0);
 
     /**
      * Shows a status message; info messages clear themselves.
@@ -125,19 +187,56 @@ export function ProjectPage({ project }: ProjectPageProps) {
         };
     }, []);
 
-    const confirmDiscardChanges = useCallback((): boolean => {
-        if (!isDirtyRef.current) return true;
+    /**
+     * Asks before throwing away unsaved work in a particular pane.
+     *
+     * @param paneId - The pane about to be reused, or null to ask about
+     *   every pane at once (leaving the project).
+     * @returns True when it is safe to proceed.
+     */
+    const confirmDiscardChanges = useCallback(
+        async (paneId: PaneId | null): Promise<boolean> => {
+            const dirty =
+                paneId === null
+                    ? panesRef.current.hasUnsavedChanges
+                    : panesRef.current.dirtyPanes.has(paneId);
 
-        return window.confirm("You have unsaved changes. Discard them?");
-    }, []);
+            if (!dirty) return true;
 
-    const openFileByPath = useCallback(
-        async (path: string): Promise<void> => {
-            if (path === openFileRef.current?.path) return;
+            return confirm({
+                title: "Discard changes?",
+                message:
+                    paneId === null
+                        ? "This project has unsaved changes. Leaving now discards them."
+                        : "This pane has unsaved changes. Opening another file discards them.",
+                confirmLabel: "Discard",
+                isDestructive: true,
+            });
+        },
+        [confirm],
+    );
 
-            if (!confirmDiscardChanges()) return;
+    /**
+     * Reads a file and shows it, either in a pane or beside one.
+     *
+     * Re-opening the file a pane already shows is deliberately *not* a
+     * no-op: it re-reads from disk, which is the only way to discard
+     * unsaved changes and start again.
+     *
+     * @param paneId - The pane to open in, or to split.
+     * @param path - The file to read.
+     * @param side - Which edge to split on, or null to open in place.
+     */
+    const openFileInPane = useCallback(
+        async (paneId: PaneId, path: string, side: DropSide | null = null): Promise<void> => {
+            if (side === null && !(await confirmDiscardChanges(paneId))) return;
 
+            const request = (openRequestRef.current += 1);
             const result = await readFile(path);
+
+            // A newer request has been made since; its answer is the one
+            // the user is waiting for.
+            if (request !== openRequestRef.current) return;
 
             if (!result.ok) {
                 showStatus({ kind: "error", text: result.error });
@@ -145,22 +244,44 @@ export function ProjectPage({ project }: ProjectPageProps) {
             }
 
             showStatus(null);
-            setIsDirty(false);
-            setOpenFile({ path, initialDoc: result.data });
+
+            const document = { path, initialDoc: result.data };
+            if (side === null) panesRef.current.showDocument(paneId, document);
+            else panesRef.current.splitWith(paneId, side, document);
         },
         [confirmDiscardChanges, showStatus],
     );
 
+    /** Opens a file in whichever pane the toolbar is acting on. */
+    const openFileByPath = useCallback(
+        (path: string): void => {
+            void openFileInPane(panesRef.current.activePaneId, path);
+        },
+        [openFileInPane],
+    );
+
+    /**
+     * Re-reads the project's bibliography.
+     *
+     * A missing or unreadable `.bib` file is not worth interrupting the
+     * author over — completion simply offers nothing — so a failure
+     * leaves the list empty rather than raising a status message.
+     */
+    const refreshReferences = useCallback(async (): Promise<void> => {
+        const result = await listReferences(project.path);
+
+        setReferences(result.ok ? result.data : []);
+    }, [project.path]);
+
     /** Re-fetches the project's file tree. */
-    const refreshTree = useCallback(async (): Promise<LoadState<FileNode>> => {
+    const refreshTree = useCallback(async (): Promise<void> => {
         const result = await listProjectFiles(project.path);
 
-        const next: LoadState<FileNode> = result.ok
-            ? { status: "ready", data: result.data }
-            : { status: "error", message: result.error };
-
-        setTree(next);
-        return next;
+        setTree(
+            result.ok
+                ? { status: "ready", data: result.data }
+                : { status: "error", message: result.error },
+        );
     }, [project.path]);
 
     // Initial tree load; auto-open the project's main file. The
@@ -170,6 +291,7 @@ export function ProjectPage({ project }: ProjectPageProps) {
 
         void (async () => {
             const result = await listProjectFiles(project.path);
+            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the cleanup below assigns to this flag, which ESLint's flow analysis does not follow
             if (cancelled) return;
 
             if (!result.ok) {
@@ -179,47 +301,136 @@ export function ProjectPage({ project }: ProjectPageProps) {
 
             setTree({ status: "ready", data: result.data });
 
-            if (openFileRef.current === null) {
+            if (panesRef.current.activeDocument === null) {
                 const mainFilePath = findMainFilePath(result.data, project.name);
-                if (mainFilePath) void openFileByPath(mainFilePath);
+                if (mainFilePath) {
+                    void openFileInPane(panesRef.current.activePaneId, mainFilePath);
+                }
             }
         })();
 
         return () => {
             cancelled = true;
         };
-    }, [project.path, project.name, openFileByPath]);
+    }, [project.path, project.name, openFileInPane]);
 
-    const save = useCallback(async (): Promise<void> => {
-        const view = viewRef.current;
-        const file = openFileRef.current;
-        if (!view || !file) return;
+    // The bibliography is read once per project; saving a file reloads
+    // it, so an entry added in the editor is citable straight away.
+    useEffect(() => {
+        void refreshReferences();
+    }, [refreshReferences]);
 
-        const result = await saveFile(file.path, view.state.doc.toString());
+    /**
+     * Writes one pane's document back to disk.
+     *
+     * @param paneId - The pane to save.
+     */
+    const savePane = useCallback(
+        async (paneId: PaneId): Promise<void> => {
+            const view = panesRef.current.viewFor(paneId);
+            const document = panesRef.current.documents.get(paneId);
+            if (!view || !document) return;
 
-        if (!result.ok) {
-            showStatus({ kind: "error", text: `Save failed: ${result.error}` });
+            const result = await saveFile(document.path, view.state.doc.toString());
+
+            if (!result.ok) {
+                showStatus({ kind: "error", text: `Save failed: ${result.error}` });
+                return;
+            }
+
+            showStatus({ kind: "info", text: "Saved ✓" });
+            panesRef.current.markClean(paneId);
+
+            // The saved file may have been a `.bib`, so the citation list
+            // is refreshed rather than left stale until the project reopens.
+            if (document.path.toLowerCase().endsWith(".bib")) void refreshReferences();
+        },
+        [showStatus, refreshReferences],
+    );
+
+    /**
+     * Compiles the active pane's document to PDF.
+     *
+     * Saves first. Compiling what is on disk while the author looks at
+     * something newer on screen reports errors against lines they
+     * cannot see, which is worse than not compiling at all.
+     */
+    const compileActivePane = useCallback(async (): Promise<void> => {
+        const document = panesRef.current.documents.get(panesRef.current.activePaneId);
+        if (!document) return;
+
+        const mainFile = relativeTo(project.path, document.path);
+        if (mainFile === null) {
+            showStatus({ kind: "error", text: "That file is not part of this project" });
             return;
         }
 
-        showStatus({ kind: "info", text: "Saved ✓" });
-        setIsDirty(false);
-    }, [showStatus]);
+        await savePane(panesRef.current.activePaneId);
+
+        setIsCompiling(true);
+        const result = await compileProject(project.path, mainFile);
+        setIsCompiling(false);
+
+        if (!result.ok) {
+            showStatus({ kind: "error", text: `Compile failed: ${result.error}` });
+            return;
+        }
+
+        // The PDF lands beside the source, so the browser is a file out
+        // of date until it is reloaded. This happens even when the
+        // document had errors: the engine writes a best-effort PDF
+        // anyway, and hiding it would be pretending it does not exist.
+        if (result.data.pdfPath !== null) void refreshTree();
+
+        const errors = result.data.diagnostics.filter(
+            (diagnostic) => diagnostic.severity === "error",
+        );
+        const first = errors[0];
+
+        if (first) {
+            const where = first.line === null ? first.file : `${first.file}:${first.line}`;
+
+            showStatus({
+                kind: "error",
+                text: `${errors.length} error${errors.length === 1 ? "" : "s"} — ${where} ${first.message}`,
+            });
+            return;
+        }
+
+        showStatus({
+            kind: "info",
+            text: result.data.pdfPath ? "Compiled ✓" : "No PDF produced",
+        });
+    }, [project.path, savePane, showStatus, refreshTree]);
 
     /**
      * Handles a file-management request from the browser: prompts for
-     * names via dialog, or confirms and performs a delete.
+     * names via dialog, performs a move, or confirms and deletes.
      */
     const handleFileOperation = useCallback(
         async (operation: FileOperation): Promise<void> => {
-            if (operation.kind !== "delete") {
+            if (operation.kind === "newFile" || operation.kind === "newFolder") {
                 setDialog(operation);
                 return;
             }
 
-            const confirmed = window.confirm(
-                `Delete ${operation.name}? It will be moved to the recycle bin.`,
-            );
+            if (operation.kind === "move") {
+                const result = await moveEntry(operation.sourcePath, operation.destDir);
+                if (!result.ok) {
+                    showStatus({ kind: "error", text: result.error });
+                    return;
+                }
+                panesRef.current.repointPaths(operation.sourcePath, result.data);
+                void refreshTree();
+                return;
+            }
+
+            const confirmed = await confirm({
+                title: "Delete this entry?",
+                message: `"${operation.name}" will be moved to the recycle bin.`,
+                confirmLabel: "Delete",
+                isDestructive: true,
+            });
             if (!confirmed) return;
 
             const result = await deleteEntry(operation.path);
@@ -229,21 +440,32 @@ export function ProjectPage({ project }: ProjectPageProps) {
                 return;
             }
 
-            // Close the editor when the open file (or an ancestor
-            // directory of it) was deleted.
-            const openPath = openFileRef.current?.path;
-            const deletedOpenFile =
-                openPath !== undefined &&
-                (openPath === operation.path || openPath.startsWith(`${operation.path}\\`) ||
-                    openPath.startsWith(`${operation.path}/`));
-            if (deletedOpenFile) {
-                setOpenFile(null);
-                setIsDirty(false);
-            }
+            // Empty any pane showing the deleted entry, or something
+            // that lived inside it.
+            panesRef.current.forgetDeleted(operation.path);
 
             void refreshTree();
         },
-        [refreshTree, showStatus],
+        [refreshTree, showStatus, confirm],
+    );
+
+    /**
+     * Renames an entry in place (from the inline tree editor).
+     *
+     * @param path - The entry to rename.
+     * @param newName - The new bare name.
+     * @returns An error message, or null on success.
+     */
+    const renameInline = useCallback(
+        async (path: string, newName: string): Promise<string | null> => {
+            const result = await renameEntry(path, newName);
+            if (!result.ok) return result.error;
+
+            panesRef.current.repointPaths(path, result.data);
+            void refreshTree();
+            return null;
+        },
+        [refreshTree],
     );
 
     /**
@@ -253,12 +475,16 @@ export function ProjectPage({ project }: ProjectPageProps) {
      * @returns An inline error message, or null on success.
      */
     const handleDialogSubmit = useCallback(
-        async (name: string): Promise<string | null> => {
+        async ({ name, extension }: NameDialogResult): Promise<string | null> => {
             if (!dialog) return null;
 
             switch (dialog.kind) {
                 case "newFile": {
-                    const result = await createFile(dialog.parentDir, name);
+                    const result = await createFile(
+                        dialog.parentDir,
+                        name,
+                        extension ?? DEFAULT_FILE_EXTENSION,
+                    );
                     if (!result.ok) return result.error;
                     break;
                 }
@@ -266,26 +492,6 @@ export function ProjectPage({ project }: ProjectPageProps) {
                 case "newFolder": {
                     const result = await createDirectory(dialog.parentDir, name);
                     if (!result.ok) return result.error;
-                    break;
-                }
-
-                case "rename": {
-                    const result = await renameEntry(dialog.path, name);
-                    if (!result.ok) return result.error;
-
-                    // Keep the open file (and its unsaved contents)
-                    // pointing at the right path after a rename.
-                    const openPath = openFileRef.current?.path;
-                    if (openPath !== undefined) {
-                        const renamedPath = renamedOpenFilePath(openPath, dialog.path, result.data);
-                        if (renamedPath !== null) {
-                            const currentDoc =
-                                viewRef.current?.state.doc.toString() ??
-                                openFileRef.current?.initialDoc ??
-                                "";
-                            setOpenFile({ path: renamedPath, initialDoc: currentDoc });
-                        }
-                    }
                     break;
                 }
 
@@ -303,79 +509,140 @@ export function ProjectPage({ project }: ProjectPageProps) {
     const actions = useMemo<EditorActions>(
         () => ({
             save: () => {
-                void save();
+                void savePane(panesRef.current.activePaneId);
             },
             undo: () => {
-                const view = viewRef.current;
+                const view = panesRef.current.activeView();
                 if (!view) return;
                 undo(view);
                 view.focus();
             },
             redo: () => {
-                const view = viewRef.current;
+                const view = panesRef.current.activeView();
                 if (!view) return;
                 redo(view);
                 view.focus();
             },
             insertSnippet: (name: SnippetName) => {
-                const view = viewRef.current;
+                const view = panesRef.current.activeView();
                 if (!view) return;
                 insertSnippetIntoView(view, SNIPPETS[name]);
             },
             newFile: () => {
                 setDialog({ kind: "newFile", parentDir: project.path });
             },
+            compile: () => {
+                void compileActivePane();
+            },
             exitProject: () => {
-                if (!confirmDiscardChanges()) return;
-                navigate({ kind: "browser" });
+                void (async () => {
+                    if (!(await confirmDiscardChanges(null))) return;
+                    navigate({ kind: "browser" });
+                })();
+            },
+            viewMode,
+            setViewMode: (mode: ViewMode) => setViewMode(mode),
+            findReplace: () => {
+                const view = panesRef.current.activeView();
+                if (!view) return;
+                openSearchPanel(view);
+                view.focus();
             },
         }),
-        [save, confirmDiscardChanges, navigate, project.path],
+        [savePane, confirmDiscardChanges, compileActivePane, navigate, project.path, viewMode],
     );
+
+    // The settings every editor on this page shares. The editor applies
+    // these itself, so the page does not hold a view in order to change
+    // a setting — which is what lets a second editor exist.
+    //
+    // The two per-*file* fields are deliberately absent: the file type
+    // and the image resolver depend on which document a pane has open,
+    // and `usePaneConfigurations` fills them in per pane.
+    const sharedSettings = useMemo(
+        () => ({
+            viewMode,
+            modalMode,
+            spellCheckEnabled,
+            theme,
+            lineNumberMode,
+            showDiagnostics,
+            references,
+            openLink: openExternalLink,
+        }),
+        [
+            viewMode,
+            modalMode,
+            spellCheckEnabled,
+            theme,
+            lineNumberMode,
+            showDiagnostics,
+            references,
+        ],
+    );
+
+    const configurationFor = usePaneConfigurations(sharedSettings);
 
     // Make the hotbar's Save/Undo/Redo/Insert items work while this
     // page is open.
     useEffect(() => {
-        registerEditor(actions);
+        registerEditor(isActive ? actions : null);
 
         return () => registerEditor(null);
-    }, [registerEditor, actions]);
+    }, [registerEditor, actions, isActive]);
 
     const { isDragging, hoverSide, handleProps } = useDockDrag(setDockSide);
 
     return (
-        <div className={`project-page${dockSide === "right" ? " project-page-dock-right" : ""}`}>
+        <div
+            className={`project-page${dockSide === "right" ? " project-page-dock-right" : ""}`}
+        >
             <Toolbar
-                isDirty={isDirty}
-                hasOpenFile={openFile !== null}
+                isDirty={panes.isActiveDirty}
+                hasOpenFile={panes.activeDocument !== null}
+                isCompiling={isCompiling}
                 actions={actions}
                 statusMessage={statusMessage}
             />
 
             <div className="project-workspace">
-                <FileBrowser
-                    tree={tree}
-                    selectedPath={openFile?.path ?? null}
-                    onSelectFile={(path) => void openFileByPath(path)}
-                    onFileOperation={(operation) => void handleFileOperation(operation)}
-                    dragHandleProps={handleProps}
-                />
+                <ResizablePanel
+                    initialWidth={DEFAULT_BROWSER_WIDTH_PX}
+                    side={dockSide}
+                    label="the file browser"
+                >
+                    <FileBrowser
+                        tree={tree}
+                        selectedPath={panes.activeDocument?.path ?? null}
+                        onSelectFile={openFileByPath}
+                        onFileOperation={(operation) => void handleFileOperation(operation)}
+                        onRename={renameInline}
+                        dragHandleProps={handleProps}
+                    />
+                </ResizablePanel>
 
                 <section className="project-editor-panel">
-                    {openFile ? (
-                        <TextEditor
-                            // Remount per file: clean editor + fresh undo history.
-                            key={openFile.path}
-                            initialDoc={openFile.initialDoc}
-                            onViewReady={(view) => {
-                                viewRef.current = view;
-                            }}
-                            onDocChanged={() => setIsDirty(true)}
-                            onSaveRequested={() => void save()}
-                        />
-                    ) : (
-                        <div className="editor-placeholder">Select a file to start editing.</div>
-                    )}
+                    <PaneTree
+                        node={panes.layout}
+                        documents={panes.documents}
+                        dirtyPanes={panes.dirtyPanes}
+                        activePaneId={panes.activePaneId}
+                        canClose={panes.hasSeveralPanes}
+                        configurationFor={configurationFor}
+                        onActivate={panes.activate}
+                        onDropFile={(paneId, side, path) => {
+                            void openFileInPane(paneId, path, side);
+                        }}
+                        onClose={panes.close}
+                        onViewReady={panes.registerView}
+                        onViewDestroyed={panes.unregisterView}
+                        onDocChanged={panes.markDirty}
+                        onSaveRequested={(paneId) => void savePane(paneId)}
+                        onDiagnosticsToggled={(visible) => {
+                            updateSettings({ showDiagnostics: visible });
+                        }}
+                        onResizeSplit={panes.resize}
+                    />
                 </section>
             </div>
 
@@ -383,12 +650,14 @@ export function ProjectPage({ project }: ProjectPageProps) {
                 <NameDialog
                     title={dialogTitle(dialog)}
                     placeholder={dialog.kind === "newFolder" ? "Folder name" : "File name"}
-                    submitLabel={dialog.kind === "rename" ? "Rename" : "Create"}
-                    initialValue={dialog.kind === "rename" ? dialog.currentName : ""}
+                    submitLabel="Create"
+                    withFileType={dialog.kind === "newFile"}
                     onSubmit={handleDialogSubmit}
                     onCancel={() => setDialog(null)}
                 />
             )}
+
+            {confirmationDialog}
 
             {isDragging && (
                 <div className="dock-zones">
@@ -416,35 +685,7 @@ function dialogTitle(dialog: FileDialogState): string {
             return "New File";
         case "newFolder":
             return "New Folder";
-        case "rename":
-            return `Rename ${dialog.currentName}`;
         default:
             return "";
     }
-}
-
-/**
- * Computes the open file's new path after a rename, if affected.
- *
- * @param openPath - Path of the currently open file.
- * @param renamedFrom - Path of the entry that was renamed.
- * @param renamedTo - The entry's new path.
- * @returns The open file's updated path, or null when unaffected.
- */
-function renamedOpenFilePath(
-    openPath: string,
-    renamedFrom: string,
-    renamedTo: string,
-): string | null {
-    if (openPath === renamedFrom) return renamedTo;
-
-    // The open file lives inside a renamed directory.
-    for (const separator of ["\\", "/"]) {
-        const prefix = `${renamedFrom}${separator}`;
-        if (openPath.startsWith(prefix)) {
-            return `${renamedTo}${separator}${openPath.slice(prefix.length)}`;
-        }
-    }
-
-    return null;
 }

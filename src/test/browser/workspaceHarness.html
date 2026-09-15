@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Moonstone workspace harness</title>
+        <style>
+            html,
+            body {
+                margin: 0;
+                height: 100%;
+            }
+
+            #harness-root {
+                position: absolute;
+                inset: 0;
+                display: flex;
+                flex-direction: column;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="harness-root"></div>
+        <script type="module" src="./workspaceHarness.tsx"></script>
+    </body>
+</html>

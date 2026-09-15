@@ -8,7 +8,7 @@
 }
 
 .cm-inline-math:hover {
-    background: rgba(169, 198, 255, 0.12);
+    background: var(--surface-selected);
 }
 
 /* Display math rendered in place of `$$...$$`. */
@@ -19,16 +19,46 @@
 }
 
 .cm-math-block:hover {
-    background: rgba(169, 198, 255, 0.06);
+    background: var(--surface-hover);
 }
 
 /* Fallback when KaTeX cannot render the source. */
 .cm-math-error {
     color: var(--error-color);
     font-family: monospace;
-    background: rgba(255, 156, 156, 0.08);
+    background: var(--surface-error-tint);
     border-radius: 4px;
     padding: 0 2px;
+}
+
+/* Image rendered in place of \includegraphics. */
+.cm-graphics {
+    display: inline-block;
+    max-width: 100%;
+    cursor: text;
+}
+
+.cm-graphics img {
+    display: block;
+    /* Bounded so a large figure cannot push the editor around; the
+       author is editing source, not laying out a page. */
+    max-width: 100%;
+    max-height: 20rem;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    background: transparent;
+}
+
+/* Stand-in when an image path cannot be resolved or fails to load. */
+.cm-graphics-placeholder {
+    display: inline-block;
+    padding: 0 0.375rem;
+    border: 1px dashed var(--border-color);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.9em;
+    cursor: text;
 }
 
 /* Special character rendered in place of its command (\alpha → α). */
@@ -39,7 +69,7 @@
 }
 
 .cm-symbol:hover {
-    background: rgba(169, 198, 255, 0.12);
+    background: var(--surface-selected);
 }
 
 /* Rendered tabular environment. */
@@ -52,7 +82,7 @@
 
 .cm-table-widget table {
     border-collapse: collapse;
-    background: var(--bg-preview);
+    background: transparent;
     border: 1px solid var(--border-color);
     border-radius: 6px;
 }
@@ -68,12 +98,32 @@
     border-color: var(--accent);
 }
 
-/* Environment box: contiguous line decorations form one rounded box. */
+/* Environment box: contiguous line decorations form one rounded box.
+
+   The box surface is painted by a pseudo-element sitting *below*
+   CodeMirror's selection layer, not by `background` on the line.
+   CodeMirror draws selection into `.cm-selectionLayer` at `z-index:
+   -2`, behind the content — so an opaque background on a `.cm-line`
+   covers it, and text selected inside a box showed no highlight at
+   all. (The line the cursor landed on still looked highlighted, which
+   is what made it read as "only the last line renders".)
+
+   Anything else that gives a `.cm-line` an opaque background has to do
+   the same, or it will silently swallow the selection too. */
 .cm-env-line {
-    background: var(--bg-preview);
+    position: relative;
     border-left: 1px solid var(--border-color);
     border-right: 1px solid var(--border-color);
     padding-left: 0.6rem !important;
+}
+
+.cm-env-line::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -3;
+    background: var(--bg-preview);
+    pointer-events: none;
 }
 
 .cm-env-first {
@@ -88,14 +138,163 @@
     border-bottom-right-radius: 8px;
 }
 
-/* Collapsed-preamble chip shown above the document box. */
+/* Inline formatting marks: the content of \textbf{...} etc. */
+.cm-fmt-bold {
+    font-weight: 700;
+}
+
+.cm-fmt-italic {
+    font-style: italic;
+}
+
+.cm-fmt-underline {
+    text-decoration: underline;
+}
+
+.cm-fmt-mono {
+    font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+}
+
+.cm-fmt-smallcaps {
+    font-variant-caps: small-caps;
+}
+
+.cm-fmt-sans {
+    font-family:
+        system-ui,
+        -apple-system,
+        "Segoe UI",
+        sans-serif;
+}
+
+.cm-fmt-strike {
+    text-decoration: line-through;
+}
+
+/* Super/subscript keep the source's line height: shifting the
+   baseline would make the line taller than the raw text it replaces,
+   and the box would jump when the cursor reveals it. */
+.cm-fmt-superscript,
+.cm-fmt-subscript {
+    font-size: 0.75em;
+    line-height: 0;
+    position: relative;
+}
+
+.cm-fmt-superscript {
+    vertical-align: super;
+}
+
+.cm-fmt-subscript {
+    vertical-align: sub;
+}
+
+/* Text-mode spellings rendered in place: escapes, dashes, quotes,
+   ties and accents. Deliberately unstyled — these are ordinary
+   characters and should read as prose, not as markup. */
+.cm-text-replacement {
+    cursor: text;
+}
+
+/* Section headings: size only — margins would distort the line
+   layout inside environment boxes. */
+/* Headings need air above them far more than below: the gap is what
+   separates a section from the paragraph that ended the last one.
+   Padding rather than margin, because CodeMirror measures line heights
+   and collapsing margins would confuse that — and `!important`
+   because the base theme's `.cm-line` padding otherwise wins, the same
+   reason `.cm-env-line` below needs it. */
+.cm-heading-1 {
+    font-size: 1.5em;
+    font-weight: 700;
+    padding-top: 0.8em !important;
+    padding-bottom: 0.15em !important;
+}
+
+.cm-heading-2 {
+    font-size: 1.3em;
+    font-weight: 700;
+    padding-top: 0.7em !important;
+    padding-bottom: 0.1em !important;
+}
+
+.cm-heading-3 {
+    font-size: 1.15em;
+    font-weight: 700;
+    padding-top: 0.6em !important;
+    padding-bottom: 0.1em !important;
+}
+
+/* `\paragraph` and `\subparagraph` are run-in headings in LaTeX: bold
+   lead-ins at body size rather than another step down in scale. Sized
+   like the text they introduce, and separated by less air, so they read
+   as part of the paragraph rather than as a fourth tier of section. */
+.cm-heading-4 {
+    font-weight: 700;
+    padding-top: 0.5em !important;
+}
+
+.cm-heading-5 {
+    font-weight: 700;
+    font-style: italic;
+    padding-top: 0.4em !important;
+}
+
+/* List-item marker rendered in place of \item. */
+.cm-list-marker {
+    color: var(--accent);
+    padding-right: 0.35em;
+    cursor: text;
+}
+
+/* Reference chips rendered in place of \ref/\eqref/\cite/\label. */
+.cm-ref-chip {
+    display: inline-block;
+    padding: 0 0.45em;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.85em;
+    cursor: pointer;
+    user-select: none;
+}
+
+.cm-ref-chip:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+/* Open affordance on link chips. Clicking the chip body reveals the
+   source like every other chip; only this follows the link. */
+.cm-ref-chip-open {
+    margin-left: 0.35em;
+    padding-left: 0.35em;
+    border-left: 1px solid var(--border-color);
+    color: var(--accent);
+    cursor: pointer;
+}
+
+.cm-ref-chip-open:hover {
+    text-decoration: underline;
+}
+
+/* Collapsed-preamble chip shown above the document box.
+   The row exists to hold the chip's vertical spacing as padding.
+   Never give a block widget a vertical margin: CodeMirror measures
+   widget heights with getBoundingClientRect(), which excludes margins,
+   so the height map ends up shorter than the rendered DOM and every
+   posAtCoords below the widget resolves to the wrong line. */
+.cm-preamble-row {
+    padding: 0.3rem 0;
+}
+
 .cm-preamble-chip {
     display: inline-block;
-    margin: 0.3rem 0;
     padding: 0.2rem 0.7rem;
     border: 1px solid var(--border-color);
     border-radius: 999px;
-    background: var(--bg-preview);
+    background: transparent;
     color: var(--text-secondary);
     font-size: 0.8rem;
     cursor: pointer;

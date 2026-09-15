@@ -1,0 +1,67 @@
+\documentclass[11pt,a4paper]{report}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+
+\title{{name}}
+\author{Your Name}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+
+\chapter{Introduction}
+
+State the purpose of the report and what the reader will find in it.
+
+\chapter{Background}
+
+Cover the context a reader needs before the main content: prior work,
+the system under study, or the conditions of the experiment.
+
+\chapter{Analysis}
+
+\section{Data}
+
+Tables use \texttt{booktabs} rules, which sit better than the default
+vertical lines:
+
+\begin{table}[htbp]
+    \centering
+    \begin{tabular}{lrr}
+        \toprule
+        Condition & Trials & Mean \\
+        \midrule
+        Baseline  & 30     & 12.4 \\
+        Treatment & 30     & 15.1 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Summary of results.}
+    \label{tab:summary}
+\end{table}
+
+\section{Discussion}
+
+Interpret what Table~\ref{tab:summary} shows, and be explicit about
+what it does not show.
+
+\chapter{Conclusion}
+
+Summarise the findings and any recommendations that follow from them.
+
+\appendix
+
+\chapter{Supporting Material}
+
+Material that supports the report but would interrupt it if included
+in the main chapters.
+
+\end{document}

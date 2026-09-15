@@ -1,10 +1,12 @@
 /* File browser panel and tree rows. */
 
+/* Fills whatever width its ResizablePanel has been given; the panel,
+   not the browser, owns how wide that is. */
 .file-browser {
     display: flex;
+    flex: 1;
     flex-direction: column;
-    width: 220px;
-    min-width: 220px;
+    min-width: 0;
     background: var(--bg-sidebar);
     border-right: 1px solid var(--border-color);
     overflow: hidden;
@@ -43,7 +45,7 @@
 
 .file-browser-action:hover:not(:disabled) {
     color: var(--accent);
-    background: rgba(169, 198, 255, 0.1);
+    background: var(--surface-hover);
 }
 
 .file-browser-action:disabled {
@@ -94,11 +96,11 @@
 }
 
 .file-tree-row:hover {
-    background: rgba(169, 198, 255, 0.08);
+    background: var(--surface-hover);
 }
 
 .file-tree-row-selected {
-    background: rgba(169, 198, 255, 0.14);
+    background: var(--surface-selected);
     color: var(--accent);
 }
 
@@ -117,7 +119,41 @@
     transform: rotate(90deg);
 }
 
+/* `min-width: 0` is what makes the ellipsis work: a flex item refuses
+   to shrink below its content by default, so without it a long name
+   pushes the row wider instead of truncating. The truncation is purely
+   visual — the full name is still what rename, open and drag use. */
 .file-tree-name {
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+/* Directory highlighted as a drag-and-drop move target. */
+.file-tree-row-drop-target {
+    background: var(--surface-drop-target);
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
+}
+
+/* Row container shown while inline-renaming (a plain div, not a button). */
+.file-tree-row-renaming {
+    cursor: default;
+}
+
+.file-tree-rename-input {
+    flex: 1;
+    min-width: 0;
+    padding: 0 0.2rem;
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    background: var(--bg-app);
+    color: var(--text-primary);
+    font-size: 0.88rem;
+    font-family: inherit;
+}
+
+.file-tree-rename-input-error {
+    border-color: var(--error-color);
 }

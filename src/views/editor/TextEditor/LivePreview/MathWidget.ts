@@ -5,8 +5,14 @@
 
 import { WidgetType } from "@codemirror/view";
 import katex from "katex";
-import { findMathRanges } from "./findMath";
-import type { TabularRows } from "./parseTabular";
+import type { MathRange } from "../latex/findMath";
+import type { FormatRange } from "../latex/findFormatting";
+import { applyTextReplacements } from "../latex/findTextReplacements";
+import type { RefKind } from "../latex/findRefs";
+import type { TabularRows } from "../latex/parseTabular";
+import type { MacroTable } from "../latex/findMacros";
+import { scanInline } from "../latex/scanInline";
+import { findInertRegions, maskChunk } from "../latex/inertRegions";
 
 /**
  * Replaces a math source range with its KaTeX rendering. Invalid
@@ -17,10 +23,16 @@ export class MathWidget extends WidgetType {
     /**
      * @param latex - The LaTeX source between the delimiters.
      * @param display - True renders display (block) math.
+     * @param macros - Macros the document defines; without them, a
+     *   command like `\dmodel` renders as red error text.
+     * @param macroKey - Stable identity for `macros`, so {@link eq} can
+     *   tell tables apart without walking them.
      */
     constructor(
         private readonly latex: string,
         private readonly display: boolean,
+        private readonly macros: MacroTable = {},
+        private readonly macroKey = "",
     ) {
         super();
     }
@@ -32,7 +44,13 @@ export class MathWidget extends WidgetType {
      * @returns True when both would render identically.
      */
     override eq(other: MathWidget): boolean {
-        return other.latex === this.latex && other.display === this.display;
+        return (
+            other.latex === this.latex &&
+            other.display === this.display &&
+            // Editing a macro's definition changes what its uses
+            // render as, so identical source is not enough.
+            other.macroKey === this.macroKey
+        );
     }
 
     /**
@@ -48,6 +66,10 @@ export class MathWidget extends WidgetType {
             katex.render(this.latex, container, {
                 displayMode: this.display,
                 throwOnError: false,
+                // A copy, because KaTeX writes into this object when
+                // the source uses `\gdef` — sharing it would let one
+                // expression's definitions leak into every other.
+                macros: { ...this.macros },
             });
         } catch {
             // KaTeX only throws for internal errors with throwOnError
@@ -76,8 +98,13 @@ export class MathWidget extends WidgetType {
 export class SymbolWidget extends WidgetType {
     /**
      * @param symbol - The unicode glyph to display.
+     * @param className - Style hook; text-mode replacements use their
+     *   own so escapes and dashes can be styled apart from symbols.
      */
-    constructor(private readonly symbol: string) {
+    constructor(
+        private readonly symbol: string,
+        private readonly className = "cm-symbol",
+    ) {
         super();
     }
 
@@ -88,7 +115,7 @@ export class SymbolWidget extends WidgetType {
      * @returns True when both render the same glyph.
      */
     override eq(other: SymbolWidget): boolean {
-        return other.symbol === this.symbol;
+        return other.symbol === this.symbol && other.className === this.className;
     }
 
     /**
@@ -98,7 +125,7 @@ export class SymbolWidget extends WidgetType {
      */
     override toDOM(): HTMLElement {
         const span = document.createElement("span");
-        span.className = "cm-symbol";
+        span.className = this.className;
         span.textContent = this.symbol;
         return span;
     }
@@ -120,19 +147,38 @@ export class SymbolWidget extends WidgetType {
 export class TableWidget extends WidgetType {
     /**
      * @param rows - The parsed cell grid.
+     * @param source - The environment's raw source, used as a cheap
+     *   identity in {@link eq}.
+     * @param macros - Document-defined macros, for KaTeX.
+     * @param macroKey - A cheap identity for those macros.
      */
-    constructor(private readonly rows: TabularRows) {
+    constructor(
+        private readonly rows: TabularRows,
+        private readonly source: string,
+        private readonly macros: MacroTable = {},
+        private readonly macroKey = "",
+    ) {
         super();
     }
 
     /**
      * Compares widgets so unchanged tables are not re-rendered.
      *
+     * Compares the source the grid was parsed from rather than the grid
+     * itself: `eq` runs on every keystroke and every cursor move, and
+     * serialising the whole table twice per call to answer a question
+     * the source already answers is pure waste.
+     *
+     * The macro key is part of the identity because a table's cells can
+     * use document-defined macros, so editing a definition has to
+     * re-render tables that use it — the same reason `MathWidget`
+     * carries one.
+     *
      * @param other - The widget to compare against.
      * @returns True when both render the same grid.
      */
     override eq(other: TableWidget): boolean {
-        return JSON.stringify(other.rows) === JSON.stringify(this.rows);
+        return other.source === this.source && other.macroKey === this.macroKey;
     }
 
     /**
@@ -151,7 +197,10 @@ export class TableWidget extends WidgetType {
 
             for (const cell of row) {
                 const tableCell = document.createElement("td");
-                renderCellContents(tableCell, cell);
+                if (cell.span > 1) tableCell.colSpan = cell.span;
+                if (cell.rowSpan > 1) tableCell.rowSpan = cell.rowSpan;
+                if (cell.align !== null) tableCell.style.textAlign = cell.align;
+                renderCellContents(tableCell, cell.source, this.macros);
                 tableRow.appendChild(tableCell);
             }
 
@@ -173,43 +222,390 @@ export class TableWidget extends WidgetType {
 }
 
 /**
- * Fills a table cell, rendering any `$...$` segments with KaTeX and
- * everything else as plain text.
+ * Fills a table cell, rendering the same constructs the editor would
+ * render outside a table: `$...$` math, formatting commands, symbols
+ * and text-mode spellings.
+ *
+ * Cells are rendered wholesale rather than decorated, so this cannot
+ * reuse the decoration pipeline — but it reuses the same scanners, so
+ * a cell shows what its content means everywhere else.
+ *
+ * Comments and verbatim spans are masked before scanning, for the same
+ * reason they are everywhere else: a `%` inside a cell comments out the
+ * rest of it, and scanning that text as live source finds constructs
+ * the author never wrote.
  *
  * @param cell - The td element to fill.
  * @param source - The cell's LaTeX source.
  */
-function renderCellContents(cell: HTMLElement, source: string): void {
-    const mathRanges = findMathRanges(source, 0);
+function renderCellContents(cell: HTMLElement, source: string, macros: MacroTable = {}): void {
+    // Scanned against masked text so inert regions find nothing, but
+    // rendered from the real source, exactly as the decoration layers
+    // do it.
+    const scanText = maskChunk(source, 0, findInertRegions(source));
 
-    if (mathRanges.length === 0) {
-        cell.textContent = source;
-        return;
-    }
+    // The same scan order the document uses, so a construct means the
+    // same thing in a cell as it does outside one. Graphics are skipped:
+    // the table renderer does not lay out an image, and scanning for one
+    // would only claim the range and leave it blank.
+    const scan = scanInline(scanText, 0, { includeGraphics: false });
+
+    const pieces = [
+        ...scan.math.map((range) => ({
+            range,
+            render: () => renderMath(source, range, macros),
+        })),
+        // Chips render inside a cell exactly as they do outside one —
+        // a citation in a table is still a citation. No opener is
+        // passed: a link inside a rendered table is not clickable, and
+        // offering an affordance that does nothing would be worse.
+        ...scan.refs.map((range) => ({
+            range,
+            render: () =>
+                new RefChipWidget(range.kind, range.keys, range.note, range.target).toDOM(),
+        })),
+        ...scan.formats.map((range) => ({
+            range,
+            render: () => renderFormatted(source, range, macros),
+        })),
+        ...scan.symbols.map((range) => ({ range, render: () => textNode(range.symbol) })),
+        ...scan.replacements.map((range) => ({ range, render: () => textNode(range.text) })),
+    ].sort((left, right) => left.range.from - right.range.from);
 
     let position = 0;
 
-    for (const range of mathRanges) {
-        if (range.from > position) {
-            cell.appendChild(document.createTextNode(source.slice(position, range.from)));
+    for (const piece of pieces) {
+        // Scanners can still overlap each other; first match wins.
+        if (piece.range.from < position) continue;
+
+        if (piece.range.from > position) {
+            cell.appendChild(document.createTextNode(source.slice(position, piece.range.from)));
         }
 
-        const mathSpan = document.createElement("span");
-        try {
-            katex.render(source.slice(range.innerFrom, range.innerTo), mathSpan, {
-                displayMode: false,
-                throwOnError: false,
-            });
-        } catch {
-            mathSpan.textContent = source.slice(range.from, range.to);
-        }
-        cell.appendChild(mathSpan);
-
-        position = range.to;
+        cell.appendChild(piece.render());
+        position = piece.range.to;
     }
 
     if (position < source.length) {
         cell.appendChild(document.createTextNode(source.slice(position)));
+    }
+}
+
+/**
+ * Wraps text in a span so every rendered piece is an element.
+ *
+ * @param text - The text to wrap.
+ * @returns The span.
+ */
+function textNode(text: string): HTMLElement {
+    const span = document.createElement("span");
+    span.textContent = text;
+    return span;
+}
+
+/**
+ * Renders one math segment of a cell.
+ *
+ * @param source - The cell's source.
+ * @param range - The math segment.
+ * @param macros - Document-defined macros to expand.
+ * @returns The rendered element.
+ */
+function renderMath(source: string, range: MathRange, macros: MacroTable): HTMLElement {
+    const span = document.createElement("span");
+
+    try {
+        katex.render(source.slice(range.innerFrom, range.innerTo), span, {
+            displayMode: false,
+            throwOnError: false,
+            // A copy per render: KaTeX writes into this object for
+            // gdef. Without it a document-defined macro renders
+            // correctly everywhere except inside a table, where it
+            // turns red.
+            macros: { ...macros },
+        });
+    } catch {
+        span.textContent = source.slice(range.from, range.to);
+    }
+
+    return span;
+}
+
+/**
+ * Renders one formatting command of a cell, hiding its tokens.
+ *
+ * @param source - The cell's source.
+ * @param range - The formatting command.
+ * @returns The styled element.
+ */
+function renderFormatted(source: string, range: FormatRange, macros: MacroTable): HTMLElement {
+    const span = document.createElement("span");
+    span.className = `cm-fmt-${range.style}`;
+
+    // Rendered rather than inserted as text, so `	extbf{alpha}` shows
+    // a bold α in a cell exactly as it does in the document. The
+    // content is strictly shorter than what contains it, so this
+    // terminates.
+    renderCellContents(span, source.slice(range.contentFrom, range.contentTo), macros);
+
+    return span;
+}
+
+/**
+ * Inline widget rendering a list-item marker (`\item` → `•` or `1.`).
+ */
+export class ListMarkerWidget extends WidgetType {
+    /**
+     * @param marker - The rendered marker text.
+     */
+    constructor(private readonly marker: string) {
+        super();
+    }
+
+    /**
+     * Compares widgets so unchanged markers are not re-rendered.
+     *
+     * @param other - The widget to compare against.
+     * @returns True when both render the same marker.
+     */
+    override eq(other: ListMarkerWidget): boolean {
+        return other.marker === this.marker;
+    }
+
+    /**
+     * Renders the marker.
+     *
+     * @returns The marker element.
+     */
+    override toDOM(): HTMLElement {
+        const span = document.createElement("span");
+        span.className = "cm-list-marker";
+        span.textContent = this.marker;
+        return span;
+    }
+
+    /**
+     * Lets clicks through so clicking the marker reveals `\item`.
+     *
+     * @returns Always false.
+     */
+    override ignoreEvent(): boolean {
+        return false;
+    }
+}
+
+/** Reference kind → chip icon. */
+const REF_ICONS: Record<RefKind, string> = {
+    ref: "🔗",
+    eqref: "🔗",
+    cite: "📖",
+    label: "🏷",
+    url: "🌐",
+    href: "🌐",
+    footnote: "†",
+};
+
+/**
+ * Inline chip rendering a reference command (`\ref{key}` → 🔗 key).
+ *
+ * Link chips (`\url`, `\href`) carry an "open" affordance; clicking
+ * the chip body still reveals the source like every other chip, so
+ * following a link cannot be confused with editing it.
+ */
+export class RefChipWidget extends WidgetType {
+    /** Marks the open affordance, so clicks on it can be told apart. */
+    private static readonly OPEN_CLASS = "cm-ref-chip-open";
+
+    /**
+     * @param kind - Which reference command is rendered.
+     * @param keys - The referenced keys.
+     * @param note - Optional locator or link text, or null.
+     * @param target - Address for link kinds, or null.
+     * @param openLink - Opens a link target, or undefined when the
+     *   host provides no way to (plain browser, tests).
+     */
+    constructor(
+        private readonly kind: RefKind,
+        private readonly keys: readonly string[],
+        private readonly note: string | null = null,
+        private readonly target: string | null = null,
+        private readonly openLink?: (url: string) => void,
+    ) {
+        super();
+    }
+
+    /**
+     * Compares widgets so unchanged chips are not re-rendered.
+     *
+     * @param other - The widget to compare against.
+     * @returns True when both render the same chip.
+     */
+    override eq(other: RefChipWidget): boolean {
+        return (
+            other.kind === this.kind &&
+            other.keys.join(",") === this.keys.join(",") &&
+            other.note === this.note &&
+            other.target === this.target
+        );
+    }
+
+    /**
+     * Renders the chip.
+     *
+     * @returns The chip element.
+     */
+    override toDOM(): HTMLElement {
+        const chip = document.createElement("span");
+        chip.className = `cm-ref-chip cm-ref-chip-${this.kind}`;
+
+        const label = document.createElement("span");
+        label.textContent = `${REF_ICONS[this.kind]} ${this.label()}`;
+        chip.appendChild(label);
+
+        if (this.canOpen()) chip.appendChild(this.renderOpenButton());
+
+        return chip;
+    }
+
+    /**
+     * Builds the chip's text.
+     *
+     * @returns The label, including any locator.
+     */
+    private label(): string {
+        const body = this.kind === "href" && this.note ? this.note : this.keys.join(", ");
+        const text = this.kind === "href" || !this.note ? body : `${body}, ${this.note}`;
+
+        // A locator like `p.~3` is prose and should read as prose;
+        // the chip renders its own text, so the decoration pipeline
+        // never sees it.
+        return applyTextReplacements(text);
+    }
+
+    /**
+     * Reports whether this chip can offer to open its target.
+     *
+     * @returns True for link kinds with a handler available.
+     */
+    private canOpen(): boolean {
+        return this.target !== null && this.openLink !== undefined;
+    }
+
+    /**
+     * Builds the affordance that opens the link.
+     *
+     * @returns The button element.
+     */
+    private renderOpenButton(): HTMLElement {
+        const button = document.createElement("span");
+        button.className = RefChipWidget.OPEN_CLASS;
+        button.textContent = "↗";
+        button.title = this.target ?? "";
+
+        button.addEventListener("mousedown", (event) => {
+            // Stop CodeMirror from moving the cursor here, which would
+            // reveal the source instead of following the link.
+            event.preventDefault();
+            event.stopPropagation();
+            if (this.target) this.openLink?.(this.target);
+        });
+
+        return button;
+    }
+
+    /**
+     * Lets clicks through so clicking the chip reveals the command —
+     * except on the open affordance, which handles its own.
+     *
+     * @param event - The DOM event.
+     * @returns True only for events the affordance owns.
+     */
+    override ignoreEvent(event: Event): boolean {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return false;
+
+        return target.classList.contains(RefChipWidget.OPEN_CLASS);
+    }
+}
+
+/**
+ * Inline widget rendering an `\includegraphics` command.
+ *
+ * Shows the image itself when the host supplied a resolver that can
+ * turn the LaTeX path into a loadable URL, and a labelled placeholder
+ * otherwise — an unresolvable path (missing file, no project context,
+ * plain browser) must still show the author *what* was referenced.
+ */
+export class GraphicsWidget extends WidgetType {
+    /**
+     * @param path - The image path as written in the source.
+     * @param source - Loadable URL for the image, or null.
+     */
+    constructor(
+        private readonly path: string,
+        private readonly source: string | null,
+    ) {
+        super();
+    }
+
+    /**
+     * Compares widgets so unchanged images are not re-rendered.
+     *
+     * @param other - The widget to compare against.
+     * @returns True when both render the same image.
+     */
+    override eq(other: GraphicsWidget): boolean {
+        return other.path === this.path && other.source === this.source;
+    }
+
+    /**
+     * Renders the image, or a placeholder chip.
+     *
+     * @returns The image or placeholder element.
+     */
+    override toDOM(): HTMLElement {
+        if (this.source === null) return this.renderPlaceholder("🖼", this.path);
+
+        const container = document.createElement("span");
+        container.className = "cm-graphics";
+
+        const image = document.createElement("img");
+        image.src = this.source;
+        // The path is author-supplied text, so it goes in as an
+        // attribute value only — never interpreted as markup.
+        image.alt = this.path;
+
+        // A broken path must not leave an empty box with no
+        // explanation of what failed to load.
+        image.addEventListener("error", () => {
+            container.replaceWith(this.renderPlaceholder("⚠", this.path));
+        });
+
+        container.appendChild(image);
+        return container;
+    }
+
+    /**
+     * Builds the stand-in shown when an image cannot be displayed.
+     *
+     * @param icon - Leading glyph.
+     * @param label - Text to show, normally the path.
+     * @returns The placeholder element.
+     */
+    private renderPlaceholder(icon: string, label: string): HTMLElement {
+        const chip = document.createElement("span");
+        chip.className = "cm-graphics-placeholder";
+        chip.textContent = `${icon} ${label}`;
+        return chip;
+    }
+
+    /**
+     * Lets clicks through so clicking the image reveals the command.
+     *
+     * @returns Always false.
+     */
+    override ignoreEvent(): boolean {
+        return false;
     }
 }
 
@@ -228,15 +624,30 @@ export class PreambleWidget extends WidgetType {
     }
 
     /**
-     * Renders the preamble chip.
+     * Renders the preamble chip inside a row that carries its vertical
+     * spacing.
      *
-     * @returns The chip element.
+     * The wrapper is not decoration. CodeMirror measures a block
+     * widget with `getBoundingClientRect().height`, which **excludes
+     * margins** — so spacing the chip with a margin leaves the height
+     * map short by that much, and every coordinate-to-position lookup
+     * below the preamble resolves to the wrong line. The visible
+     * symptom was the spell-check popup dismissing itself. Padding on
+     * an outer block is inside the measured box, so it keeps the same
+     * spacing and the geometry stays honest.
+     *
+     * @returns The chip's row element.
      */
     override toDOM(): HTMLElement {
+        const row = document.createElement("div");
+        row.className = "cm-preamble-row";
+
         const chip = document.createElement("div");
         chip.className = "cm-preamble-chip";
         chip.textContent = "⚙ Preamble — click to edit";
-        return chip;
+        row.appendChild(chip);
+
+        return row;
     }
 
     /**

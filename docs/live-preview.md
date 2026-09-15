@@ -1,5 +1,19 @@
 # Live Preview
 
+> **Module layout.** The LaTeX scanners live in
+> `src/views/editor/TextEditor/latex/` — pure string scanning that knows
+> nothing about CodeMirror. `LivePreview/` is the rendering built on top
+> of them. The spell checker and diagnostics depend on `latex/` directly,
+> rather than reaching through a rendering module to ask where the
+> comments are, which is what they used to do.
+>
+> **One scan order.** `latex/scanInline.ts` owns the sequence the inline
+> scanners run in and what each is allowed to look at. That sequence is a
+> behavioural contract, not an implementation detail: `\alpha` is a
+> symbol, but inside `$…$` it is KaTeX's, and inside `\cite{}` it is part
+> of a key. It had been written twice — once for the document, once for
+> table cells — and the copies disagreed. See "Table cells" below.
+
 Obsidian-style inline rendering for LaTeX inside CodeMirror 6. Source
 text is replaced by rendered widgets whenever the cursor is elsewhere;
 touching a rendered region with the cursor (click or arrow keys)
@@ -12,26 +26,261 @@ CodeMirror requires block-level replacing decorations to come from a
 work belongs in a `ViewPlugin`. The preview is therefore split:
 
 1. **Inline layer — `ViewPlugin`** (viewport-limited): inline `$...$`
-   math. Recomputes on doc/selection/viewport changes, scanning only
-   `view.visibleRanges` (expanded to line boundaries). This satisfies
-   "only render what's visible" where per-keystroke cost lives.
+   math, text formatting, reference chips, and symbols. Recomputes on
+   doc/selection/viewport changes, scanning only `view.visibleRanges`
+   (expanded to line boundaries). This satisfies "only render what's
+   visible" where per-keystroke cost lives.
 2. **Block layer — `StateField`** (whole document): display `$$...$$`
-   math, environment boxes, and preamble hiding. The regex scan is
-   cheap; KaTeX rendering (`toDOM`) is only invoked for widgets in the
-   rendered viewport anyway, so heavy work stays lazy.
+   math, environment boxes, preamble hiding, section headings, and
+   list-item markers. The regex scan is cheap; KaTeX rendering
+   (`toDOM`) is only invoked for widgets in the rendered viewport
+   anyway, so heavy work stays lazy.
+
+The inline layer keeps **two** decoration sets: the replaces (also fed
+to `EditorView.atomicRanges`, so arrow keys hop over widgets) and the
+content marks from formatting commands, which must _not_ be atomic or
+the cursor could never enter `\textbf{...}` content.
+
+## Caching and update cost
+
+The block layer runs on selection changes as well as edits, because
+the cursor decides what is revealed. What it does _not_ do is rescan:
+`documentScanField` holds the masked text and the results of every
+whole-document scan, and recomputes **only on `docChanged`**. A cursor
+move cannot change where the math is, only which of it is revealed.
+
+`livePreview.test.ts` pins this by reference equality — a cursor move
+must hand back the very same scan object.
+
+Measured on a 2,400-line, 56 KB document:
+
+|             | rescanning per move | cached scan |
+| ----------- | ------------------- | ----------- |
+| Cursor move | 2.87 ms             | **2.09 ms** |
+
+So the scan is real but it is _not_ the dominant cost. The remaining
+~2 ms is rebuilding the whole-document decoration set, which has to
+happen because reveal state changed somewhere. Making _that_
+incremental — recomputing only the constructs whose reveal state
+actually flipped — is the next lever if editing large documents ever
+feels heavy, and it is a substantially riskier change than this one.
+
+### Overlap bookkeeping
+
+CodeMirror rejects overlapping replaces within one decoration set, so
+each pass checks what earlier passes claimed. `ClaimedRanges` holds
+those claims **merged and disjoint**, which keeps their ends ascending
+and makes the check a single binary search. Merging is the point: with
+claims sorted only by start, an earlier long claim could still span
+the query, and the check would degrade to a walk back through every
+prior claim — quadratic in the number of rendered constructs.
+
+### Atomic ranges
+
+Block-layer replaces are published to `EditorView.atomicRanges`
+**selectively**, via the `atomic` flag on `addReplace`:
+
+| Replace                              | Atomic | Why                                                                                                                                  |
+| ------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Heading's hidden `\section{` and `}` | yes    | One arrow press crosses them; the cursor still lands on the title text, which is what reveals the heading.                           |
+| `\item` marker                       | yes    | One press crosses the marker; clicking still reveals the token.                                                                      |
+| Hidden `\begin`/`\end` tag lines     | **no** | Cursor contact with the tag line is the _only_ way to reveal it. Atomic would make `\begin{...}` permanently uneditable by keyboard. |
+| Collapsed preamble                   | **no** | Same: entering it is what expands it.                                                                                                |
+| Tables, math environments            | **no** | Same: the cursor must reach the region to reveal its source.                                                                         |
+
+That distinction is load-bearing and easy to get wrong, so both
+directions are tested — the skips _and_ the deliberate non-skips.
+
+### Reveal is frozen while dragging a selection
+
+Selecting across a block used to be impossible: the selection would
+collapse to a line or two. The cause was reveal itself. Hiding a
+block's `\begin`/`\end` lines is what makes it a block, so a drag
+growing into one un-hid those lines _mid-gesture_ — the content below
+shifted down, the pointer ended up over a different line than the one
+it was travelling toward, and the selection ended wherever it landed.
+Dragging outside a block was unaffected, because revealing inline
+commands swaps text without changing how many lines there are. That is
+exactly the "works outside a block, breaks inside one" symptom.
+
+`pointerSelection.ts` holds the reveal decision still for the length of
+the gesture: the selection as of `pointerdown` is what `isRevealed`
+reads until the button comes up, so the layout cannot move under the
+pointer. On release, reveal returns to the live selection and the block
+opens as usual.
+
+Two details matter:
+
+- It listens for **`pointerdown`, not `mousedown`**. Pointer events
+  fire first, so the captured selection is the one from _before_ the
+  click. Capturing after CodeMirror has moved the cursor would freeze
+  reveal at a cursor already inside the block — which reveals it, the
+  very thing being avoided.
+- Both layers rebuild on the transaction that **ends** the gesture,
+  which carries no selection change of its own; without that the frozen
+  reveal would outlive the drag.
+
+## Freezing an unfocused pane
+
+Source: `frozenFacet` in `livePreview.ts`, `frozenCompartment` in
+`viewMode.ts`
+Tests: `src/test/livePreviewFreeze.test.ts`
+
+Every pane except the one the user is working in is **frozen**: it
+keeps the look it last produced instead of re-rendering as the cursor
+moves.
+
+Freezing, not snapshotting. Replacing an inactive pane with a static
+rendering would have cost its undo history, selection and scroll
+position on every focus change — exactly what the split-pane work went
+out of its way to preserve. A frozen pane keeps its `EditorView`; only
+the preview holds still.
+
+**A frozen editor never reveals**, and that is the definition rather
+than a side effect. Reveal is the only thing that makes the output
+depend on the selection, so with it off a selection change provably
+cannot change what is rendered, and skipping the rebuild is free
+rather than merely cheap.
+
+What still rebuilds:
+
+| Change              | Frozen                                                                                                                                                                                                                                                        |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Document            | **Always.** Decorations sit at document positions, and stale ones over changed text would render the wrong characters. A rename repoints a file under a pane nobody is watching — the one place this would go unnoticed.                                      |
+| Viewport            | **Inline layer only**, which is viewport-scoped. An unfocused pane can still be scrolled or resized by a splitter, and freezing that would show raw source wherever the user scrolled to. The block layer is whole-document, so the viewport is not a factor. |
+| Selection           | No. This is the saving.                                                                                                                                                                                                                                       |
+| Freezing/unfreezing | **Always, immediately.** Focusing a pane has to bring reveal back before the user types, and the reconfiguring transaction carries no document change and no selection — so without an explicit check it slips past every other guard.                        |
+
+### What it actually bought
+
+plan.md asked for this on performance grounds: _"having multiple
+windows scanned and rendered at once can be dangerous for
+performance"_. **That turned out not to be the case**, and the numbers
+are worth recording so nobody re-derives them.
+
+| Measurement                      | Result  |
+| -------------------------------- | ------- |
+| Keystroke, one pane open         | 1.16 ms |
+| Keystroke, four panes open       | 1.14 ms |
+| Cursor move in a **live** pane   | 0.82 ms |
+| Cursor move in a **frozen** pane | 0.32 ms |
+
+Four panes cost the same as one, because each pane is an independent
+`EditorView` over its own `EditorState`: a keystroke in one dispatches
+into that one alone, and the other three are never asked to do
+anything. There was no per-pane tax to remove.
+
+So the case for freezing rests on the other two things it does, and
+both are real:
+
+- **It looks right.** An unfocused pane used to show raw `$x^2$`
+  wherever its stale cursor happened to sit. Now it renders, which is
+  what _"render once and cache their look"_ asked for.
+- **2.6x on the transactions an unfocused pane still receives** — the
+  scroll wheel, a splitter drag, the click that focuses it. A real
+  saving on an already small number.
+
+`livePreviewPerformance.test.ts` keeps the four-pane cost flat rather
+than linear in the number of panes; if that ever changes, something
+has begun broadcasting transactions across panes.
+
+## View modes
+
+The preview participates in three editor view modes, swapped at runtime
+through a CodeMirror `Compartment` (see `viewMode.ts` and `toolbar.md`):
+
+- **Source** — the compartment holds no preview, so raw LaTeX shows.
+- **Live** — `livePreview()`, the reveal-at-cursor behavior described
+  below.
+- **Read Only** — `livePreview({ reveal: false })` plus a non-editable,
+  read-only editor, so everything stays rendered and the source never
+  shows.
+
+The `reveal` option feeds a `revealFacet`; the `isRevealed(state, …)`
+helper gates every reveal check behind it, so read-only mode simply
+treats all cursor contact as non-touching. When reveal is enabled
+(Live), the granularity table below applies.
+
+## Inert regions (comments and verbatim)
+
+Some regions must never be rendered no matter what they contain: a
+comment like `% costs $5 and $10` is not math, and `\alpha` inside a
+`verbatim` block must stay literal text.
+
+Rather than teach all eight scanners to skip these regions —
+duplicating overlap logic and still missing the scanners that pair
+tokens across the whole document — `inertRegions.ts` **masks** the text
+before anything scans it. Inert characters become spaces, preserving
+total length and every newline position, so offsets found in the
+masked text are valid document positions. The scanners are unchanged
+and unaware: they find nothing where there is nothing to find.
+
+The work is split so cost scales with what is being rendered:
+
+- **`findInertRegions`** locates the regions. This must see the whole
+  document: a `\begin{verbatim}` far above the viewport decides whether
+  the visible lines are literal, and nothing in the visible text itself
+  reveals that. It is a linear scan yielding a handful of intervals,
+  with no large allocation.
+- **`maskChunk`** applies them to one span. Callers mask only what they
+  are about to scan.
+
+`inertRegionsField` caches the intervals — not a masked copy of the
+document — and is keyed to document changes only, since a cursor move
+cannot change which regions are inert. The inline layer then masks
+just its visible chunk, so its cost tracks the viewport rather than
+the document. The block layer masks everything, because it renders
+boxes, headings and markers across the whole file; making _that_ scan
+incremental is separate work.
+
+Masking rebuilds text segment-wise: untouched spans between inert
+regions pass through as slices, so a document with a dozen comments
+allocates a couple of dozen segments rather than one array element per
+character.
+
+Two views of the document are therefore in play. **Masked text drives
+every scan; the real document supplies whatever a widget renders** —
+KaTeX sources, table cell contents, and the "are these tag lines
+clean?" check that decides whether a table may be replaced wholesale
+(a trailing comment there means it may not, or the comment would be
+swallowed by the widget).
+
+What gets masked:
+
+- **Comments** — an unescaped `%` through the end of its line. `\%` is
+  a literal percent; `\\%` is a line break followed by a real comment.
+  The newline itself survives.
+- **Literal environments** — the _bodies_ of `verbatim`, `verbatim*`,
+  `Verbatim`, `Verbatim*`, `lstlisting`, `minted`, and `alltt`. Only
+  the body: the `\begin`/`\end` tags stay visible so the environment
+  still renders its box.
+- **`\verb` arguments** — the text between the delimiters, which may
+  not span a line.
+
+Comments are resolved first and excluded from the literal scan, so a
+commented-out `\begin{verbatim}` cannot open a literal region and a
+commented `\end{verbatim}` does not close one — the search continues to
+the next real closing tag. (Real LaTeX treats `%` as ordinary text
+inside verbatim and would end the environment there; the divergence is
+confined to that pathological case.) Unclosed literal environments and
+unclosed `\verb` arguments stay raw rather than swallowing the rest of
+the document.
 
 ## Reveal rule
 
-Math and symbols: if any selection range touches the segment, its
-decoration is skipped and the source shows. Environments reveal their
-tags only when the selection touches the hidden `\begin`/`\end`
-**lines themselves** — the cursor is usually *inside* the environment
-(especially `document`), and editing the body must not un-box it.
-Tables reveal on any cursor contact (they are replaced wholesale); the
-preamble reveals when the selection touches the preamble region.
-Widgets return `ignoreEvent() → false`, so clicking any rendered
-widget puts the cursor inside it — revealing it on the next update.
-Atomic ranges make arrow keys hop over inline widgets.
+If any selection range touches a rendered region, its decorations are
+skipped and the source shows. Widgets return `ignoreEvent() → false`,
+so clicking any rendered widget puts the cursor inside it — revealing
+it on the next update. Granularity varies by feature:
+
+| Feature                                         | Reveals when the selection touches                                              |
+| ----------------------------------------------- | ------------------------------------------------------------------------------- |
+| Inline/display math, symbols, chips, formatting | the whole command range                                                         |
+| Environments                                    | the hidden `\begin`/`\end` **lines** only — editing the body must not un-box it |
+| Tables                                          | anywhere in the environment (replaced wholesale)                                |
+| Preamble                                        | the preamble region                                                             |
+| Headings                                        | the heading **line** (the size class stays applied while editing)               |
+| `\item` markers                                 | the `\item` **token** only — editing item text keeps the marker                 |
 
 ## Math
 
@@ -40,6 +289,66 @@ delimits, `$$` always opens display math, inline math cannot span
 lines, and unclosed delimiters yield nothing — so half-typed math stays
 visible. `MathWidget` renders with KaTeX (`throwOnError: false`);
 invalid input falls back to the raw source in an error style.
+
+## Math environments
+
+`equation`, `align`, `gather` and friends are handed to KaTeX as
+display math instead of getting the generic box — displayed equations
+are the main reason to want live rendering, so a box full of raw
+source was the biggest hole in the preview.
+
+The **whole** environment including its `\begin`/`\end` tags goes to
+KaTeX, because that is what drives its alignment and equation
+numbering: `\begin{equation}` renders with a right-aligned `(1)`, and
+`align` numbers each row.
+
+The list is exactly what KaTeX implements, verified by rendering each
+one (`mathEnvironments.test.ts` pins this):
+
+> `equation`, `equation*`, `align`, `align*`, `alignat`, `alignat*`,
+> `gather`, `gather*`, `cases`, `dcases`, `rcases`, `aligned`,
+> `alignedat`, `gathered`, `split`
+
+`multline`, `flalign`, `eqnarray` and `displaymath` are deliberately
+**absent** — KaTeX rejects them with "No such environment", and an
+error-styled widget in place of the author's equation is worse than
+the box, which stays perfectly editable. Inner environments (`split`,
+`matrix`, `array`, …) render as part of whichever outer environment
+contains them.
+
+Table and math environments share one code path:
+`tryReplaceEnvironment` handles the reveal check, the "do the tag
+lines hold other content?" check and the block replace, while
+`buildEnvironmentWidget` decides _what_ to render. Adding another
+whole-environment renderer means adding a branch there and nothing
+else.
+
+## Images
+
+`\includegraphics[options]{path}` renders the actual image, inline,
+bounded to 20rem tall so a large figure cannot push the editor around.
+
+The preview cannot resolve paths itself — it does not know where the
+document lives, and must not depend on Tauri — so the host injects an
+`ImageSourceResolver` through `livePreview({ resolveImageSource })`.
+`createImageSourceResolver` (in `shared/tauri.ts`) builds one from the
+open file's path, resolving relative paths against the document's own
+directory as LaTeX does, and `convertFileSrc` turns the result into an
+`asset://` URL. `tauri.conf.json` enables the asset protocol scoped to
+`$DOCUMENT/Moonstone/**`, so the webview can read project files and
+nothing else.
+
+Three cases render a labelled placeholder rather than an image, so the
+author always sees _what_ was referenced:
+
+| Case                                                                                 | Shown    |
+| ------------------------------------------------------------------------------------ | -------- |
+| Path escapes the project with `..`, or no document is open                           | `🖼 path` |
+| Path has no file extension (LaTeX would probe for one; that needs filesystem access) | `🖼 path` |
+| Image fails to load — missing file, outside the asset scope                          | `⚠ path` |
+
+Without a resolver at all (plain browser, tests) every image is a
+placeholder, which keeps the preview usable outside Tauri.
 
 ## Environments
 
@@ -56,37 +365,414 @@ outside an environment spanning multiple lines:
   document attributes) is collapsed behind a "⚙ Preamble" chip;
   clicking the chip or moving the cursor into the preamble reveals it.
 
+The environment pass returns its replaced regions (hidden tag lines,
+table ranges, the collapsed preamble) so later passes — headings and
+list items — never emit overlapping replaces, which CodeMirror rejects
+within one decoration set.
+
+### A line inside a box must not have an opaque background
+
+CodeMirror draws the selection into `.cm-selectionLayer`, which sits at
+`z-index: -2` — **behind** the content. So an opaque `background` on a
+`.cm-line` paints over it, and text selected inside that line shows no
+highlight at all.
+
+The environment box had exactly that, and selecting several lines
+inside one appeared to highlight only the last. Selections that started
+or ended outside the box looked fine, which is the tell: leaving the
+box reveals it, the box styling disappears, and nothing is left to
+cover the selection.
+
+The box surface is therefore painted by a **pseudo-element below the
+selection layer** (`.cm-env-line::before` at `z-index: -3`) rather than
+by a background on the line. The box keeps its solid surface and the
+selection still shows.
+
+Translucent line backgrounds are fine — the active line carries one,
+and the selection shows through it. Only fully opaque ones are a
+problem, which is what the browser test asserts.
+
+### Claim checks must match what a pass actually replaces
+
+The overlap checks that keep replaces from colliding have to be as
+narrow as the replace they guard, or they suppress rendering that would
+have been perfectly legal.
+
+The environment pass has two treatments and they need different checks:
+
+| Treatment                                  | Replaces               | Correct check      |
+| ------------------------------------------ | ---------------------- | ------------------ |
+| Wholesale widget (`tryReplaceEnvironment`) | the entire environment | the whole range    |
+| Box (hidden tags + `cm-env-line`)          | the two tag lines only | the tag lines only |
+
+The box treatment was guarded by the whole-range check, and it cost a
+real bug. Display math is claimed in an **earlier pass** than
+environments, so a single `$$…$$` anywhere in the body made the
+`document` environment look claimed. The result: no box, no hidden
+`\begin{document}`/`\end{document}`, and no preamble chip — the whole
+document rendered as raw LaTeX.
+
+What made it look bizarre rather than obviously broken is that it
+inverted the reveal rule. Putting the cursor _inside_ the maths
+revealed them as source, so they claimed nothing, the check passed, and
+the document snapped into its rendered form. Clicking away broke it
+again.
+
+Line decorations are not replaces, so `boxInteriorLines` may safely
+style lines that a block widget covers — a boxed environment containing
+a rendered table demonstrates this every time it renders.
+
+## Block widgets must never carry a vertical margin
+
+A hard rule, learned from a bug that looked like nothing to do with
+layout.
+
+CodeMirror maintains a **height map**: its own model of where every
+line sits vertically, used by `posAtCoords` to answer "which position
+is under this pointer". Widget heights enter that map via
+`getBoundingClientRect().height`, and **a bounding rect excludes
+margins**. So a block widget with `margin: 0.3rem 0` occupies 9.6px
+more on screen than the height map believes, and every line below it
+sits lower in the DOM than CodeMirror thinks.
+
+Nothing looks wrong — the rendering is pixel-perfect. What breaks is
+every coordinate query below the widget. The symptom that exposed it:
+the spell-check correction popup dismissed itself the moment the
+pointer moved, because CodeMirror concluded the pointer had left the
+misspelled word when it had not. Clicks were unaffected, which made it
+look like a tooltip bug, because CodeMirror positions the caret from a
+click using the browser's native caret lookup rather than its own
+height map.
+
+**Use padding, on a wrapper element if the widget's own box needs to
+stay tight.** `PreambleWidget` renders a `cm-preamble-row` whose only
+job is to hold the chip's vertical spacing as padding. The same rule is
+why headings use `padding-top` rather than `margin-top`.
+
+This is guarded three ways, all in `src/test/browser/`:
+
+- positions round-trip through `coordsAtPos` → `posAtCoords`, sampled
+  across each line's full height (the centre alone stays correct until
+  the drift exceeds half a line, which is how this hid);
+- no widget element carries a non-zero vertical margin;
+- the spell-check popup survives the journey from a clicked word to its
+  corrections.
+
+## Headings
+
+`findSections.ts` scans the five sectioning commands — `\section`,
+`\subsection`, `\subsubsection`, `\paragraph` and `\subparagraph`
+(plus starred variants) — brace-matching titles via the shared
+`braces.ts` helper so nested groups work. Each heading gets a
+`cm-heading-1` … `cm-heading-5` line class (font size + weight —
+applied even while revealed, so the text keeps its size during editing)
+and, when the cursor is off the line, two replaces hiding the
+`\section{` prefix and closing `}`. Skipped (raw source): escaped
+commands, unclosed braces, multi-line titles, and empty titles.
+
+Levels 4 and 5 are styled as LaTeX renders them: **run-in headings**,
+bold lead-ins at body size rather than another step down in scale.
+They were missing entirely until the arXiv validation found
+`\paragraph{Residual Dropout}` sitting in the prose as raw source.
+
+## Text-mode spellings
+
+`findTextReplacements.ts` renders the unglamorous, pervasive half of
+LaTeX prose: escaped punctuation (`\&`, `\%`, `\$`, `\_`, `\#`,
+`\{`, `\}`), em and en dashes (`---`, `--`), paired quotes
+(` ` ``/`''`), ties (`~` → a real non-breaking space) and accents,
+both bare (`\"o`) and braced (`\"{o}`), including the letter-named
+ones (`\c{c}`, `\v{s}`). Accented output is NFC-normalized so it is a
+single precomposed character rather than a combining pair.
+
+It scans left to right rather than by regex alternation, because
+precedence here is positional: `---` must beat `--`, and a backslash
+must consume whatever follows before `~` can be read as a tie. An
+unrecognised command's letters are consumed too, so `\alpha` is never
+mistaken for an accent.
+
+Single quotes are deliberately **not** curled — it would mangle every
+apostrophe in ordinary prose for almost no visible gain.
+
+`applyTextReplacements` exposes the same transform as a plain string
+function, for text a widget renders itself and the decoration pipeline
+therefore never sees: a citation chip's `p.~3` locator, a table cell.
+
+## Inline formatting
+
+`findFormatting.ts` scans for `\textbf`, `\textit`, `\emph`,
+`\underline`, `\texttt`, `\textsc`, `\textsf`, `\textrm`, `\sout`,
+`\textsuperscript` and `\textsubscript`. The command token and closing
+brace are hidden by replaces while the content stays editable raw text
+under a `cm-fmt-*` mark. The pattern's alternatives are generated
+longest-first so `\textsuperscript` is not matched as `\textsc`. Nesting needs no special
+handling: `\textbf{\emph{x}}` yields two independent ranges whose
+marks nest and whose hidden tokens never overlap. Content spanning a
+line break bails to raw (visible-range chunks are line-bounded), as do
+math-interior matches, unclosed braces, and empty content.
+
+## Lists
+
+`findListItems.ts` finds `\item` tokens (`(?![a-zA-Z])` so `\itemsep`
+never matches) and resolves each against its **innermost** containing
+`itemize`/`enumerate` environment via `findEnvironments`. Itemize
+bullets vary by list depth (`•`, `◦`, `▪` cycling); enumerate labels
+follow LaTeX's counters — depth counts _enumerate_ nesting only
+(`enumi`…`enumiv`), so `itemize > enumerate` gets `1.`, not `(a)`:
+depth 1 `1.`, depth 2 `(a)`, depth 3 `i.`, deeper `A.`. Indices count
+items per innermost environment, so nested lists restart and the outer
+counter resumes.
+
+`\item[custom]` renders its label in place of the marker, with the
+replaced range covering the whole `\item[...]` so no stray bracket is
+left behind. The label must follow the token on the same line — a
+bracket on the next line belongs to the item's text. An empty label
+falls back to the default marker. Items outside list environments stay
+raw.
+
+## Reference chips
+
+`findRefs.ts` matches `\ref`, `\eqref`, `\cite` (plus natbib's
+`\citep`/`\citet`), `\label`, `\url`, `\href` and `\footnote`, and
+renders them as pill chips (`RefChipWidget`): 🔗 ref/eqref, 📖 cite,
+🏷 label, 🌐 url/href, † footnote. `\cite{a,b}` shows both keys.
+
+Optional arguments are read rather than rejected: `\cite[p.~3]{k}`
+renders as `📖 k, p. 3`, with the locator passed through
+`applyTextReplacements` so it reads as prose. `\href{url}{text}`
+shows its link text, keeping the URL as the target.
+
+Link chips carry an `↗` affordance. Clicking the **chip body** reveals
+the source like every other chip; only the affordance follows the
+link, so opening and editing can never be confused. The chip's
+`ignoreEvent` returns true just for that element. Opening is injected
+as a `LinkOpener` — the preview must not know about Tauri — and
+`openExternalLink` in `shared/tauri.ts` supplies it, refusing anything
+that is not `http`/`https`, since a document is untrusted input.
+Without an opener the affordance is not rendered at all, rather than
+offering a control that cannot work.
+
+Chips are excluded from the symbol and text-replacement scans so a
+chip's interior is never double-rendered.
+
+## Comments
+
+Comment _contents_ are excluded from every scanner by the masking pass
+described under [Inert regions](#inert-regions-comments-and-verbatim).
+
+Comment _styling_ is theme-only: the `t.comment` highlight rule
+(`moonstoneTheme.ts`) is italic at `opacity: 0.6`. A decoration-based
+pass with cursor reveal was considered and rejected — dimmed text is
+still fully readable and editable, so the reveal machinery would add
+complexity for no editing benefit.
+
 ## Special characters
 
 `symbols.ts` maps LaTeX commands to unicode glyphs (Greek letters,
 operators, relations, arrows, set symbols) and scans visible text for
-them — outside math segments, since KaTeX renders those itself, and
-never after a `\\` line break. Matches render as inline
-`SymbolWidget`s (`\alpha` → α) with the same cursor-reveal rule.
+them — outside math segments and reference chips, and never after a
+`\\` line break. Matches render as inline `SymbolWidget`s
+(`\alpha` → α) with the same cursor-reveal rule.
 
 ## Tables
 
 `parseTabular.ts` parses a `tabular`/`tabular*` environment's interior
-(strips the column spec and `\hline`, splits rows on `\\` and cells on
-unescaped `&`). A successful parse renders the whole environment as a
-theme-styled HTML table (`TableWidget`); cells containing `$...$`
-render their math with KaTeX. Anything the parser doesn't understand
-(`\multicolumn`, nested environments, …) returns `null` and the
+(strips the column spec, `\hline`, and the booktabs rules —
+`\toprule`, `\midrule`, `\bottomrule`, `\cmidrule` with its optional
+trimming argument, `\addlinespace` — then splits rows on `\\` and
+cells on unescaped `&`) into `TabularCell` objects. `\multicolumn{n}{spec}{...}`
+cells carry a column span and alignment (first `l`/`c`/`r` in the
+spec), and `\multirow{n}{width}{...}` a row span, rendered as
+`colspan`/`rowspan`/`text-align` on the `td`. The two nest, so
+`\multicolumn{2}{c}{\multirow{2}{*}{X}}` spans both ways. A successful
+parse renders the whole environment as a theme-styled HTML table
+(`TableWidget`).
+
+**Row spans need bookkeeping, not just an attribute.** LaTeX still
+expects the rows a span covers to write a placeholder for that column —
+usually blank, as the leading `&` in `& Cost` — so the parser tracks
+which columns remain covered and drops those placeholders. Without
+that, every row under a span renders one cell too wide.
+
+**Struts are stripped along with the rules.** Authors open up a row's
+height with `\hline\rule{0pt}{2.0ex}`, which leaves `\rule{…}{…}`
+sitting in front of the cell's real command. That was enough to stop a
+`\multirow` being recognised and drop a whole table to the generic box
+— it cost one of the five tables in the arXiv paper even after row
+spans worked.
+
+Cells render the same constructs as anywhere else — math, formatting
+commands, symbols and text-mode spellings. A table is replaced
+wholesale rather than decorated, so `renderCellContents` cannot reuse
+the decoration pipeline; it reuses the same _scanners_ instead, sorts
+their results by position and lets the first match win where they
+overlap. That way a cell means the same thing inside a table as
+outside one. Anything the parser doesn't understand (`\multirow`, nested
+environments, malformed multicolumns, …) returns `null` and the
 environment falls back to the generic box — rendering never breaks
 editing. Clicking the table reveals the source, as everywhere else.
 
 ## Files
 
 - `src/views/editor/TextEditor/LivePreview/livePreview.ts` — assembly
+- `src/views/editor/TextEditor/LivePreview/inertRegions.ts` — comment/verbatim masking
+- `src/views/editor/TextEditor/LivePreview/braces.ts` — shared brace matcher
 - `src/views/editor/TextEditor/LivePreview/findMath.ts` — math scanner
 - `src/views/editor/TextEditor/LivePreview/findEnvironments.ts` — env scanner
+- `src/views/editor/TextEditor/LivePreview/findSections.ts` — heading scanner
+- `src/views/editor/TextEditor/LivePreview/findFormatting.ts` — formatting scanner
+- `src/views/editor/TextEditor/LivePreview/findListItems.ts` — list-item scanner
+- `src/views/editor/TextEditor/LivePreview/findRefs.ts` — reference scanner
+- `src/views/editor/TextEditor/LivePreview/findGraphics.ts` — `\includegraphics` scanner
+- `src/views/editor/TextEditor/LivePreview/findTextReplacements.ts` — escapes, dashes, quotes, ties, accents
 - `src/views/editor/TextEditor/LivePreview/symbols.ts` — symbol map + scanner
+- `src/views/editor/TextEditor/LivePreview/findMacros.ts` — `\newcommand` scanner
 - `src/views/editor/TextEditor/LivePreview/parseTabular.ts` — table parser
-- `src/views/editor/TextEditor/LivePreview/MathWidget.ts` — KaTeX/table/symbol/preamble widgets
-- Tests: `src/test/findMath.test.ts`, `src/test/findEnvironments.test.ts`,
-  `src/test/parseTabular.test.ts`, `src/test/symbols.test.ts`
+- `src/views/editor/TextEditor/LivePreview/MathWidget.ts` — all widgets
+- Tests: `src/test/findMath.test.ts`, `findEnvironments.test.ts`,
+  `braces.test.ts`, `findSections.test.ts`, `findFormatting.test.ts`,
+  `findListItems.test.ts`, `findRefs.test.ts`, `parseTabular.test.ts`,
+  `symbols.test.ts`, `inertRegions.test.ts`, `findGraphics.test.ts`,
+  `mathEnvironments.test.ts`, `imageSourceResolver.test.ts`,
+  `claimedRanges.test.ts`, `findTextReplacements.test.ts`,
+  `findMacros.test.ts`, and `livePreview.test.ts` — the assembly suite,
+  which mounts a real editor and asserts on what it renders
+- Browser tests: `src/test/browser/livePreview.browser.spec.ts` —
+  geometry and cursor motion, neither of which jsdom can answer
+
+## Document-defined macros
+
+Papers define shorthands in their preamble — `\dmodel`, `\mc`,
+`\argmax` — and use them throughout. `findMacros.ts` collects
+`\newcommand`, `\renewcommand`, `\providecommand` and
+`\DeclareMathOperator` (which becomes `\operatorname`) and hands them
+to KaTeX's `macros` option.
+
+Without this the maths **looks** rendered while a red `\dmodel` sits in
+the middle of it. KaTeX runs with `throwOnError: false`, so an unknown
+command does not fail — it is painted in KaTeX's error colour and
+rendering continues, which means nothing anywhere reports a problem.
+The real paper had 36 such commands.
+
+Two details worth keeping:
+
+- Definitions are read from the **masked** text, so a commented-out
+  `\newcommand` is not picked up.
+- The widget carries a `macroKey` alongside the table. Editing a
+  definition changes what its uses render as, so identical maths source
+  is not enough to call a widget unchanged — without the key, changing
+  `\newcommand{\q}{alpha}` to `{beta}` would leave every `$\q$` showing
+  the old value.
+
+`\def` is deliberately not collected: its parameter-text syntax is not
+what KaTeX's macro table accepts, and a half-understood definition
+renders worse than an unknown command.
+
+## Cursor motion over rendered blocks
+
+A `block: true` replace leaves no text line for vertical motion to land
+on, so arrow keys stepped clean over display maths — it could only be
+reached by clicking. The same held for hidden `\begin`/`\end` lines and
+the collapsed preamble, whose only reveal path is the cursor.
+
+`revealBlockOnVerticalMotion` is a **transaction filter**, because every
+way of moving the cursor goes through one: arrow keys, Vim's `j`/`k`,
+Helix's motions, and anything added later. A keymap would have covered
+only the first, and would have had to outrank the modal keymaps to do
+it.
+
+The rule is deliberately narrow. It fires only when a single cursor
+movement lands on the far side of a block whose neighbouring lines are
+exactly where the cursor came from and went to, so a jump to the top of
+the file or a search hit crossing a block is left alone. Pointer
+selections are excluded outright — a click says where the user wants to
+be, and a drag across a block must not be snapped back into it.
+
+## Validated against a real paper
+
+Checked on 2026-07-27 against the arXiv source of _Attention Is All You
+Need_ — ten files, 1,061 lines, a preamble with duplicate
+`\usepackage` lines, a bundled `.sty`, `subfiles` and fourteen
+`\newcommand` macros. No crashes and no console errors; headings, maths
+environments, images and citations all rendered.
+
+Performance, measured on the same document (keystroke cost is the
+dispatch, where CodeMirror does its synchronous DOM work):
+
+| Document    | First render | Keystroke median | Worst |
+| ----------- | ------------ | ---------------- | ----- |
+| 418 lines   | 21ms         | 1.4ms            | 3.8ms |
+| 1,061 lines | 13ms         | 1.8ms            | 4.7ms |
+| 3,185 lines | 18ms         | 4.0ms            | 7.0ms |
+
+Both the preview and the spell checker are scoped to the **viewport**,
+which is why first render barely grows with document length and why
+spell checking costs almost nothing. Thesis scale is comfortable.
+
+Both gaps the exercise surfaced have since been closed: **user-defined
+macros** are collected and passed to KaTeX (see above), and
+**`\multirow`** is supported, taking the paper from 2 of 5 tables
+rendering to 5 of 5.
 
 ## Deferred (next passes)
 
-Richer per-environment rendering (figures, lists), `\multicolumn`
-tables, and section heading styling.
+- **`\def`** — not collected as a macro. Its parameter-text syntax
+  (`\def\foo#1.#2{…}`) is not what KaTeX's macro table accepts, and a
+  half-understood definition renders worse than an unknown command.
+- **Old-style font groups** (`{\bf ...}`, `{\it ...}`) — a different
+  shape from the `\text*` commands, since the scope is the enclosing
+  group rather than a brace argument.
+- **Curled single quotes** — deliberately skipped; see above.
+- **`\caption` and figure-environment layout**, and honouring
+  `\includegraphics` options (`width`, `scale`, `angle`), which are
+  parsed into `GraphicsRange.options` and then ignored.
+- **Extension-less image paths**, which need a filesystem probe
+  through the backend.
+
+## Table cells
+
+A `tabular` environment renders as a real HTML table, and each cell's
+contents are rendered wholesale rather than decorated — so this path
+cannot reuse the decoration pipeline. It does reuse everything else:
+
+- **The same scan order** (`latex/scanInline.ts`), so a construct means
+  the same thing in a cell as outside one.
+- **The document's macros.** `TableWidget` carries `macros` and
+  `macroKey`, and `katex.render` is given a _copy_ per call, because
+  KaTeX writes into that object for `\gdef`. Without this a
+  document-defined `\dmodel` rendered correctly everywhere except inside
+  a table, where it turned red — the one place an author is most likely
+  to use it.
+- **Inert-region masking.** A `%` comment inside a cell comments out the
+  rest of it; scanning the raw text found constructs nobody wrote.
+- **Recursive rendering of formatting content**, so `\textbf{\alpha}` is
+  a bold α rather than a bold `\alpha`.
+
+`TableWidget.eq` compares the **source the grid was parsed from**, plus
+the macro key — not the parsed grid. `eq` runs on every decoration-set
+comparison, which is every keystroke and every cursor move, and it used
+to answer by serialising the whole table twice per call.
+
+## Drag-selection tracking
+
+`pointerSelection.ts` freezes what counts as "revealed" for the length
+of a drag, so revealing a block mid-gesture cannot shift lines out from
+under the pointer.
+
+Its `pointerup`/`pointercancel` listeners are on the **window**, because
+the pointer routinely leaves the editor while dragging. That makes
+teardown load-bearing: it runs as a `ViewPlugin` whose `destroy()`
+aborts an `AbortController` covering every listener. Without that, an
+editor unmounted mid-drag — a pane closed, the file deleted, the view
+mode switched — left them attached until the next click anywhere in the
+app, whereupon they dispatched into a destroyed view. **CodeMirror
+silently ignores a dispatch to a destroyed view**, so the leak produced
+no error at all.
+
+## Inline math comes from the cached scan
+
+The inline layer filters the cached whole-document scan by the visible
+ranges rather than re-scanning each chunk. Besides saving a pass per
+chunk, it fixes an edge case: a `$…$` that _starts_ above the viewport
+is invisible to a chunk scan, because chunks are cut at line boundaries
+— so it used to render as raw source until scrolled past.

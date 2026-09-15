@@ -22,21 +22,74 @@ use tauri::{
 const SETTINGS_FILE_NAME: &str = "settings.json";
 
 /// User-facing preferences, shaped for the frontend settings page.
+///
+/// Every field carries its own serde default so a settings file written
+/// by an older build still loads: a missing field falls back on its own
+/// rather than discarding the whole file and resetting the user's other
+/// preferences.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
-    /// Color theme: `"dark"` or `"light"`.
+    /// Color theme id, e.g. `"dark"`, `"light"`, `"bloodmoon"`.
+    ///
+    /// Deliberately a free-form `String` rather than an enum: the
+    /// frontend owns the theme list, and validates what it reads, so
+    /// adding a palette never needs a backend change or a migration.
+    /// An unknown value falls back to the default on load there.
+    #[serde(default = "default_theme")]
     pub theme: String,
     /// Editor font size in pixels.
+    #[serde(default = "default_font_size")]
     pub editor_font_size: u32,
+    /// Modal editing style: `"none"`, `"vim"` or `"helix"`.
+    #[serde(default = "default_modal_mode")]
+    pub modal_mode: String,
+    /// Whether prose is spell checked.
+    #[serde(default = "default_spell_check")]
+    pub spell_check_enabled: bool,
+    /// Line numbering: `"absolute"`, `"relative"` or `"mixed"`.
+    #[serde(default = "default_line_number_mode")]
+    pub line_number_mode: String,
+    /// Whether the editor's diagnostic overlay is shown.
+    #[serde(default)]
+    pub show_diagnostics: bool,
+}
+
+/// The theme a fresh install starts with.
+fn default_theme() -> String {
+    "dark".to_string()
+}
+
+/// The editor font size a fresh install starts with.
+fn default_font_size() -> u32 {
+    14
+}
+
+/// Modal editing is off until the user asks for it.
+fn default_modal_mode() -> String {
+    "none".to_string()
+}
+
+/// Spell checking is on, as in any writing tool.
+fn default_spell_check() -> bool {
+    true
+}
+
+/// Plain absolute line numbers, as most editors show.
+fn default_line_number_mode() -> String {
+    "absolute".to_string()
 }
 
 impl Default for AppSettings {
     /// The settings a fresh install starts with.
     fn default() -> Self {
         Self {
-            theme: "dark".to_string(),
-            editor_font_size: 14,
+            theme: default_theme(),
+            editor_font_size: default_font_size(),
+            modal_mode: default_modal_mode(),
+            spell_check_enabled: default_spell_check(),
+            line_number_mode: default_line_number_mode(),
+            show_diagnostics: false,
         }
     }
 }
@@ -178,11 +231,45 @@ mod settings_tests {
         let settings = AppSettings {
             theme: "light".to_string(),
             editor_font_size: 18,
+            modal_mode: "vim".to_string(),
+            spell_check_enabled: false,
+            line_number_mode: "relative".to_string(),
+            show_diagnostics: true,
         };
 
         save_settings_impl(&path, &settings).unwrap();
         let loaded = load_settings_impl(&path);
 
         assert_eq!(loaded, settings);
+    }
+
+    #[test]
+    fn test_load_keeps_known_fields_when_others_are_missing() {
+        // A settings file written by an older build has fewer fields.
+        // Each one defaults on its own, so the preferences the user did
+        // set survive instead of the whole file being discarded.
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, r#"{"theme":"light"}"#).unwrap();
+
+        let settings = load_settings_impl(&path);
+
+        assert_eq!(settings.theme, "light");
+        assert_eq!(settings.editor_font_size, default_font_size());
+        assert_eq!(settings.modal_mode, default_modal_mode());
+        assert!(settings.spell_check_enabled);
+        assert_eq!(settings.line_number_mode, default_line_number_mode());
+        assert!(!settings.show_diagnostics);
+    }
+
+    #[test]
+    fn test_load_ignores_fields_it_does_not_know() {
+        // The reverse case: a file written by a newer build, or a
+        // hand-edited one, must not blow away what we can read.
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, r#"{"theme":"light","somethingElse":42}"#).unwrap();
+
+        assert_eq!(load_settings_impl(&path).theme, "light");
     }
 }

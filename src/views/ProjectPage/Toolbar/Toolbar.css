@@ -41,6 +41,41 @@
     background: var(--border-color);
 }
 
+/* Segmented Source / Live / Read control. */
+.toolbar-segment {
+    display: inline-flex;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.toolbar-segment-button {
+    padding: 0.25rem 0.55rem;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    cursor: pointer;
+}
+
+.toolbar-segment-button:not(:last-child) {
+    border-right: 1px solid var(--border-color);
+}
+
+.toolbar-segment-button:hover:not(:disabled):not(.toolbar-segment-active) {
+    color: var(--accent);
+}
+
+.toolbar-segment-active {
+    background: var(--accent);
+    color: var(--bg-titlebar);
+}
+
+.toolbar-segment-button:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
 .toolbar-spacer {
     flex: 1;
 }

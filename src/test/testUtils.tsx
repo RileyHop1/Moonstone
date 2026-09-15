@@ -7,7 +7,7 @@ import { render } from "@testing-library/react";
 import type { RenderResult } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { NavigationContext } from "../shared/navigation";
-import type { AppPage, NavigationValue } from "../shared/navigation";
+import type { AppPage, NavigationValue, ReturnablePage } from "../shared/navigation";
 import { AppActionsProvider } from "../shared/appActions";
 import { SettingsProvider } from "../shared/settings";
 
@@ -22,11 +22,14 @@ export interface ProviderRenderResult extends RenderResult {
  *
  * @param ui - The element to render.
  * @param page - The page the fake navigation reports as current.
+ * @param returnPage - The page the fake navigation reports as settings'
+ *   way out.
  * @returns The render result plus recorded navigate calls.
  */
 export function renderWithProviders(
     ui: ReactElement,
     page: AppPage = { kind: "browser" },
+    returnPage: ReturnablePage = { kind: "browser" },
 ): ProviderRenderResult {
     const navigateCalls: AppPage[] = [];
 
@@ -35,6 +38,7 @@ export function renderWithProviders(
         navigate: (nextPage) => {
             navigateCalls.push(nextPage);
         },
+        returnPage,
     };
 
     const result = render(

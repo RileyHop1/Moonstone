@@ -17,11 +17,16 @@
         "width": 1200,
         "height": 780,
         "minWidth": 800,
-        "minHeight": 600
+        "minHeight": 600,
+        "dragDropEnabled": false
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$DOCUMENT/Moonstone/**"]
+      }
     }
   },
   "bundle": {
@@ -33,6 +38,7 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "externalBin": ["binaries/tectonic"]
   }
 }

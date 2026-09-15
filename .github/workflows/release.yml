@@ -1,0 +1,293 @@
+# Builds and publishes a desktop release when a new version lands on the
+# default branch.
+#
+# The trigger is the **version in `package.json`**, not a tag someone
+# remembers to push: when a commit reaches main or master whose version
+# has no `v<version>` tag yet, that version is built for all three
+# platforms and published. Bumping the version is therefore the whole
+# release ritual, and a commit that does not touch it costs one cheap
+# job that decides there is nothing to do.
+#
+# `workflow_dispatch` re-runs a release by hand — useful when one
+# platform's build failed on a transient runner error and the tag
+# already exists.
+name: Release
+
+on:
+  push:
+    branches: ["main", "master"]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Release even if the version's tag already exists"
+        type: boolean
+        default: false
+
+# Two runs releasing the same version would race to attach artefacts to
+# the same draft.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Cheap gate: is there a version here that has not been released?
+  version:
+    name: Decide whether to release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      tag: ${{ steps.read.outputs.tag }}
+      should-release: ${{ steps.decide.outputs.should-release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Tags are how "already released" is decided.
+          fetch-depth: 0
+
+      - name: Read the version
+        id: read
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "Version in package.json: $version"
+
+      - name: Decide
+        id: decide
+        env:
+          TAG: ${{ steps.read.outputs.tag }}
+          FORCED: ${{ inputs.force }}
+        run: |
+          if [ "$FORCED" = "true" ]; then
+            echo "Forced by workflow_dispatch."
+            echo "should-release=true" >> "$GITHUB_OUTPUT"
+          elif git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "$TAG already exists - nothing to release."
+            echo "should-release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$TAG is new - releasing."
+            echo "should-release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # The same checks a pull request gets. A release must never be cut
+  # from code that would not have been merged.
+  checks:
+    name: Checks
+    needs: version
+    if: needs.version.outputs.should-release == 'true'
+    uses: ./.github/workflows/frontend.yml
+
+  rust:
+    name: Rust tests
+    needs: version
+    if: needs.version.outputs.should-release == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libxdo-dev \
+            build-essential \
+            curl wget file pkg-config
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: cargo test --verbose
+
+  # A draft first, so a half-finished set of artefacts is never visible
+  # as a release. It is published only once every platform has attached
+  # its installer.
+  draft:
+    name: Create draft release
+    needs: [version, checks, rust]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release-id: ${{ steps.create.outputs.result }}
+    steps:
+      - name: Create or reuse the draft
+        id: create
+        uses: actions/github-script@v7
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+        with:
+          result-encoding: string
+          script: |
+            const tag = process.env.TAG;
+            const version = process.env.VERSION;
+
+            // A re-run (or a forced release) must attach to the draft
+            // that already exists rather than create a second one.
+            const releases = await github.rest.repos.listReleases({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100,
+            });
+
+            const existing = releases.data.find((release) => release.tag_name === tag);
+            if (existing) {
+              core.info("Reusing existing release " + tag + " (#" + existing.id + ").");
+              return String(existing.id);
+            }
+
+            const body = [
+              "## Moonstone " + version,
+              "",
+              "Download the installer for your platform below.",
+              "",
+              "| Platform | Installer |",
+              "| --- | --- |",
+              "| Windows | .msi or .exe |",
+              "| macOS | .dmg (Apple Silicon and Intel) |",
+              "| Linux | .AppImage or .deb |",
+            ].join("\n");
+
+            const created = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: "Moonstone " + version,
+              body,
+              draft: true,
+              prerelease: false,
+              target_commitish: context.sha,
+            });
+
+            core.info("Created draft release " + tag + " (#" + created.data.id + ").");
+            return String(created.data.id);
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: [version, draft]
+    permissions:
+      contents: write
+    strategy:
+      # One platform failing should not cancel installers that are
+      # already building; `publish` refuses to go ahead regardless.
+      fail-fast: false
+      matrix:
+        include:
+          # `sidecar` is the target the Tectonic binary is fetched for.
+          # It is spelled out even where `targets` is blank, because a
+          # host build still needs the sidecar named for its own triple.
+          - name: Windows
+            runner: windows-latest
+            args: ""
+            targets: ""
+            sidecar: x86_64-pc-windows-msvc
+          - name: macOS (Apple Silicon)
+            runner: macos-latest
+            args: "--target aarch64-apple-darwin"
+            targets: "aarch64-apple-darwin"
+            sidecar: aarch64-apple-darwin
+          - name: macOS (Intel)
+            runner: macos-latest
+            args: "--target x86_64-apple-darwin"
+            targets: "x86_64-apple-darwin"
+            sidecar: x86_64-apple-darwin
+          - name: Linux
+            runner: ubuntu-22.04
+            args: ""
+            targets: ""
+            sidecar: x86_64-unknown-linux-gnu
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Only Linux needs these; the webview is part of the OS elsewhere.
+      - name: Install Tauri system dependencies
+        if: matrix.runner == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libxdo-dev \
+            build-essential \
+            curl wget file pkg-config
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # The macOS runners cross-compile, so each needs its target
+          # installed; the others build for the host.
+          targets: ${{ matrix.targets }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.name }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The Tectonic sidecar, fetched for *this* matrix target rather
+      # than the host: the macOS jobs cross-compile, so the Intel build
+      # running on an Apple Silicon runner needs the Intel engine.
+      # `tauri.conf.json` declares it under `externalBin`, and the build
+      # fails outright without it.
+      - name: Cache the Tectonic sidecar
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/binaries
+          key: tectonic-${{ matrix.sidecar }}-${{ hashFiles('scripts/fetchTectonic.mjs') }}
+
+      - name: Fetch the Tectonic sidecar
+        run: npm run tectonic:fetch -- --target ${{ matrix.sidecar }}
+
+      # Builds the frontend (through `beforeBuildCommand`), compiles the
+      # Rust binary, bundles the installers, and uploads them to the
+      # draft release.
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          releaseId: ${{ needs.draft.outputs.release-id }}
+          args: ${{ matrix.args }}
+
+  publish:
+    name: Publish release
+    needs: [version, draft, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Undraft
+        uses: actions/github-script@v7
+        env:
+          RELEASE_ID: ${{ needs.draft.outputs.release-id }}
+          TAG: ${{ needs.version.outputs.tag }}
+        with:
+          script: |
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: Number(process.env.RELEASE_ID),
+              draft: false,
+            });
+
+            core.notice("Published " + process.env.TAG + ".");

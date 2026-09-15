@@ -1,0 +1,10 @@
+dist/
+test-results/
+playwright-report/
+src-tauri/target/
+# Written by tauri-build on every cargo build, and gitignored. Without
+# this, any `cargo build` before `prettier --check` fails the format
+# job on files nobody wrote and nobody commits.
+src-tauri/gen/
+package-lock.json
+review.md

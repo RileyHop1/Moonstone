@@ -1,3 +1,4 @@
+import type { Interval } from "./interval";
 /**
  * Special-character rendering: maps LaTeX commands (`\alpha`, `\leq`,
  * …) to their unicode glyphs and scans text for occurrences.
@@ -41,46 +42,108 @@ export const SYMBOLS: Readonly<Record<string, string>> = {
     Phi: "Φ",
     Psi: "Ψ",
     Omega: "Ω",
+    // Greek variants
+    varepsilon: "ε",
+    vartheta: "ϑ",
+    varphi: "ϕ",
+    varrho: "ϱ",
+    varsigma: "ς",
     // Operators & relations
     times: "×",
     div: "÷",
     pm: "±",
     mp: "∓",
     cdot: "·",
+    ast: "∗",
+    star: "⋆",
+    circ: "∘",
+    bullet: "•",
     infty: "∞",
     leq: "≤",
     geq: "≥",
+    le: "≤",
+    ge: "≥",
+    ll: "≪",
+    gg: "≫",
     neq: "≠",
+    ne: "≠",
     approx: "≈",
+    cong: "≅",
     equiv: "≡",
     sim: "∼",
+    simeq: "≃",
     propto: "∝",
+    perp: "⊥",
+    parallel: "∥",
+    angle: "∠",
+    triangle: "△",
+    sum: "∑",
+    prod: "∏",
+    int: "∫",
+    oint: "∮",
     // Arrows
     rightarrow: "→",
     leftarrow: "←",
     leftrightarrow: "↔",
+    to: "→",
+    gets: "←",
+    mapsto: "↦",
+    uparrow: "↑",
+    downarrow: "↓",
     Rightarrow: "⇒",
     Leftarrow: "⇐",
     Leftrightarrow: "⇔",
+    implies: "⟹",
+    iff: "⟺",
     // Sets & logic
     forall: "∀",
     exists: "∃",
+    nexists: "∄",
     in: "∈",
     notin: "∉",
+    ni: "∋",
     subset: "⊂",
     supset: "⊃",
     subseteq: "⊆",
     supseteq: "⊇",
     cup: "∪",
     cap: "∩",
+    setminus: "∖",
     emptyset: "∅",
+    varnothing: "∅",
+    land: "∧",
+    lor: "∨",
+    wedge: "∧",
+    vee: "∨",
+    neg: "¬",
+    lnot: "¬",
+    therefore: "∴",
+    because: "∵",
     // Misc
     nabla: "∇",
     partial: "∂",
     dots: "…",
     ldots: "…",
     cdots: "⋯",
+    vdots: "⋮",
+    ddots: "⋱",
     degree: "°",
+    dagger: "†",
+    ddagger: "‡",
+    S: "§",
+    P: "¶",
+    copyright: "©",
+    pounds: "£",
+    textdegree: "°",
+    textbullet: "•",
+    textemdash: "—",
+    textendash: "–",
+    prime: "′",
+    hbar: "ℏ",
+    ell: "ℓ",
+    Re: "ℜ",
+    Im: "ℑ",
+    aleph: "ℵ",
 };
 
 /** One symbol occurrence found in the scanned text. */
@@ -91,12 +154,6 @@ export interface SymbolRange {
     readonly to: number;
     /** The unicode glyph to render. */
     readonly symbol: string;
-}
-
-/** A half-open interval used for exclusion. */
-interface Interval {
-    readonly from: number;
-    readonly to: number;
 }
 
 /** Matches a backslash command made of letters. */
@@ -126,7 +183,7 @@ export function findSymbolRanges(
     for (const match of text.matchAll(COMMAND_PATTERN)) {
         const commandName = match[1];
         const matchStart = match.index;
-        if (commandName === undefined || matchStart === undefined) continue;
+        if (commandName === undefined) continue;
 
         const symbol = SYMBOLS[commandName];
         if (symbol === undefined) continue;

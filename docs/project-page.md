@@ -8,25 +8,102 @@ file), and the titlebar shows the project name.
 ## File browser
 
 Queries `list_project_files` for the project's full tree (directories
-recurse into subdirectories). Directories expand/collapse on click;
-clicking a file reads it (`read_file`) and opens it in the editor. If
-the current file has unsaved changes, a confirm dialog protects them
-first.
+recurse into subdirectories). Directories expand/collapse on click, and
+the header's ⊞/⊟ buttons **expand-all / collapse-all**. Clicking a file
+reads it (`read_file`) and opens it in the editor. If the current file
+has unsaved changes, a confirm dialog protects them first.
 
 **File management:** the header's ＋file/＋folder buttons create at
 the project root; right-clicking a row opens a context menu —
 directories offer New File / New Folder / Rename / Delete, files offer
 Rename / Delete. Deletes are confirmed and go to the **recycle bin**
-(never permanent). Renaming keeps a file's `.tex` extension when the
-new name has no dot, and an open file follows its own (or an ancestor
-directory's) rename without losing unsaved edits. New projects seed
-their initial `.tex` with a basic document template.
+(never permanent).
 
-**Docking:** the "Files" header is a drag handle (pointer events with
-pointer capture, not HTML5 drag-and-drop). While dragging, the window
-halves highlight as drop zones; releasing docks the panel to that side.
+- **New file:** the dialog asks only for a name; the extension comes
+  from a **File type** dropdown (`src/shared/fileTypes.ts`), defaulting
+  to `.tex`, and the resulting filename is previewed under the field so
+  it is never a surprise. A folder's dialog omits the picker.
+- **Inline rename:** "Rename" edits the name in place in the tree
+  (`RenameInput`) — Enter commits, Escape/blur cancels. Invalid names
+  are caught by the shared guard before any round trip and shown on the
+  field; backend errors surface the same way. Keeps a file's `.tex`
+  extension when the new name has no dot.
+- **Drag-to-move:** drag a file or folder onto a directory row (or the
+  empty body, which targets the project root) to move it — the new Rust
+  `move_entry` command. The UI and backend both reject moving a folder
+  into itself/a descendant and refuse to overwrite an existing name;
+  dropping onto the current folder is a no-op.
+- **The drag payload is typed** (`src/shared/dragPayload.ts`). Drags
+  starting in the file browser are marked with a private MIME type,
+  `application/x-moonstone-path`, carrying the entry's kind as well as
+  its path; every drop target validates what it reads. A bare
+  `text/plain` path is written too, but only so a drag _out_ of the app
+  produces something sensible — nothing inside the app trusts it.
+  See "Why the payload is typed" below.
+- An open file follows its own (or an ancestor directory's) rename or
+  move without losing unsaved edits (`renamedOpenFilePath`).
+
+New projects seed their initial `.tex` with a basic document template.
+
+**Docking:** the "Files" header is a drag handle using **pointer
+events** with pointer capture — separate from the file rows' **HTML5
+drag-and-drop** (move). While dragging the header, the window halves
+highlight as drop zones; releasing docks the panel to that side.
 Docking right simply reverses the flex row (`row-reverse`), so the
-editor never remounts.
+editor never remounts. The window sets `dragDropEnabled: false`
+(`tauri.conf.json`) so the webview handles HTML5 DnD rather than the OS.
+
+## Resizing and hiding the browser
+
+The browser sits inside a reusable `ResizablePanel`, which owns its
+width and collapsed state. The browser itself knows nothing about
+either — it simply fills whatever width it is given, which is what
+makes the panel reusable for the second file window in the plan.
+
+**Dragging** the splitter on the panel's inner edge resizes it. The
+editor is a flex child that grows, so it absorbs exactly what the panel
+gives up without any coordination between them. Docked right, the
+panel grows as the pointer moves _left_; the hook inverts the delta
+from the `side` prop rather than the layout guessing.
+
+**Two floors, both enforced** (`clampPanelWidth`): the panel never goes
+below 150px and never leaves its neighbour less than 240px. A panel
+that can be dragged to nothing is a panel the user cannot get back,
+and the same is true of the editor. When the container is too narrow
+to honour both, the panel keeps its minimum — shrinking it further
+would not rescue the neighbour and would leave nothing to grab.
+
+The width the user chose is stored separately from the width applied.
+A window too narrow to honour their choice displays a clamped value but
+remembers the real one, so widening the window restores it instead of
+silently keeping the squeezed figure.
+
+**Collapsing** leaves a narrow rail carrying the toggle, so the browser
+is always one click from coming back. The stored width is untouched
+while collapsed — that is what "restores the last width" means in
+practice; no separate cache is needed.
+
+The toggle lives in the splitter's own column rather than floating over
+the panel. It was an overlay first, and it collided with whatever the
+browser put in that corner: the header buttons on one dock side, the
+"FILES" label on the other. Reserving the column removes the class of
+problem rather than tuning offsets.
+
+**Long names** truncate with a CSS ellipsis. The `min-width: 0` on
+`.file-tree-name` is what makes it work — a flex item refuses to shrink
+below its content by default, so without it a long name widens the row
+instead of truncating. The truncation is purely visual: rename, open
+and drag-to-move all use the real filename, which the browser suite
+asserts explicitly.
+
+Width and collapsed state are **per session**, matching the dock side,
+which is also not persisted. Persisting all three to settings is a
+reasonable follow-on; doing it for width alone would be inconsistent.
+
+Because this is layout and pointer behaviour, its tests are in the
+browser suite (`src/test/browser/fileBrowserPanel.browser.spec.ts`) —
+jsdom has no widths to redistribute. Only the clamp arithmetic, which
+is pure, is unit-tested.
 
 ## Editor wiring
 
@@ -35,6 +112,12 @@ remounts it with `key={file.path}`, giving each file a clean editor and
 its own undo history. The page owns dirtiness (set on any doc change,
 cleared on save) and holds the `EditorView` ref so toolbar/hotbar
 actions can drive it.
+
+The page also owns the project's **bibliography**: it calls
+`list_references` when the project opens, hands the list to the editor
+for `\cite{…}` completion, and reloads it after a `.bib` file is saved
+so new entries are citable straight away — see
+[bibliography](bibliography.md).
 
 ## Toolbar
 
@@ -50,10 +133,81 @@ The same actions are registered into the app-actions context so the
 GlobalHotBar menus (File > Save, Edit > Undo, Insert > Math, …) work
 while this page is open and render disabled elsewhere.
 
+## Why the payload is typed
+
+A `DataTransfer` is a public channel, and everything dropped on the app
+arrives as `text/plain`: a text selection dragged inside an editor, a
+file from the desktop, a link from another window. The file browser
+originally wrote a bare path there, and drop targets read it straight
+back, so nothing could tell a file path from a dragged paragraph of
+prose — dropping one would ask the backend to open it as a file.
+
+Three things follow from marking the drag instead:
+
+- **Drop targets check `dataTransfer.types`** during `dragover`. The
+  payload's _contents_ are deliberately unreadable at that point —
+  browsers withhold `getData` until the drop so pages cannot snoop on
+  drags passing over them — but the list of formats is available, which
+  is enough to decide whether to accept.
+- **The entry's kind travels with its path.** Directory rows are
+  draggable so they can be moved between folders, but an editor pane
+  shows one file and has nothing to do with a folder, so it refuses
+  anything that is not `kind: "file"`.
+- **`effectAllowed` is `"copyMove"`.** The two drop targets want
+  different things: the file browser _moves_ an entry, while a pane
+  _opens_ it and leaves the tree alone. Declaring only one makes the
+  browser silently cancel the other — a `dragover` whose `dropEffect` is
+  incompatible with `effectAllowed` resolves to `"none"`, and then **no
+  `drop` event fires at all**. This is a good candidate for "the drop
+  does nothing and there is no error anywhere".
+
+**Testing note — two traps, both silent.** jsdom has no `DataTransfer`,
+and `fireEvent.drop` will accept any object in its place: a stub whose
+`setData` records without storing, and which has no `types`, lets a drag
+test pass while the code under test cannot read back what the source
+wrote. jsdom also has no `DragEvent`, so
+`fireEvent.dragOver(element, {clientX})` constructs a plain `Event` and
+**silently discards the coordinates** — handlers read `undefined`, every
+distance becomes `NaN`, and a test that looks like it is dropping on an
+edge is really dropping nowhere. `src/test/dataTransfer.ts` provides
+`makeDataTransfer` and `fireDragEvent` for both.
+
+## The editor area
+
+The page no longer shows one editor: it mounts a `PaneTree`, and
+several files can be open side by side. Dragging a file from the browser
+onto a pane's **edge** splits it; dropping in the **middle** opens the
+file in that pane instead. See `docs/split-panes.md`.
+
+Three behaviours changed with it, each fixing something the
+single-editor page got wrong:
+
+- **Re-opening the file a pane already shows is no longer a no-op.** It
+  re-reads from disk, which is the only way to discard unsaved changes
+  and start again. The guard that skipped it made that impossible.
+- **Concurrent opens resolve last-_clicked_, not last-_finished_.** Two
+  quick clicks used to race, and whichever read came back second won
+  regardless of which the user asked for. A request counter now
+  discards any answer that has been superseded.
+- **Renaming the open file keeps its undo history.** See "Why documents
+  carry a version" in `docs/split-panes.md`.
+
 ## Files
 
-- `src/views/ProjectPage/ProjectPage.tsx` — state + orchestration
-- `src/views/ProjectPage/FileBrowser/` — tree panel
+- `src/views/ProjectPage/ProjectPage.tsx` — orchestration
+- `src/views/ProjectPage/usePaneWorkspace.ts` — pane state
+- `src/views/ProjectPage/PaneTree.tsx`, `EditorPane.tsx`,
+  `PaneSplitter.tsx`, `paneLayout.ts` — the split editor area
+- `src/shared/dragPayload.ts` — the typed drag payload and its validation
+- `src/views/ProjectPage/FileBrowser/` — tree panel (+ `RenameInput.tsx`)
 - `src/views/ProjectPage/Toolbar/` — action row
 - `src/shared/useDockDrag.ts` — drag-to-dock hook
-- Tests: `src/test/ProjectPage.test.tsx`
+- `src/shared/usePanelResize.ts` — splitter drag hook + width clamp
+- `src/components/ResizablePanel.tsx` — resizable, collapsible panel
+- `src/styles/ResizablePanel.css` — panel and splitter styling
+- `src-tauri/src/file_manager.rs` — `move_entry` and other file commands
+- Tests: `src/test/ProjectPage.test.tsx`, `src/test/dragPayload.test.ts`,
+  `src/test/EditorPane.test.tsx`,
+  `src/test/usePanelResize.test.ts` (clamp arithmetic),
+  `src/test/browser/fileBrowserPanel.browser.spec.ts` (drag, collapse,
+  truncation)

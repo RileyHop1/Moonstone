@@ -7,6 +7,8 @@ export interface DropDownOption {
     readonly label: string;
     /** True renders the entry greyed out and unclickable. */
     readonly disabled: boolean;
+    /** True renders a leading checkmark (e.g. the active choice). */
+    readonly checked?: boolean;
 }
 
 /** Props for {@link DropDown}. */
@@ -72,6 +74,9 @@ export default function DropDown({ name, options, onSelect }: DropDownProps) {
                             key={option.label}
                             onClick={() => handleOptionClick(option)}
                         >
+                            <span className={styles.dropdownCheck} aria-hidden="true">
+                                {option.checked ? "✓" : ""}
+                            </span>
                             {option.label}
                         </li>
                     ))}

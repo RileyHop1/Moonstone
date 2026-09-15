@@ -7,19 +7,21 @@
  * pointer calls `onDock` with that side.
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import { useState } from "react";
+import { usePointerDrag } from "./usePointerDrag";
+import type { PointerDragHandleProps } from "./usePointerDrag";
 
 /** Side of the window a panel can dock to. */
 export type DockSide = "left" | "right";
 
-/** Props to spread onto the drag-handle element. */
-export interface DockDragHandleProps {
-    readonly onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
-    readonly onPointerMove: (event: ReactPointerEvent<HTMLElement>) => void;
-    readonly onPointerUp: (event: ReactPointerEvent<HTMLElement>) => void;
-    readonly onPointerCancel: (event: ReactPointerEvent<HTMLElement>) => void;
-}
+/**
+ * Props to spread onto the drag-handle element.
+ *
+ * An alias rather than its own shape: every handle in the app spreads
+ * the same four pointer handlers, and declaring them separately here is
+ * what let this hook and `usePanelResize` drift apart.
+ */
+export type DockDragHandleProps = PointerDragHandleProps;
 
 /** State and handlers returned by {@link useDockDrag}. */
 export interface DockDrag {
@@ -54,61 +56,25 @@ export function useDockDrag(onDock: (side: DockSide) => void): DockDrag {
     const [isDragging, setIsDragging] = useState(false);
     const [hoverSide, setHoverSide] = useState<DockSide | null>(null);
 
-    // Refs mirror the interaction state so the stable callbacks below
-    // never read stale closures.
-    const pressedRef = useRef(false);
-    const startXRef = useRef(0);
-    const passedThresholdRef = useRef(false);
-
-    const resetDrag = useCallback(() => {
-        pressedRef.current = false;
-        passedThresholdRef.current = false;
+    const clearDrag = (): void => {
         setIsDragging(false);
         setHoverSide(null);
-    }, []);
+    };
 
-    const onPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-        // Pointer capture routes all further move/up events to the
-        // handle, even when the pointer leaves it.
-        event.currentTarget.setPointerCapture(event.pointerId);
-        pressedRef.current = true;
-        startXRef.current = event.clientX;
-        passedThresholdRef.current = false;
-    }, []);
-
-    const onPointerMove = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-        if (!pressedRef.current) return;
-
-        const movedFar = Math.abs(event.clientX - startXRef.current) >= DRAG_THRESHOLD_PX;
-        if (!passedThresholdRef.current && !movedFar) return;
-
-        passedThresholdRef.current = true;
-        setIsDragging(true);
-        setHoverSide(sideForPointer(event.clientX));
-    }, []);
-
-    const onPointerUp = useCallback(
-        (event: ReactPointerEvent<HTMLElement>) => {
-            const shouldDock = pressedRef.current && passedThresholdRef.current;
-
-            if (shouldDock) {
-                onDock(sideForPointer(event.clientX));
-            }
-
-            resetDrag();
+    const handleProps = usePointerDrag({
+        // The header is a drag handle, but it is also just a header —
+        // a press that never travels must not re-dock anything.
+        thresholdPx: DRAG_THRESHOLD_PX,
+        onMove: ({ clientX }) => {
+            setIsDragging(true);
+            setHoverSide(sideForPointer(clientX));
         },
-        [onDock, resetDrag],
-    );
-
-    const handleProps = useMemo<DockDragHandleProps>(
-        () => ({
-            onPointerDown,
-            onPointerMove,
-            onPointerUp,
-            onPointerCancel: resetDrag,
-        }),
-        [onPointerDown, onPointerMove, onPointerUp, resetDrag],
-    );
+        onEnd: ({ clientX }, moved) => {
+            if (moved) onDock(sideForPointer(clientX));
+            clearDrag();
+        },
+        onCancel: clearDrag,
+    });
 
     return { isDragging, hoverSide, handleProps };
 }

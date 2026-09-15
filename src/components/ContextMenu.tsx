@@ -59,12 +59,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
     }, [onClose]);
 
     return (
-        <ul
-            ref={menuRef}
-            className="context-menu"
-            style={{ left: x, top: y }}
-            role="menu"
-        >
+        <ul ref={menuRef} className="context-menu" style={{ left: x, top: y }} role="menu">
             {items.map((item) => (
                 <li
                     key={item.label}

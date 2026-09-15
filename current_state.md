@@ -74,16 +74,19 @@ Moonstone/
 ## Frontend
 
 ### `index.html`
+
 Minimal HTML shell. It imports `styles.css` and `src/main.tsx`, and exposes a single `<div id="root">` for React to mount into. All DOM construction now lives in React components — the shell is no longer hand-written here.
 
 ---
 
 ### `src/main.tsx`
+
 React entry point. Looks up `#root`, throws if missing, and calls `createRoot(...).render(<StrictMode><App /></StrictMode>)`.
 
 ---
 
 ### `src/App.tsx`
+
 The root component. Renders the application shell:
 
 ```
@@ -102,6 +105,7 @@ The preview-panel section is not yet rendered.
 ---
 
 ### `src/components/GlobalHotBar.tsx`
+
 The application-wide menu bar, rendered directly under the titlebar. Default-exported component.
 
 - Composes six `DropDown` instances: **File** (New Project, Open Project, New File, Save, Recent Projects), **Edit** (Undo, Redo, Find & Replace), **Insert** (Math, Tables, Template), **View** (Source, Live Preview, Full Preview), **Settings** (Light/Dark, Settings Menu), and **Help** (Documentation).
@@ -111,14 +115,17 @@ The application-wide menu bar, rendered directly under the titlebar. Default-exp
 ---
 
 ### `src/components/DropDown.tsx`
+
 A reusable, view-agnostic dropdown menu primitive. Default-exported component.
 
 **Props (`DropDownProps`):**
+
 - `name: string` — label shown on the trigger button
 - `options: string[]` — items listed when the menu is open
 - `onSelect: (option: string) => void` — called with the chosen option
 
 **Behaviour:**
+
 - Tracks open/closed state with `useState`.
 - Renders a trigger `<button>` that toggles the menu, and (when open) a `<ul>` of `<li>` items keyed by option text. Selecting an item calls `onSelect` and closes the menu.
 - Registers a `mousedown` listener (via `useEffect`, gated on `isOpen` and using a `useRef` on the container) to close the menu when the user clicks outside; the listener is cleaned up on close/unmount.
@@ -129,6 +136,7 @@ Currently mouse-driven only — no keyboard navigation, `Escape`-to-close, or AR
 ---
 
 ### `src/views/editor/TextEditor/TextEditor.tsx`
+
 React component that mounts a CodeMirror 6 editor. Re-exported via `src/views/editor/TextEditor/index.ts` so consumers can import from the folder path.
 
 - Uses `useRef<HTMLDivElement>` to capture the host element.
@@ -141,6 +149,7 @@ The math-rendering scaffolding that previously lived in `text-editor.ts` (`MathR
 ---
 
 ### `src/views/editor/TextEditor/moonstoneTheme.ts`
+
 Custom CodeMirror 6 theme ("Moonstone gem"), replacing the previous `@codemirror/theme-one-dark`. Exports a single `moonstone` extension (an array combining an `EditorView.theme(...)` for the editor chrome and a `syntaxHighlighting(HighlightStyle.define(...))` for token colours).
 
 - **Chrome** (background, cursor, selection, active line, gutters, brackets, tooltips, autocomplete) is wired to the global theme variables from `styles.css` (`var(--text-primary)`, `var(--accent)`, `var(--border-color)`, etc.) so the editor stays in sync with the rest of the app. The editor background is `transparent`, letting the `.editor-panel` colour (and any future sheen) show through. Marked `{ dark: true }`.
@@ -149,41 +158,47 @@ Custom CodeMirror 6 theme ("Moonstone gem"), replacing the previous `@codemirror
 ---
 
 ### `src/views/editor/TextEditor/TextEditor.css`
+
 Component stylesheet. Defines `.view-container-text-editor { height: 100%; width: 100%; }`.
 
 ---
 
 ### `src/components/`
+
 View-agnostic UI primitives. Now contains `GlobalHotBar.tsx` and `DropDown.tsx` (documented above); the `.gitkeep` remains. Their styles live in `src/styles/` as CSS modules (see below).
 
 ---
 
 ### `src/shared/`
+
 Reserved for non-UI cross-cutting code: reusable hooks, TypeScript types, and Tauri command/event wrappers. Empty placeholder (`.gitkeep`) — nothing lives here yet.
 
 ---
 
 ### `src/styles/styles.css`
+
 Global stylesheet. Contains:
 
 **CSS custom properties (`:root`):**
-| Variable | Value | Purpose |
-|---|---|---|
-| `--bg-app` | `#0d1117` | Main app background (blue-black gem body) |
-| `--bg-sidebar` | `#0a0e14` | Sidebar background |
-| `--bg-editor` | `#0d1117` | Editor panel background |
-| `--bg-preview` | `#131a26` | Preview panel background |
-| `--bg-titlebar` | `#070a0f` | Title bar background |
-| `--text-primary` | `#e6ecff` | Main text colour (moonlight white) |
-| `--text-secondary` | `#8b93b0` | Dimmed/label text |
-| `--border-color` | `#1e2738` | All borders |
-| `--accent` | `#a9c6ff` | Accent/highlight colour (silver-blue sheen) |
-| `--glow` | `0 0 10px rgba(169,198,255,0.35)` | Reusable adularescent glow (shadows/text-shadow) |
-| `--sheen` | radial gradient | Off-center moonlight gradient applied to the body background |
+
+| Variable           | Value                             | Purpose                                                      |
+| ------------------ | --------------------------------- | ------------------------------------------------------------ |
+| `--bg-app`         | `#0d1117`                         | Main app background (blue-black gem body)                    |
+| `--bg-sidebar`     | `#0a0e14`                         | Sidebar background                                           |
+| `--bg-editor`      | `#0d1117`                         | Editor panel background                                      |
+| `--bg-preview`     | `#131a26`                         | Preview panel background                                     |
+| `--bg-titlebar`    | `#070a0f`                         | Title bar background                                         |
+| `--text-primary`   | `#e6ecff`                         | Main text colour (moonlight white)                           |
+| `--text-secondary` | `#8b93b0`                         | Dimmed/label text                                            |
+| `--border-color`   | `#1e2738`                         | All borders                                                  |
+| `--accent`         | `#a9c6ff`                         | Accent/highlight colour (silver-blue sheen)                  |
+| `--glow`           | `0 0 10px rgba(169,198,255,0.35)` | Reusable adularescent glow (shadows/text-shadow)             |
+| `--sheen`          | radial gradient                   | Off-center moonlight gradient applied to the body background |
 
 (Colour palette is a custom **Moonstone gem** theme — cool blue-black with a silver-blue sheen, evoking the gemstone's adularescence.)
 
 **CSS rules defined:**
+
 - `*, *::before, *::after` — box-sizing reset, zero margin/padding
 - `html, body` — full height, font stack, background colour + `--sheen` radial gradient (fixed attachment), `overflow: hidden`
 - `.app` — `display: flex; flex-direction: column; height: 100vh`
@@ -201,17 +216,21 @@ Global stylesheet. Contains:
 ---
 
 ### `src/styles/GlobalHotBar.module.css`
+
 CSS module for `GlobalHotBar`. Styles `.HotBar` as a horizontal flex strip under the titlebar, using the global theme variables (`--bg-titlebar` background, `--border-color` bottom border, `--text-secondary` text) so it matches the Catppuccin Mocha dark theme. Includes `user-select: none`.
 
 ---
 
 ### `src/styles/DropDown.module.css`
+
 CSS module for `DropDown`. Styles the trigger button, the absolutely-positioned menu, and its items. Also theme-variable driven: transparent trigger with a `--bg-sidebar` hover, a `--bg-sidebar` menu panel bordered with `--border-color`, and items that highlight to the `--accent` colour on hover. The dropdown menu uses `z-index: 100` to sit above the workspace.
 
 ---
 
 ### `vite.config.ts`
+
 Standard Tauri + Vite configuration, plus the `@vitejs/plugin-react` plugin. Key settings:
+
 - `plugins: [react()]` — enables JSX/TSX and Fast Refresh
 - `clearScreen: false` — preserves Rust error output in the terminal
 - Dev server on port **1420** (`strictPort: true`)
@@ -221,6 +240,7 @@ Standard Tauri + Vite configuration, plus the `@vitejs/plugin-react` plugin. Key
 ---
 
 ### `tsconfig.json`
+
 - Target: `ES2020`
 - Module: `ESNext`, resolution: `bundler`
 - `jsx: "react-jsx"` (new transform; no `import React` needed in components)
@@ -231,50 +251,58 @@ Standard Tauri + Vite configuration, plus the `@vitejs/plugin-react` plugin. Key
 ---
 
 ### `package.json`
+
 **Scripts:**
+
 - `npm run dev` — start Vite dev server
 - `npm run build` — `tsc && vite build`
 - `npm run tauri` — Tauri CLI
 
 **Runtime dependencies (installed, available for use):**
-| Package | Purpose |
-|---|---|
-| `react`, `react-dom` | UI framework |
-| `@tauri-apps/api` | Tauri JS bindings (invoke, events, etc.) |
-| `@tauri-apps/plugin-opener` | Open files/URLs with native OS handler |
-| `codemirror` | CodeMirror 6 meta-package |
-| `@codemirror/state` | Editor state management |
-| `@codemirror/view` | Editor DOM rendering |
-| `@codemirror/theme-one-dark` | Dark theme for CodeMirror (no longer used — replaced by the custom `moonstone` theme; still installed) |
-| `@codemirror/lang-javascript` | JS language support (temp, not used by `TextEditor`) |
-| `codemirror-lang-latex` | LaTeX language extension used by `TextEditor` |
-| `katex` | Math rendering library (not yet imported anywhere) |
+
+| Package                       | Purpose                                                                                                |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `react`, `react-dom`          | UI framework                                                                                           |
+| `@tauri-apps/api`             | Tauri JS bindings (invoke, events, etc.)                                                               |
+| `@tauri-apps/plugin-opener`   | Open files/URLs with native OS handler                                                                 |
+| `codemirror`                  | CodeMirror 6 meta-package                                                                              |
+| `@codemirror/state`           | Editor state management                                                                                |
+| `@codemirror/view`            | Editor DOM rendering                                                                                   |
+| `@codemirror/theme-one-dark`  | Dark theme for CodeMirror (no longer used — replaced by the custom `moonstone` theme; still installed) |
+| `@codemirror/lang-javascript` | JS language support (temp, not used by `TextEditor`)                                                   |
+| `codemirror-lang-latex`       | LaTeX language extension used by `TextEditor`                                                          |
+| `katex`                       | Math rendering library (not yet imported anywhere)                                                     |
 
 **Dev dependencies of note:**
-| Package | Purpose |
-|---|---|
-| `@vitejs/plugin-react` | React Fast Refresh + JSX support in Vite |
-| `@types/react`, `@types/react-dom` | React type definitions |
+
+| Package                            | Purpose                                  |
+| ---------------------------------- | ---------------------------------------- |
+| `@vitejs/plugin-react`             | React Fast Refresh + JSX support in Vite |
+| `@types/react`, `@types/react-dom` | React type definitions                   |
 
 ---
 
 ## Backend (Rust)
 
 ### `src-tauri/src/main.rs`
+
 Thin binary entry point. The only line of substance is `moonstone_lib::run()`. The `#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]` attribute prevents a console window on Windows release builds.
 
 ---
 
 ### `src-tauri/src/lib.rs`
+
 The core Tauri app setup file. Declares the two backend modules and bootstraps the Tauri builder.
 
 **Module declarations:**
+
 ```rust
 mod file_manager;
 mod project_manager;
 ```
 
 **`AppState` struct** (managed singleton, accessible from any command via `State<AppState>`):
+
 ```rust
 struct AppState {
     projects: Arc<Mutex<Vec<String>>>,
@@ -284,18 +312,21 @@ struct AppState {
 ```
 
 **`AppState` methods:**
+
 - `AppState::new()` — initialises with empty projects vec, empty string directory, `false` for `within_project`
 - `add_project(&self, new_project: String)` — pushes to the projects vec
 - `remove_project(&self, project_name: String)` — retains all projects not matching the name
 - `update_current_directory(&self, new_directory: String)` — overwrites the current directory
 
 **`run()` function:**
+
 - Registers `tauri_plugin_opener`
 - Calls `.manage(AppState::new())` to inject state
 - `invoke_handler` currently only registers `greet` — **`file_manager` and `project_manager` commands are NOT yet registered here**
 - This means the frontend cannot call any backend file/project commands yet
 
 **`greet` command** (placeholder, from scaffold):
+
 ```rust
 fn greet(name: &str) -> String // returns "Hello, {name}! You've been greeted from Rust!"
 ```
@@ -303,6 +334,7 @@ fn greet(name: &str) -> String // returns "Hello, {name}! You've been greeted fr
 ---
 
 ### `src-tauri/src/file_manager.rs`
+
 Handles low-level file system operations. All functions are `async` (uses `tokio::fs`). Both public functions are tagged `#[tauri::command]` but are not yet wired into `lib.rs`'s `invoke_handler`.
 
 **Public interface:**
@@ -315,6 +347,7 @@ pub async fn create_file<R: tauri::Runtime>(
     file_extension: String,
 ) -> Result<String, String>
 ```
+
 - Validates: name is non-empty, extension passes `validate_extension()`
 - Constructs path as `parent_directory/file_name.file_extension`
 - Errors if file already exists
@@ -328,18 +361,22 @@ pub async fn create_directory<R: tauri::Runtime>(
     dir_name: String,
 ) -> Result<String, String>
 ```
+
 - Validates: name is non-empty, directory doesn't already exist
 - Creates directory with `tokio::fs::create_dir_all`
 - Emits Tauri event `"directory-created"` with the full path as payload
 - Returns the full path string on success
 
 **Private helper:**
+
 ```rust
 fn validate_extension(extension: &str) -> bool
 ```
+
 - Currently only accepts `"tex"`. Written with `matches!` macro to make adding more extensions easy later.
 
 **Tests** (in `#[cfg(test)] mod file_manager_tests`):
+
 - `test_validate_extension` — checks `"tex"` passes, `"pdf"` fails
 - `test_creat_file` — creates a real temp file via `tempfile::tempdir`, asserts `Ok`
 - `test_create_directory_success` — creates a real temp directory, asserts `Ok`
@@ -347,9 +384,11 @@ fn validate_extension(extension: &str) -> bool
 ---
 
 ### `src-tauri/src/project_manager.rs`
+
 Defines the `Project` model and handles project creation. A project is a named root directory containing LaTeX files.
 
 **`Project` struct** (not `pub`, internal to this module):
+
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Project {
@@ -362,6 +401,7 @@ struct Project {
 ```
 
 **`Project` methods:**
+
 ```rust
 pub async fn new<R: tauri::Runtime>(
     app: AppHandle<R>,
@@ -369,6 +409,7 @@ pub async fn new<R: tauri::Runtime>(
     path: String,
 ) -> Result<Project, String>
 ```
+
 - Validates name is non-empty
 - Constructs `full_path = path/name`
 - Errors if directory already exists
@@ -377,6 +418,7 @@ pub async fn new<R: tauri::Runtime>(
 - Returns a `Project` with both timestamps set to `Local::now()` and `amount_of_files: 1`
 
 **Getters/setters (all `pub`):**
+
 - `get_name() -> &str`
 - `get_path() -> &str`
 - `get_creation_date() -> DateTime<Local>`
@@ -386,6 +428,7 @@ pub async fn new<R: tauri::Runtime>(
 - `increment_amount_of_files()`
 
 **Tests** (in `#[cfg(test)] mod project_manager_tests`):
+
 - `test_new_rejects_empty_name` — empty name returns specific error message
 - `test_new_creates_project_directory` — directory is created on disk
 - `test_new_creates_initial_tex_file` — `name.tex` exists and file count is 1
@@ -398,6 +441,7 @@ All async tests use `tauri::test::mock_app()` (requires the `tauri/test` feature
 ---
 
 ### `src-tauri/src/settings.rs`
+
 **Empty placeholder.** The file exists but contains no code.
 
 ---
@@ -405,19 +449,21 @@ All async tests use `tauri::test::mock_app()` (requires the `tauri/test` feature
 ### `src-tauri/Cargo.toml`
 
 **Dependencies:**
-| Crate | Version | Features |
-|---|---|---|
-| `tauri` | 2 | — |
-| `tauri-plugin-opener` | 2 | — |
-| `serde` | 1 | `derive` |
-| `serde_json` | 1 | — |
-| `tokio` | 1 | `full` |
-| `chrono` | 0.4 | `serde` |
+
+| Crate                 | Version | Features |
+| --------------------- | ------- | -------- |
+| `tauri`               | 2       | —        |
+| `tauri-plugin-opener` | 2       | —        |
+| `serde`               | 1       | `derive` |
+| `serde_json`          | 1       | —        |
+| `tokio`               | 1       | `full`   |
+| `chrono`              | 0.4     | `serde`  |
 
 **Dev dependencies:**
-| Crate | Purpose |
-|---|---|
-| `tempfile` | Temporary directories/files for tests |
+
+| Crate                         | Purpose                                  |
+| ----------------------------- | ---------------------------------------- |
+| `tempfile`                    | Temporary directories/files for tests    |
 | `tauri` (with `test` feature) | `tauri::test::mock_app()` for unit tests |
 
 The crate is built as `staticlib + cdylib + rlib` (required for Tauri's mobile targets).
@@ -425,6 +471,7 @@ The crate is built as `staticlib + cdylib + rlib` (required for Tauri's mobile t
 ---
 
 ### `src-tauri/tauri.conf.json`
+
 - App identifier: `com.riley.moonstone`
 - Window: 800×600, title `"moonstone"`
 - Dev URL: `http://localhost:1420` (Vite)
@@ -435,6 +482,7 @@ The crate is built as `staticlib + cdylib + rlib` (required for Tauri's mobile t
 ---
 
 ### `src-tauri/capabilities/default.json`
+
 Grants the `main` window `core:default` and `opener:default` permissions. No filesystem or shell permissions are currently requested here — this will need updating when file/project commands are wired up and the frontend starts calling them.
 
 ---

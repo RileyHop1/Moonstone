@@ -1,0 +1,60 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage[margin=1in]{geometry}
+
+% One command per assignment detail, so the header is edited in a
+% single place rather than scattered through the document.
+\newcommand{\course}{Course 101}
+\newcommand{\assignment}{{name}}
+\newcommand{\student}{Your Name}
+
+\newtheorem*{solution}{Solution}
+
+\title{\assignment}
+\author{\student \\ \small \course}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section*{Problem 1}
+
+State the problem here, then answer it.
+
+\begin{solution}
+    Work through the argument in full. Displayed steps are easier to
+    follow — and easier to mark — than a single dense paragraph:
+    \begin{align}
+        (a + b)^2 &= (a + b)(a + b) \\
+                  &= a^2 + 2ab + b^2.
+    \end{align}
+\end{solution}
+
+\section*{Problem 2}
+
+A problem with parts:
+
+\begin{enumerate}[label=(\alph*)]
+    \item The first part.
+    \item The second part.
+\end{enumerate}
+
+\begin{solution}
+    \begin{enumerate}[label=(\alph*)]
+        \item The answer to the first part.
+        \item The answer to the second part.
+    \end{enumerate}
+\end{solution}
+
+\section*{Problem 3}
+
+\begin{solution}
+    Remember to say what a result means, not just that it holds.
+\end{solution}
+
+\end{document}

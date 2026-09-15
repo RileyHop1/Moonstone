@@ -9,9 +9,12 @@
 import { useCallback, useEffect, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { ContextMenu } from "../../components/ContextMenu";
+import { NameDialog } from "../../components/NameDialog";
+import type { NameDialogResult } from "../../components/NameDialog";
 import { useNavigation } from "../../shared/navigation";
 import { useAppActions } from "../../shared/appActions";
-import { deleteProject, listProjects } from "../../shared/tauri";
+import { useConfirm } from "../../components/useConfirm";
+import { deleteProject, listProjects, renameProject } from "../../shared/tauri";
 import { assertNever } from "../../shared/types";
 import type { LoadState, ProjectInfo } from "../../shared/types";
 import { ProjectCard } from "./ProjectCard";
@@ -38,7 +41,9 @@ export function ProjectBrowser() {
         status: "loading",
     });
     const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const { confirm, dialog: confirmationDialog } = useConfirm();
     const [menu, setMenu] = useState<MenuState | null>(null);
+    const [renaming, setRenaming] = useState<ProjectInfo | null>(null);
 
     const loadProjects = useCallback(async (): Promise<void> => {
         setProjects({ status: "loading" });
@@ -59,6 +64,7 @@ export function ProjectBrowser() {
 
         void (async () => {
             const result = await listProjects();
+            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the cleanup below assigns to this flag, which ESLint's flow analysis does not follow
             if (cancelled) return;
 
             setProjects(
@@ -94,13 +100,36 @@ export function ProjectBrowser() {
     }, []);
 
     /**
+     * Renames the project the rename dialog is open for.
+     *
+     * @param result - The validated name from the dialog.
+     * @returns An inline error message, or null on success.
+     */
+    const handleRenameProject = useCallback(
+        async ({ name }: NameDialogResult): Promise<string | null> => {
+            if (!renaming) return null;
+
+            const result = await renameProject(renaming.path, name);
+            if (!result.ok) return result.error;
+
+            setRenaming(null);
+            void loadProjects();
+            return null;
+        },
+        [renaming, loadProjects],
+    );
+
+    /**
      * Confirms and deletes a project, then reloads the grid.
      */
     const handleDeleteProject = useCallback(
         async (project: ProjectInfo): Promise<void> => {
-            const confirmed = window.confirm(
-                `Delete the project "${project.name}"? It will be moved to the recycle bin.`,
-            );
+            const confirmed = await confirm({
+                title: "Delete this project?",
+                message: `"${project.name}" and everything in it will be moved to the recycle bin.`,
+                confirmLabel: "Delete",
+                isDestructive: true,
+            });
             if (!confirmed) return;
 
             const result = await deleteProject(project.path);
@@ -112,14 +141,24 @@ export function ProjectBrowser() {
 
             void loadProjects();
         },
-        [loadProjects],
+        [loadProjects, confirm],
     );
 
     return (
         <div className="project-browser">
             <h1 className="project-browser-title">Projects</h1>
 
-            {renderContent(projects, openProject, openMenu, () => setIsDialogOpen(true), loadProjects)}
+            {renderContent(
+                projects,
+                openProject,
+                openMenu,
+                () => setIsDialogOpen(true),
+                () => {
+                    void loadProjects();
+                },
+            )}
+
+            {confirmationDialog}
 
             {isDialogOpen && (
                 <NewProjectDialog
@@ -137,12 +176,27 @@ export function ProjectBrowser() {
                     y={menu.y}
                     items={[
                         {
+                            label: "Rename",
+                            onClick: () => setRenaming(menu.project),
+                        },
+                        {
                             label: "Delete",
                             danger: true,
                             onClick: () => void handleDeleteProject(menu.project),
                         },
                     ]}
                     onClose={() => setMenu(null)}
+                />
+            )}
+
+            {renaming && (
+                <NameDialog
+                    title="Rename Project"
+                    placeholder="Project name"
+                    submitLabel="Rename"
+                    initialValue={renaming.name}
+                    onSubmit={handleRenameProject}
+                    onCancel={() => setRenaming(null)}
                 />
             )}
         </div>

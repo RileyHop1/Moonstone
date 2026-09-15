@@ -1,0 +1,55 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+
+\title{{name}}
+\author{Your Name\\ \small Your Institution}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+    A short summary of the problem, what you did about it, and what you
+    found. Aim for a paragraph a reader can understand on its own.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:introduction}
+
+Set out the problem and why it matters, then say what this paper
+contributes. Cite related work as you go~\cite{knuth1984texbook}.
+
+\section{Method}
+\label{sec:method}
+
+Describe the approach in enough detail to be reproduced. Displayed
+equations are numbered and can be referenced, like
+Equation~\ref{eq:example}:
+
+\begin{equation}
+    \label{eq:example}
+    E = mc^2
+\end{equation}
+
+\section{Results}
+\label{sec:results}
+
+Present the findings. Refer to figures and tables by label rather than
+position, so they stay correct when the layout changes.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+Restate what was learned and name the questions left open.
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

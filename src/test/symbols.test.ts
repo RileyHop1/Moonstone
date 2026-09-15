@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { findSymbolRanges, SYMBOLS } from "../views/editor/TextEditor/LivePreview/symbols";
+import { findSymbolRanges, SYMBOLS } from "../views/editor/TextEditor/latex/symbols";
 
 describe("findSymbolRanges", () => {
     it("finds a known command", () => {
@@ -36,9 +36,9 @@ describe("findSymbolRanges", () => {
     });
 
     it("maps a representative sample of symbols", () => {
-        expect(SYMBOLS["leq"]).toBe("≤");
-        expect(SYMBOLS["infty"]).toBe("∞");
-        expect(SYMBOLS["Rightarrow"]).toBe("⇒");
-        expect(SYMBOLS["Omega"]).toBe("Ω");
+        expect(SYMBOLS.leq).toBe("≤");
+        expect(SYMBOLS.infty).toBe("∞");
+        expect(SYMBOLS.Rightarrow).toBe("⇒");
+        expect(SYMBOLS.Omega).toBe("Ω");
     });
 });

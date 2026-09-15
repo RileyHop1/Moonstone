@@ -58,12 +58,11 @@ export default function GlobalHotBar() {
                 <DropDown
                     key={menu.name}
                     name={menu.name}
-                    options={menu.items.map(
-                        (item): DropDownOption => ({
-                            label: item.label,
-                            disabled: item.action === null,
-                        }),
-                    )}
+                    options={menu.items.map((item): DropDownOption => ({
+                        label: item.label,
+                        disabled: item.action === null,
+                        checked: item.checked ?? false,
+                    }))}
                     onSelect={(label) => handleSelect(menu, label)}
                 />
             ))}

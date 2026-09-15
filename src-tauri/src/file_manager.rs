@@ -22,6 +22,32 @@ use crate::paths;
 /// against symlink cycles and runaway nesting.
 const MAX_TREE_DEPTH: u32 = 32;
 
+/// Extensions Moonstone will create, open and save.
+///
+/// Deliberately limited to the *text* formats a LaTeX project is
+/// authored from. Compiled output (`pdf`, `aux`, `log`) and binary
+/// assets are intentionally absent: the editor would corrupt them on
+/// save, and this list is what `read_file`/`save_file` enforce, not
+/// just what the new-file dialog offers.
+///
+/// Keep in sync with `FILE_EXTENSIONS` in `src/shared/fileTypes.ts`.
+const EDITABLE_EXTENSIONS: [&str; 14] = [
+    "tex",   // documents
+    "ltx",   // alternative document extension
+    "bib",   // bibliography databases
+    "cls",   // document classes
+    "sty",   // packages
+    "bst",   // bibliography styles
+    "dtx",   // documented package sources
+    "ins",   // package installers
+    "def",   // package definitions
+    "cfg",   // package configuration
+    "tikz",  // standalone TikZ pictures
+    "txt",   // plain notes
+    "md",    // markdown notes
+    "csv",   // table and plot data
+];
+
 /// One node of a project's file tree.
 ///
 /// Serialized with a `kind` tag so the frontend receives a
@@ -249,7 +275,7 @@ pub async fn create_file_with_contents_impl(
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok(full_path.to_string_lossy().to_string())
+    Ok(paths::to_display_string(&full_path))
 }
 
 /// Renames a file or directory inside the Moonstone root.
@@ -281,6 +307,38 @@ pub async fn rename_entry<R: Runtime>(
     let entry = paths::ensure_within_root(&root, Path::new(&path))?;
 
     rename_entry_impl(&entry, &new_name)
+}
+
+/// Moves a file or directory into a different directory inside the
+/// Moonstone root (e.g. via drag-and-drop in the file browser).
+///
+/// # Parameters
+///
+/// * `source_path` - The entry to move (inside the Moonstone root).
+/// * `destination_dir` - The target directory (inside the root).
+///
+/// # Returns
+///
+/// The full path of the entry at its new location.
+///
+/// # Errors
+///
+/// Returns an error if either path escapes the root, the source is a
+/// whole project, the destination is not a directory or a descendant
+/// of the source, or the target name is already taken.
+#[tauri::command]
+pub async fn move_entry<R: Runtime>(
+    app: AppHandle<R>,
+    source_path: String,
+    destination_dir: String,
+) -> Result<String, String> {
+    let root = paths::moonstone_root(&app)?;
+    let source = paths::ensure_within_root(&root, Path::new(&source_path))?;
+    let dest = paths::ensure_within_root(&root, Path::new(&destination_dir))?;
+
+    ensure_deletable(&root, &source)?;
+
+    move_entry_impl(&source, &dest)
 }
 
 /// Deletes a file or directory inside a project, sending it to the
@@ -339,7 +397,53 @@ pub fn rename_entry_impl(entry: &Path, new_name: &str) -> Result<String, String>
 
     std::fs::rename(entry, &target).map_err(|e| e.to_string())?;
 
-    Ok(target.to_string_lossy().to_string())
+    Ok(paths::to_display_string(&target))
+}
+
+/// Moves `source` into `dest_dir`, keeping its name.
+///
+/// # Parameters
+///
+/// * `source` - The existing file or directory to move.
+/// * `dest_dir` - The directory to move it into.
+///
+/// # Returns
+///
+/// The source's full path at its new location (unchanged when it is
+/// already inside `dest_dir`).
+///
+/// # Errors
+///
+/// Returns an error if `dest_dir` is not a directory, is the source
+/// itself or a descendant of it, the target name already exists, or
+/// the filesystem move fails.
+pub fn move_entry_impl(source: &Path, dest_dir: &Path) -> Result<String, String> {
+    if !dest_dir.is_dir() {
+        return Err("The destination is not a directory".to_string());
+    }
+
+    // Dropped onto its own current folder: nothing to do.
+    if source.parent() == Some(dest_dir) {
+        return Ok(paths::to_display_string(source));
+    }
+
+    // A directory cannot be moved into itself or one of its descendants.
+    if dest_dir == source || dest_dir.starts_with(source) {
+        return Err("Can't move a folder into itself".to_string());
+    }
+
+    let name = source
+        .file_name()
+        .ok_or_else(|| "Entry has no name".to_string())?;
+    let target = dest_dir.join(name);
+
+    if target.exists() {
+        return Err(format!("{} already exists in the destination", name.to_string_lossy()));
+    }
+
+    std::fs::rename(source, &target).map_err(|e| e.to_string())?;
+
+    Ok(paths::to_display_string(&target))
 }
 
 /// Computes the final name for a rename: directories keep the name as
@@ -443,7 +547,7 @@ pub async fn create_directory_impl(parent: &Path, dir_name: &str) -> Result<Stri
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok(full_path.to_string_lossy().to_string())
+    Ok(paths::to_display_string(&full_path))
 }
 
 /// Recursively builds the [`FileNode`] tree rooted at `directory`.
@@ -516,9 +620,9 @@ pub async fn save_file_impl(file: &Path, contents: &str) -> Result<(), String> {
 ///
 /// `true` if the extension is valid, `false` otherwise.
 fn validate_extension(extension: &str) -> bool {
-    // For now it'll just be tex, but if other files are
-    // allowed later down the line extension will be easier.
-    matches!(extension, "tex")
+    EDITABLE_EXTENSIONS
+        .iter()
+        .any(|allowed| extension.eq_ignore_ascii_case(allowed))
 }
 
 /// Errors unless `file` has a `.tex` extension.
@@ -594,7 +698,7 @@ fn build_directory_node(directory: &Path, depth: u32) -> Result<FileNode, String
         } else {
             files.push(FileNode::File {
                 name,
-                path: path.to_string_lossy().to_string(),
+                path: crate::paths::to_display_string(&path),
             });
         }
     }
@@ -610,7 +714,7 @@ fn build_directory_node(directory: &Path, depth: u32) -> Result<FileNode, String
 
     Ok(FileNode::Directory {
         name: dir_name,
-        path: directory.to_string_lossy().to_string(),
+        path: crate::paths::to_display_string(directory),
         children: directories,
     })
 }
@@ -635,6 +739,58 @@ mod file_manager_tests {
     fn test_validate_extension() {
         assert!(validate_extension("tex"));
         assert!(!validate_extension("pdf"));
+    }
+
+    #[test]
+    fn test_validate_extension_accepts_every_editable_type() {
+        for extension in EDITABLE_EXTENSIONS {
+            assert!(validate_extension(extension), "{} should be editable", extension);
+        }
+    }
+
+    #[test]
+    fn test_validate_extension_is_case_insensitive() {
+        assert!(validate_extension("TEX"));
+        assert!(validate_extension("Bib"));
+    }
+
+    #[test]
+    fn test_validate_extension_rejects_generated_and_binary_files() {
+        // These would be corrupted by an editor save, so they must not
+        // be creatable, readable or writable.
+        for extension in ["pdf", "aux", "log", "synctex", "png", "exe", ""] {
+            assert!(!validate_extension(extension), "{} should be refused", extension);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create_file_impl_creates_a_bib_file() {
+        let dir = tempdir().unwrap();
+
+        let path = create_file_impl(dir.path(), "refs", "bib").await.unwrap();
+
+        assert!(Path::new(&path).exists());
+        assert!(path.ends_with("refs.bib"));
+    }
+
+    #[tokio::test]
+    async fn test_create_file_impl_rejects_a_reserved_name() {
+        let dir = tempdir().unwrap();
+
+        assert!(create_file_impl(dir.path(), "CON", "tex").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_save_and_read_round_trip_for_a_non_tex_type() {
+        // Creating a .bib the editor could not then save would be a
+        // broken feature, so the round trip is what matters.
+        let dir = tempdir().unwrap();
+        let path = create_file_impl(dir.path(), "refs", "bib").await.unwrap();
+        let file = Path::new(&path);
+
+        save_file_impl(file, "@book{a}").await.unwrap();
+
+        assert_eq!(read_file_impl(file).await.unwrap(), "@book{a}");
     }
 
     #[tokio::test]
@@ -784,6 +940,83 @@ mod file_manager_tests {
         rename_entry_impl(&sub, "sections").unwrap();
 
         assert!(dir.path().join("sections").is_dir());
+    }
+
+    #[test]
+    fn test_move_entry_moves_file_into_subdir() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("a.tex");
+        let sub = dir.path().join("chapters");
+        std::fs::write(&file, "x").unwrap();
+        std::fs::create_dir(&sub).unwrap();
+
+        let moved = move_entry_impl(&file, &sub).unwrap();
+
+        assert!(moved.ends_with("a.tex"));
+        assert!(sub.join("a.tex").exists());
+        assert!(!file.exists());
+    }
+
+    #[test]
+    fn test_move_entry_moves_directory() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("chapters");
+        let dest = dir.path().join("book");
+        std::fs::create_dir(&src).unwrap();
+        std::fs::create_dir(&dest).unwrap();
+
+        move_entry_impl(&src, &dest).unwrap();
+
+        assert!(dest.join("chapters").is_dir());
+        assert!(!src.exists());
+    }
+
+    #[test]
+    fn test_move_entry_refuses_overwrite() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("a.tex");
+        let sub = dir.path().join("chapters");
+        std::fs::write(&file, "").unwrap();
+        std::fs::create_dir(&sub).unwrap();
+        std::fs::write(sub.join("a.tex"), "").unwrap();
+
+        assert!(move_entry_impl(&file, &sub).is_err());
+    }
+
+    #[test]
+    fn test_move_entry_rejects_moving_into_own_descendant() {
+        let dir = tempdir().unwrap();
+        let parent = dir.path().join("parent");
+        let child = parent.join("child");
+        std::fs::create_dir_all(&child).unwrap();
+
+        assert!(move_entry_impl(&parent, &child).is_err());
+        assert!(move_entry_impl(&parent, &parent).is_err());
+    }
+
+    #[test]
+    fn test_move_entry_noop_when_already_in_destination() {
+        let dir = tempdir().unwrap();
+        let sub = dir.path().join("chapters");
+        std::fs::create_dir(&sub).unwrap();
+        let file = sub.join("a.tex");
+        std::fs::write(&file, "keep").unwrap();
+
+        let result = move_entry_impl(&file, &sub).unwrap();
+
+        assert!(result.ends_with("a.tex"));
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "keep");
+    }
+
+    #[test]
+    fn test_move_entry_rejects_non_directory_destination() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("a.tex");
+        let other = dir.path().join("b.tex");
+        std::fs::write(&file, "").unwrap();
+        std::fs::write(&other, "").unwrap();
+
+        assert!(move_entry_impl(&file, &other).is_err());
     }
 
     #[test]

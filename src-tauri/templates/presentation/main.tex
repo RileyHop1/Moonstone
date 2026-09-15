@@ -1,0 +1,77 @@
+\documentclass[aspectratio=169]{beamer}
+
+\usetheme{Madrid}
+\usecolortheme{default}
+
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+
+\title{{name}}
+\subtitle{A short subtitle}
+\author{Your Name}
+\institute{Your Institution}
+\date{\today}
+
+\begin{document}
+
+\begin{frame}
+    \titlepage
+\end{frame}
+
+\begin{frame}{Outline}
+    \tableofcontents
+\end{frame}
+
+\section{Introduction}
+
+\begin{frame}{The Problem}
+    \begin{itemize}
+        \item What the audience needs to care about.
+        \item Why the obvious approach is not enough.
+        \item What this talk adds.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Building Up a Point}
+    % Items appear one at a time, so the audience reads with you
+    % rather than ahead of you.
+    \begin{itemize}
+        \item<1-> First establish the setup.
+        \item<2-> Then the complication.
+        \item<3-> Then the resolution.
+    \end{itemize}
+\end{frame}
+
+\section{Method}
+
+\begin{frame}{Two Columns}
+    \begin{columns}
+        \begin{column}{0.5\textwidth}
+            \begin{block}{Idea}
+                A short statement of the approach.
+            \end{block}
+        \end{column}
+        \begin{column}{0.5\textwidth}
+            \begin{equation*}
+                f(x) = \int_{0}^{x} g(t)\,dt
+            \end{equation*}
+        \end{column}
+    \end{columns}
+\end{frame}
+
+\section{Results}
+
+\begin{frame}{What Happened}
+    \begin{enumerate}
+        \item The headline result.
+        \item The caveat that comes with it.
+    \end{enumerate}
+\end{frame}
+
+\begin{frame}{Thank You}
+    \centering
+    \Large Questions?
+\end{frame}
+
+\end{document}

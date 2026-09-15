@@ -3,23 +3,19 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { findMathRanges } from "../views/editor/TextEditor/LivePreview/findMath";
+import { findMathRanges } from "../views/editor/TextEditor/latex/findMath";
 
 describe("findMathRanges", () => {
     it("finds simple inline math", () => {
         const ranges = findMathRanges("$x^2$", 0);
 
-        expect(ranges).toEqual([
-            { from: 0, to: 5, innerFrom: 1, innerTo: 4, display: false },
-        ]);
+        expect(ranges).toEqual([{ from: 0, to: 5, innerFrom: 1, innerTo: 4, display: false }]);
     });
 
     it("finds display math", () => {
         const ranges = findMathRanges("$$x$$", 0);
 
-        expect(ranges).toEqual([
-            { from: 0, to: 5, innerFrom: 2, innerTo: 3, display: true },
-        ]);
+        expect(ranges).toEqual([{ from: 0, to: 5, innerFrom: 2, innerTo: 3, display: true }]);
     });
 
     it("offsets all positions into document space", () => {
@@ -46,9 +42,7 @@ describe("findMathRanges", () => {
     it("lets display math span lines", () => {
         const ranges = findMathRanges("$$\nx\n$$", 0);
 
-        expect(ranges).toEqual([
-            { from: 0, to: 7, innerFrom: 2, innerTo: 5, display: true },
-        ]);
+        expect(ranges).toEqual([{ from: 0, to: 7, innerFrom: 2, innerTo: 5, display: true }]);
     });
 
     it("finds adjacent segments", () => {
@@ -70,8 +64,6 @@ describe("findMathRanges", () => {
     it("skips escaped dollars inside math without ending the segment", () => {
         const ranges = findMathRanges("$a\\$b$", 0);
 
-        expect(ranges).toEqual([
-            { from: 0, to: 6, innerFrom: 1, innerTo: 5, display: false },
-        ]);
+        expect(ranges).toEqual([{ from: 0, to: 6, innerFrom: 1, innerTo: 5, display: false }]);
     });
 });

@@ -1,0 +1,68 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=0.9in]{geometry}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage[hidelinks]{hyperref}
+
+\pagestyle{empty}
+
+% Section headings become a small caps line with a rule under it, which
+% is the whole visual system of this CV — deliberately plain, so it
+% reads well on paper and through applicant tracking systems.
+\titleformat{\section}{\large\scshape}{}{0em}{}[\titlerule]
+\titlespacing{\section}{0pt}{1.2em}{0.6em}
+
+% One entry of experience or education: what, where, when, then detail.
+\newcommand{\entry}[4]{%
+    \textbf{#1} \hfill #2 \\
+    \textit{#3} \hfill \textit{#4} \\[0.2em]
+}
+
+\begin{document}
+
+\begin{center}
+    {\LARGE\bfseries {name}} \\[0.4em]
+    Your City, Country $\cdot$ you@example.com $\cdot$ +00 000 000 000 \\
+    \href{https://example.com}{example.com}
+\end{center}
+
+\section{Education}
+
+\entry{Your Degree}{2022 -- 2026}{Your University}{City}
+\begin{itemize}[leftmargin=*, itemsep=0.1em]
+    \item Thesis, honours, or coursework worth naming.
+    \item A result or distinction, with the number that makes it real.
+\end{itemize}
+
+\section{Experience}
+
+\entry{Your Job Title}{2026 -- Present}{Company}{City}
+\begin{itemize}[leftmargin=*, itemsep=0.1em]
+    \item Start with the verb and end with the outcome: built X, which
+          cut Y by Z\%.
+    \item Keep each line to one accomplishment.
+\end{itemize}
+
+\entry{An Earlier Role}{2024 -- 2026}{Company}{City}
+\begin{itemize}[leftmargin=*, itemsep=0.1em]
+    \item What you owned, and what changed because of it.
+\end{itemize}
+
+\section{Skills}
+
+\begin{itemize}[leftmargin=*, itemsep=0.1em]
+    \item \textbf{Technical:} the tools you would be happy to be tested on.
+    \item \textbf{Languages:} English (native), another (working).
+\end{itemize}
+
+\section{Projects}
+
+\begin{itemize}[leftmargin=*, itemsep=0.1em]
+    \item \textbf{Project name} --- one line on what it does and what
+          you built it with.
+\end{itemize}
+
+\end{document}

@@ -20,9 +20,8 @@ export type CommandHandler = (
 ) => unknown | Promise<unknown>;
 
 /** The mock standing in for Tauri's `invoke`. */
-export const invokeMock = vi.fn<
-    (command: string, args?: Record<string, unknown>) => Promise<unknown>
->();
+export const invokeMock =
+    vi.fn<(command: string, args?: Record<string, unknown>) => Promise<unknown>>();
 
 /**
  * Routes mocked invoke calls to per-command handlers.

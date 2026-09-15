@@ -1,9 +1,9 @@
 name: Rust
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main", "master"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main", "master"]
 env:
   CARGO_TERM_COLOR: always
 jobs:
@@ -11,9 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: src-tauri     
+        working-directory: src-tauri
     steps:
-      - uses: actions/checkout@v4        
+      - uses: actions/checkout@v4
 
       - name: Install Tauri system dependencies
         run: |
@@ -27,6 +27,25 @@ jobs:
             libxdo-dev \
             build-essential \
             curl wget file pkg-config
+
+      # `tauri.conf.json` declares the Tectonic sidecar under
+      # `externalBin`, and tauri-build refuses to build without it —
+      # "resource path binaries/tectonic-… doesn't exist". The binary is
+      # gitignored (20 MB, reproducible from an upstream release), so CI
+      # fetches it like any other dependency.
+      - name: Cache the Tectonic sidecar
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/binaries
+          key: tectonic-${{ runner.os }}-${{ hashFiles('scripts/fetchTectonic.mjs') }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Fetch the Tectonic sidecar
+        working-directory: ${{ github.workspace }}
+        run: npm run tectonic:fetch
 
       - name: Build
         run: cargo build --verbose

@@ -17,17 +17,43 @@
  * it, which reveals it on the next update.
  */
 
-import { EditorState, StateField } from "@codemirror/state";
+import { EditorState, Facet, StateField } from "@codemirror/state";
 import type { EditorSelection, Extension, Range } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin } from "@codemirror/view";
-import type { DecorationSet, ViewUpdate } from "@codemirror/view";
-import { findMathRanges } from "./findMath";
-import { findEnvironments } from "./findEnvironments";
-import { findSymbolRanges } from "./symbols";
-import { parseTabular } from "./parseTabular";
-import { MathWidget, PreambleWidget, SymbolWidget, TableWidget } from "./MathWidget";
+import type { DecorationSet, ViewUpdate, WidgetType } from "@codemirror/view";
+import {
+    pointerSelectionTracker,
+    revealSelection,
+    togglesPointerSelection,
+    updateTogglesPointerSelection,
+} from "./pointerSelection";
+import { findMathRanges } from "../latex/findMath";
+import type { MathRange } from "../latex/findMath";
+import { findEnvironments } from "../latex/findEnvironments";
+import type { EnvRange } from "../latex/findEnvironments";
+import { findInertRegions, maskChunk } from "../latex/inertRegions";
+import type { InertRegions } from "../latex/inertRegions";
+import type { FormatRange } from "../latex/findFormatting";
+import { scanInline } from "../latex/scanInline";
+import { findListItems } from "../latex/findListItems";
+import type { ListItem } from "../latex/findListItems";
+import { findMacros } from "../latex/findMacros";
+import type { MacroTable } from "../latex/findMacros";
+import { findSections } from "../latex/findSections";
+import type { SectionRange } from "../latex/findSections";
+import { parseTabular } from "../latex/parseTabular";
+import {
+    GraphicsWidget,
+    ListMarkerWidget,
+    MathWidget,
+    PreambleWidget,
+    RefChipWidget,
+    SymbolWidget,
+    TableWidget,
+} from "./MathWidget";
 import "katex/dist/katex.min.css";
 import "./livePreview.css";
+import type { Interval } from "../latex/interval";
 
 /**
  * Reports whether any selection range touches `[from, to]`.
@@ -42,15 +68,137 @@ function selectionTouches(selection: EditorSelection, from: number, to: number):
 }
 
 /**
- * Builds the inline decorations (inline math + special-character
- * symbols) for the visible ranges only.
+ * Whether cursor contact reveals rendered source. Live mode provides
+ * `true`; read-only mode provides `false` so everything stays rendered
+ * regardless of the selection. Absent (e.g. no preview), defaults to
+ * revealing.
+ */
+const revealFacet = Facet.define<boolean, boolean>({
+    combine: (values) => values[0] ?? true,
+});
+
+/**
+ * Whether this editor is frozen: it keeps the look it last produced
+ * instead of re-rendering as the cursor moves.
+ *
+ * Set for every pane except the one the user is working in. With
+ * several files open, each keystroke would otherwise cost a rebuild in
+ * every pane, and the panes nobody is looking at pay the same price as
+ * the one they are.
+ *
+ * **A frozen editor never reveals.** That is not a side effect, it is
+ * the definition — and it is what makes the caching safe rather than
+ * merely cheap. Reveal is the only thing that makes the output depend
+ * on the selection, so with it off, a selection change provably cannot
+ * change what is rendered and skipping the rebuild is free. It also
+ * looks better: an unfocused pane showing raw `$x^2$` because its
+ * stale cursor happens to sit in a maths block is a wart, not a
+ * feature.
+ *
+ * What freezing does *not* cover is the document and the viewport.
+ * Both still rebuild — see {@link shouldRebuildInline}.
+ *
+ * Absent (a lone editor, tests, the browser harness), nothing is
+ * frozen.
+ */
+export const frozenFacet = Facet.define<boolean, boolean>({
+    combine: (values) => values[0] ?? false,
+});
+
+/**
+ * Whether the freeze state changed across a transaction.
+ *
+ * Focusing a pane has to rebuild *immediately*: the user is about to
+ * type, and the reveal that freezing suppressed has to come back
+ * before they do. The reconfiguring transaction carries no document
+ * change and no selection, so without this it would slip past every
+ * other guard.
+ *
+ * @param before - The state before the transaction.
+ * @param after - The state after it.
+ * @returns True when the editor froze or unfroze.
+ */
+function togglesFrozen(before: EditorState, after: EditorState): boolean {
+    return before.facet(frozenFacet) !== after.facet(frozenFacet);
+}
+
+/**
+ * Turns an image path as written in LaTeX into a URL the webview can
+ * load, or null when it cannot be resolved.
+ *
+ * Injected rather than imported so the preview stays independent of
+ * Tauri: the host knows where the document lives and which protocol
+ * serves local files, and the preview only needs the answer. Without
+ * one (plain browser, tests) images render as placeholders.
+ */
+export type ImageSourceResolver = (path: string) => string | null;
+
+/** Holds the host's image resolver, if it supplied one. */
+const imageResolverFacet = Facet.define<ImageSourceResolver, ImageSourceResolver | null>({
+    combine: (values) => values[0] ?? null,
+});
+
+/**
+ * Opens a `\url`/`\href` target outside the editor.
+ *
+ * Injected for the same reason as the image resolver: a desktop shell
+ * and a browser open links differently, and the preview should know
+ * about neither. Without one, link chips render without an open
+ * affordance rather than offering something that cannot work.
+ */
+export type LinkOpener = (url: string) => void;
+
+/** Holds the host's link opener, if it supplied one. */
+const linkOpenerFacet = Facet.define<LinkOpener, LinkOpener | undefined>({
+    combine: (values) => values[0],
+});
+
+/**
+ * Reports whether a rendered region should reveal its source: only
+ * when reveal is enabled (live mode) and the selection touches it.
+ *
+ * @param state - The editor state (carries the reveal facet + selection).
+ * @param from - Range start.
+ * @param to - Range end.
+ * @returns True when the region should show as raw source.
+ */
+function isRevealed(state: EditorState, from: number, to: number): boolean {
+    // A frozen editor holds its look, which means it shows no source.
+    if (state.facet(frozenFacet)) return false;
+
+    if (!state.facet(revealFacet)) return false;
+
+    // Frozen while a drag-selection is in progress, so revealing a
+    // block cannot shift the lines out from under the pointer.
+    return selectionTouches(revealSelection(state), from, to);
+}
+
+/**
+ * The inline layer's decoration output, split by purpose.
+ *
+ * Replaces are atomic (arrow keys hop over them); content marks must
+ * NOT be atomic or the cursor could never enter formatted text.
+ */
+interface InlineDecorationSets {
+    /** Everything rendered: replaces plus content marks. */
+    readonly decorations: DecorationSet;
+    /** Replaces only, fed to `EditorView.atomicRanges`. */
+    readonly atomic: DecorationSet;
+}
+
+/**
+ * Builds the inline decorations (inline math, formatting commands,
+ * and special-character symbols) for the visible ranges only.
  *
  * @param view - The editor view.
- * @returns Replace decorations for every rendered inline segment.
+ * @returns The rendered decorations and their atomic subset.
  */
-function buildInlineDecorations(view: EditorView): DecorationSet {
-    const decorations: Range<Decoration>[] = [];
+function buildInlineDecorations(view: EditorView): InlineDecorationSets {
+    const replaces: Range<Decoration>[] = [];
+    const marks: Range<Decoration>[] = [];
     const { state } = view;
+    const scan = state.field(documentScanField);
+    const { inertRegions } = scan;
 
     // Visible ranges are expanded to whole lines so a `$...$` pair is
     // never split by a range edge; the clamp keeps expanded ranges
@@ -64,123 +212,447 @@ function buildInlineDecorations(view: EditorView): DecorationSet {
         if (to <= lastProcessedEnd) continue;
         lastProcessedEnd = to;
 
-        const text = state.doc.sliceString(from, to);
-        const mathRanges = findMathRanges(text, from);
+        // Only the visible chunk is masked, so nothing inside a comment
+        // or a verbatim body is ever rendered and the cost tracks the
+        // viewport. Widget content is still read from the real
+        // document below.
+        const text = maskChunk(state.doc.sliceString(from, to), from, inertRegions);
+
+        // Taken from the cached whole-document scan rather than scanned
+        // again. Besides saving a pass per chunk, it fixes a real edge
+        // case: a `$…$` that *starts* above the viewport is invisible to
+        // a chunk scan, because the chunk is cut at a line boundary —
+        // so it used to render as raw source until scrolled past. Any
+        // range overlapping the chunk counts, not just one contained by
+        // it.
+        const mathRanges = scan.math.filter((math) => math.to > from && math.from < to);
+
+        // The scanners run in one shared order (see `latex/scanInline`),
+        // so a table cell resolves overlapping constructs exactly as
+        // the document around it does.
+        const inline = scanInline(text, from, { math: mathRanges });
 
         for (const math of mathRanges) {
             // Display math is the block layer's responsibility.
             if (math.display) continue;
 
-            if (selectionTouches(state.selection, math.from, math.to)) continue;
+            if (isRevealed(state, math.from, math.to)) continue;
 
             const source = state.doc.sliceString(math.innerFrom, math.innerTo);
-            decorations.push(
-                Decoration.replace({ widget: new MathWidget(source, false) }).range(
-                    math.from,
-                    math.to,
-                ),
+            replaces.push(
+                Decoration.replace({
+                    widget: new MathWidget(source, false, scan.macros, scan.macroKey),
+                }).range(math.from, math.to),
             );
         }
 
-        // Special characters outside math (KaTeX renders those itself).
-        for (const symbol of findSymbolRanges(text, from, mathRanges)) {
-            if (selectionTouches(state.selection, symbol.from, symbol.to)) continue;
+        collectFormattingDecorations(state, inline.formats, replaces, marks);
 
-            decorations.push(
+        const openLink = state.facet(linkOpenerFacet);
+        for (const ref of inline.refs) {
+            if (isRevealed(state, ref.from, ref.to)) continue;
+
+            replaces.push(
+                Decoration.replace({
+                    widget: new RefChipWidget(
+                        ref.kind,
+                        ref.keys,
+                        ref.note,
+                        ref.target,
+                        openLink,
+                    ),
+                }).range(ref.from, ref.to),
+            );
+        }
+
+        for (const graphics of inline.graphics) {
+            if (isRevealed(state, graphics.from, graphics.to)) continue;
+
+            const resolveImageSource = state.facet(imageResolverFacet);
+            replaces.push(
+                Decoration.replace({
+                    widget: new GraphicsWidget(
+                        graphics.path,
+                        resolveImageSource?.(graphics.path) ?? null,
+                    ),
+                }).range(graphics.from, graphics.to),
+            );
+        }
+
+        for (const symbol of inline.symbols) {
+            if (isRevealed(state, symbol.from, symbol.to)) continue;
+
+            replaces.push(
                 Decoration.replace({ widget: new SymbolWidget(symbol.symbol) }).range(
                     symbol.from,
                     symbol.to,
                 ),
             );
         }
+
+        for (const replacement of inline.replacements) {
+            if (isRevealed(state, replacement.from, replacement.to)) continue;
+
+            replaces.push(
+                Decoration.replace({
+                    widget: new SymbolWidget(replacement.text, "cm-text-replacement"),
+                }).range(replacement.from, replacement.to),
+            );
+        }
     }
 
-    return Decoration.set(decorations, true);
+    return {
+        decorations: Decoration.set([...replaces, ...marks], true),
+        atomic: Decoration.set(replaces, true),
+    };
 }
 
-/** Viewport-limited plugin rendering inline math. */
-const inlineMathPlugin = ViewPlugin.fromClass(
+/**
+ * Adds decorations for every formatting command the cursor is not
+ * touching: replaces hiding the command token and closing brace, and
+ * a style mark over the content (which stays editable raw text).
+ *
+ * @param state - The editor state.
+ * @param text - The visible chunk's text.
+ * @param offset - Document position of `text[0]`.
+ * @param mathRanges - Math intervals to exclude (KaTeX territory).
+ * @param replaces - Output list for the hidden-token replaces.
+ * @param marks - Output list for the content style marks.
+ */
+function collectFormattingDecorations(
+    state: EditorState,
+    formats: readonly FormatRange[],
+    replaces: Range<Decoration>[],
+    marks: Range<Decoration>[],
+): void {
+    for (const format of formats) {
+        if (isRevealed(state, format.from, format.to)) continue;
+
+        replaces.push(Decoration.replace({}).range(format.from, format.contentFrom));
+        replaces.push(Decoration.replace({}).range(format.contentTo, format.to));
+        marks.push(
+            Decoration.mark({ class: `cm-fmt-${format.style}` }).range(
+                format.contentFrom,
+                format.contentTo,
+            ),
+        );
+    }
+}
+
+/**
+ * Whether an update changes what the inline layer should render.
+ *
+ * @param update - The view update.
+ * @returns True when the decorations must be rebuilt.
+ */
+function shouldRebuildInline(update: ViewUpdate): boolean {
+    // Always, frozen or not. Decorations sit at document positions, and
+    // keeping stale ones over changed text would render the wrong
+    // characters — a rename repoints a file under a pane nobody is
+    // looking at, which is exactly when this would go unnoticed.
+    if (update.docChanged) return true;
+
+    if (togglesFrozen(update.startState, update.state)) return true;
+
+    // Frozen, so reveal is off and the selection cannot change the
+    // output. The *viewport* still can: this layer only decorates what
+    // is on screen, and an unfocused pane can still be scrolled or
+    // resized by dragging a splitter. Freezing that would show raw
+    // source wherever the user scrolled to.
+    if (update.state.facet(frozenFacet)) return update.viewportChanged;
+
+    return (
+        update.selectionSet || update.viewportChanged || updateTogglesPointerSelection(update)
+    );
+}
+
+/**
+ * Viewport-limited plugin rendering inline math, formatting, and
+ * symbols.
+ *
+ * Exported for the same reason as {@link documentScanField}: freezing
+ * is a claim about decorations *not* being rebuilt, and the only
+ * honest way to assert that is reference identity. Deliberately absent
+ * from the barrel — this is reachable by the module's own test, not by
+ * the app.
+ */
+export const inlineMathPlugin = ViewPlugin.fromClass(
     class {
         decorations: DecorationSet;
+        atomic: DecorationSet;
 
         constructor(view: EditorView) {
-            this.decorations = buildInlineDecorations(view);
+            const sets = buildInlineDecorations(view);
+            this.decorations = sets.decorations;
+            this.atomic = sets.atomic;
         }
 
         update(update: ViewUpdate) {
-            if (update.docChanged || update.selectionSet || update.viewportChanged) {
-                this.decorations = buildInlineDecorations(update.view);
+            if (shouldRebuildInline(update)) {
+                const sets = buildInlineDecorations(update.view);
+                this.decorations = sets.decorations;
+                this.atomic = sets.atomic;
             }
         }
     },
     {
         decorations: (value) => value.decorations,
         provide: (plugin) =>
-            // Atomic ranges make arrow keys jump over rendered math
-            // instead of stepping through the hidden source.
+            // Atomic ranges make arrow keys jump over rendered widgets
+            // instead of stepping through the hidden source. Only the
+            // replaces are atomic — content marks stay enterable.
             EditorView.atomicRanges.of(
-                (view) => view.plugin(plugin)?.decorations ?? Decoration.none,
+                (view) => view.plugin(plugin)?.atomic ?? Decoration.none,
             ),
     },
 );
 
-/** A half-open interval used for overlap bookkeeping. */
-interface Interval {
-    readonly from: number;
-    readonly to: number;
+/**
+ * Everything the block layer scans out of the document, plus the two
+ * views of its text.
+ *
+ * The block layer renders across the whole file, so its scans are
+ * whole-document by nature. What they are *not* is selection-
+ * dependent: moving the cursor cannot change where the math or the
+ * environments are, only which of them are revealed. Caching the scan
+ * separately is what keeps a cursor move from re-running four regex
+ * passes and rebuilding two full copies of the document.
+ */
+interface DocumentScan {
+    /** The real document text; supplies the content widgets render. */
+    readonly docText: string;
+    /** Masked text; every scan below was run against it. */
+    readonly scanText: string;
+    /** Comment and verbatim regions, for the inline layer's chunks. */
+    readonly inertRegions: InertRegions;
+    readonly math: readonly MathRange[];
+    readonly environments: readonly EnvRange[];
+    readonly sections: readonly SectionRange[];
+    readonly listItems: readonly ListItem[];
+    /**
+     * Macros the document defines for itself, handed to KaTeX so maths
+     * using them renders instead of showing a red command name.
+     */
+    readonly macros: MacroTable;
+    /**
+     * A stable identity for {@link macros}, so a widget can tell
+     * whether the macro table changed without comparing it entry by
+     * entry on every render.
+     */
+    readonly macroKey: string;
 }
 
 /**
- * Reports whether `[from, to]` intersects any interval in `intervals`.
+ * Scans a document once, producing everything both layers need.
  *
- * @param intervals - The intervals to test against.
- * @param from - Range start.
- * @param to - Range end.
- * @returns True on any intersection.
+ * @param docText - The full document text.
+ * @returns The cached scan.
  */
-function overlapsAny(intervals: readonly Interval[], from: number, to: number): boolean {
-    return intervals.some((interval) => interval.from <= to && interval.to >= from);
+function scanDocument(docText: string): DocumentScan {
+    const inertRegions = findInertRegions(docText);
+    const scanText = maskChunk(docText, 0, inertRegions);
+
+    // Read from the masked text, so a definition sitting in a comment
+    // is not picked up — commented-out macros are common in preambles.
+    const macros = findMacros(scanText);
+
+    return {
+        docText,
+        scanText,
+        inertRegions,
+        math: findMathRanges(scanText, 0),
+        environments: findEnvironments(scanText),
+        sections: findSections(scanText),
+        listItems: findListItems(scanText),
+        macros,
+        macroKey: JSON.stringify(macros),
+    };
+}
+
+/**
+ * The document scan, recomputed only when the document changes.
+ *
+ * Exported so tests can assert that identity: a cursor move must hand
+ * back the very same scan object, or the preview is rescanning the
+ * whole document on every arrow key.
+ */
+export const documentScanField = StateField.define<DocumentScan>({
+    create: (state) => scanDocument(state.doc.toString()),
+
+    update(scan, transaction) {
+        if (!transaction.docChanged) return scan;
+        return scanDocument(transaction.newDoc.toString());
+    },
+});
+
+/**
+ * Regions already consumed by a replacing decoration.
+ *
+ * CodeMirror rejects overlapping replaces within one decoration set,
+ * so every pass checks this before adding its own. Kept sorted so the
+ * check is a binary search rather than a scan of every prior claim —
+ * the passes run over the whole document, so a linear check made the
+ * whole build quadratic in the number of rendered constructs.
+ */
+export class ClaimedRanges {
+    /**
+     * Disjoint and sorted. Overlapping additions are merged, which is
+     * what makes the ends ascending too — and therefore what makes the
+     * overlap query a single binary search instead of a walk back over
+     * earlier claims that might still span the query.
+     */
+    private ranges: Interval[] = [];
+
+    /**
+     * Records a region as claimed, merging it with any it touches.
+     *
+     * @param from - Region start.
+     * @param to - Region end.
+     */
+    add(from: number, to: number): void {
+        const first = this.firstReaching(from);
+
+        let index = first;
+        let mergedFrom = from;
+        let mergedTo = to;
+
+        // Absorb every existing claim this one touches.
+        while (index < this.ranges.length) {
+            const range = this.ranges[index];
+            if (!range || range.from > to) break;
+
+            mergedFrom = Math.min(mergedFrom, range.from);
+            mergedTo = Math.max(mergedTo, range.to);
+            index += 1;
+        }
+
+        this.ranges.splice(first, index - first, { from: mergedFrom, to: mergedTo });
+    }
+
+    /**
+     * Reports whether a region intersects anything already claimed.
+     *
+     * @param from - Region start.
+     * @param to - Region end.
+     * @returns True on any intersection.
+     */
+    overlaps(from: number, to: number): boolean {
+        const candidate = this.ranges[this.firstReaching(from)];
+        return candidate !== undefined && candidate.from <= to;
+    }
+
+    /**
+     * Finds the first claim whose end reaches `position`.
+     *
+     * Relies on the claims being disjoint, so their ends ascend.
+     *
+     * @param position - The position to reach.
+     * @returns The index of that claim, or the array length.
+     */
+    private firstReaching(position: number): number {
+        let low = 0;
+        let high = this.ranges.length;
+
+        while (low < high) {
+            const middle = (low + high) >> 1;
+            if ((this.ranges[middle]?.to ?? 0) < position) low = middle + 1;
+            else high = middle;
+        }
+
+        return low;
+    }
+}
+
+/**
+ * The block layer's output, split so replaces can also be published as
+ * atomic ranges.
+ */
+interface BlockDecorationSets {
+    /** Everything the layer renders. */
+    readonly decorations: DecorationSet;
+    /** The subset arrow keys should skip over. */
+    readonly atomic: DecorationSet;
+    /**
+     * Regions replaced as whole-line blocks, in document order.
+     *
+     * A block replace leaves no text line for vertical cursor motion to
+     * land on, so arrow keys step clean over it — which made display
+     * maths, hidden `\begin`/`\end` lines and the preamble reachable
+     * only with the mouse. {@link revealBlockOnVerticalMotion} uses
+     * these to stop the cursor inside one instead.
+     */
+    readonly blocks: readonly Interval[];
+}
+
+/**
+ * Working state threaded through the block-layer passes.
+ */
+interface BlockBuild {
+    readonly state: EditorState;
+    readonly scan: DocumentScan;
+    /** Decorations produced so far. */
+    readonly decorations: Range<Decoration>[];
+    /**
+     * Replaces that should be atomic. Whole-line and block replaces are
+     * deliberately excluded: the only way to reveal a hidden tag line is
+     * to put the cursor on it, which atomic ranges would prevent.
+     */
+    readonly atomic: Range<Decoration>[];
+    /** Whole-line block replaces, for cursor motion to stop inside. */
+    readonly blocks: Interval[];
+    /** Regions already replaced, which later passes must not overlap. */
+    readonly claimed: ClaimedRanges;
 }
 
 /**
  * Builds the whole-document block decorations: display math widgets,
- * environment boxes, and the collapsed preamble.
+ * environment boxes, headings, list markers and the collapsed preamble.
+ *
+ * Runs on selection changes as well as edits, since the cursor decides
+ * what is revealed — but it reads the cached scan rather than
+ * rescanning, so a cursor move costs decoration building alone.
  *
  * @param state - The editor state.
- * @returns The sorted block-layer decoration set.
+ * @returns The sorted block-layer decoration sets.
  */
-function buildBlockDecorations(state: EditorState): DecorationSet {
-    const docText = state.doc.toString();
-    const decorations: Range<Decoration>[] = [];
+function buildBlockDecorations(state: EditorState): BlockDecorationSets {
+    const build: BlockBuild = {
+        state,
+        scan: state.field(documentScanField),
+        decorations: [],
+        atomic: [],
+        blocks: [],
+        claimed: new ClaimedRanges(),
+    };
 
-    const hiddenMath = collectDisplayMathDecorations(state, docText, decorations);
-    collectEnvironmentDecorations(state, docText, hiddenMath, decorations);
+    collectDisplayMathDecorations(build);
+    collectEnvironmentDecorations(build);
+    collectHeadingDecorations(build);
+    collectListItemDecorations(build);
 
-    return Decoration.set(decorations, true);
+    return {
+        decorations: Decoration.set(build.decorations, true),
+        atomic: Decoration.set(build.atomic, true),
+        // The passes run in their own order, not the document's.
+        blocks: [...build.blocks].sort((first, second) => first.from - second.from),
+    };
 }
 
 /**
  * Adds a replace decoration (widget) for each display math segment the
  * cursor is not touching.
  *
- * @param state - The editor state.
- * @param docText - The full document text.
- * @param decorations - Output list decorations are pushed into.
- * @returns The intervals that were replaced, for overlap avoidance.
+ * @param build - The block-layer working state.
  */
-function collectDisplayMathDecorations(
-    state: EditorState,
-    docText: string,
-    decorations: Range<Decoration>[],
-): readonly Interval[] {
-    const hidden: Interval[] = [];
+function collectDisplayMathDecorations(build: BlockBuild): void {
+    const { state, scan } = build;
 
-    for (const math of findMathRanges(docText, 0)) {
+    for (const math of scan.math) {
         if (!math.display) continue;
 
-        if (selectionTouches(state.selection, math.from, math.to)) continue;
+        if (isRevealed(state, math.from, math.to)) continue;
 
-        const source = docText.slice(math.innerFrom, math.innerTo);
+        const source = scan.docText.slice(math.innerFrom, math.innerTo);
         const startLine = state.doc.lineAt(math.from);
         const endLine = state.doc.lineAt(math.to);
 
@@ -189,17 +661,17 @@ function collectDisplayMathDecorations(
         // in display style).
         const coversFullLines = math.from === startLine.from && math.to === endLine.to;
 
-        decorations.push(
+        build.decorations.push(
             Decoration.replace({
-                widget: new MathWidget(source, true),
+                widget: new MathWidget(source, true, scan.macros, scan.macroKey),
                 block: coversFullLines,
             }).range(math.from, math.to),
         );
 
-        hidden.push({ from: math.from, to: math.to });
-    }
+        if (coversFullLines) build.blocks.push({ from: math.from, to: math.to });
 
-    return hidden;
+        build.claimed.add(math.from, math.to);
+    }
 }
 
 /**
@@ -207,26 +679,16 @@ function collectDisplayMathDecorations(
  * hidden `\begin`/`\end` lines, box styling on interior lines, and
  * (for `document`) the collapsed preamble chip.
  *
- * @param state - The editor state.
- * @param docText - The full document text.
- * @param hiddenMath - Intervals already replaced by display math.
- * @param decorations - Output list decorations are pushed into.
+ * @param build - The block-layer working state.
  */
-function collectEnvironmentDecorations(
-    state: EditorState,
-    docText: string,
-    hiddenMath: readonly Interval[],
-    decorations: Range<Decoration>[],
-): void {
+function collectEnvironmentDecorations(build: BlockBuild): void {
+    const { state, scan } = build;
+
     // Dedupe hidden lines: nested `\begin`s on one line would otherwise
     // produce overlapping block replaces, which CodeMirror rejects.
     const hiddenLineNumbers = new Set<number>();
 
-    // Environments fully replaced by a widget (tables); anything
-    // nested inside them must not add decorations of its own.
-    const replacedEnvRanges: Interval[] = [];
-
-    for (const env of findEnvironments(docText)) {
+    for (const env of scan.environments) {
         const beginLine = state.doc.lineAt(env.from);
         const endLine = state.doc.lineAt(env.endFrom);
 
@@ -238,68 +700,186 @@ function collectEnvironmentDecorations(
         // environment (especially `document`), and editing the body
         // must not un-box it.
         const tagsRevealed =
-            selectionTouches(state.selection, beginLine.from, beginLine.to) ||
-            selectionTouches(state.selection, endLine.from, endLine.to);
+            isRevealed(state, beginLine.from, beginLine.to) ||
+            isRevealed(state, endLine.from, endLine.to);
         if (tagsRevealed) continue;
 
-        if (overlapsAny(replacedEnvRanges, env.from, env.to)) continue;
+        // Only the *tag lines* are checked, deliberately. The box
+        // treatment replaces nothing but those two lines — the interior
+        // gets line decorations, which sit happily over a block widget.
+        //
+        // Testing the whole range instead was a bug: display math is
+        // claimed in an earlier pass, so a `$$…$$` anywhere in the body
+        // made `document` look claimed and skipped its box, hidden tags
+        // and preamble chip. It rendered correctly only while the
+        // cursor was inside the maths, because revealing them claimed
+        // nothing. Wholesale replacement still needs the full-range
+        // check, and `tryReplaceEnvironment` makes it for itself.
+        //
+        // A tag line inside a claimed region means this environment is
+        // nested in one already replaced wholesale, which these two
+        // checks still catch.
+        if (build.claimed.overlaps(beginLine.from, beginLine.to)) continue;
+        if (build.claimed.overlaps(endLine.from, endLine.to)) continue;
 
-        // Skip environments whose tag lines are already consumed by a
-        // display-math widget — overlapping replaces are not allowed
-        // within one decoration set.
-        const tagsCollide =
-            overlapsAny(hiddenMath, beginLine.from, beginLine.to) ||
-            overlapsAny(hiddenMath, endLine.from, endLine.to);
-        if (tagsCollide) continue;
+        if (tryReplaceEnvironment(build, env)) continue;
 
-        if (tryReplaceTabular(decorations, state, docText, env, hiddenMath, replacedEnvRanges)) {
-            continue;
-        }
+        hideLine(build, hiddenLineNumbers, beginLine.number);
+        hideLine(build, hiddenLineNumbers, endLine.number);
 
-        hideLine(decorations, hiddenLineNumbers, beginLine.number, state);
-        hideLine(decorations, hiddenLineNumbers, endLine.number, state);
+        boxInteriorLines(build.decorations, state, beginLine.number, endLine.number);
 
-        boxInteriorLines(decorations, state, beginLine.number, endLine.number);
-
-        if (env.name === "document") {
-            collapsePreamble(decorations, state, beginLine.from);
-        }
+        if (env.name === "document") collapsePreamble(build, beginLine.from);
     }
 }
 
 /**
- * Replaces a `tabular` environment with a rendered table widget when
- * possible.
+ * Adds heading decorations for every sectioning command: a line class
+ * sizing the whole line, plus replaces hiding the `\section{` prefix
+ * and closing `}` when the cursor is off the heading line.
  *
- * Falls back (returns false) when the environment is not a tabular,
- * its content cannot be parsed, its tag lines share content with
- * other text, or the range collides with a display-math widget — the
- * caller then applies the generic box treatment instead.
+ * The line class is applied even while the heading is revealed so the
+ * text keeps its size during editing (Obsidian-style).
  *
- * @param decorations - Output list decorations are pushed into.
- * @param state - The editor state.
- * @param docText - The full document text.
- * @param env - The environment under consideration.
- * @param hiddenMath - Intervals already replaced by display math.
- * @param replacedEnvRanges - Output list of fully replaced env ranges.
- * @returns True when the environment was replaced by a table.
+ * @param build - The block-layer working state.
  */
-function tryReplaceTabular(
-    decorations: Range<Decoration>[],
-    state: EditorState,
-    docText: string,
-    env: { readonly name: string; readonly from: number; readonly to: number; readonly beginTo: number; readonly endFrom: number },
-    hiddenMath: readonly Interval[],
-    replacedEnvRanges: Interval[],
-): boolean {
-    if (env.name !== "tabular" && env.name !== "tabular*") return false;
+function collectHeadingDecorations(build: BlockBuild): void {
+    const { state } = build;
 
-    // A table is replaced wholesale, so any cursor contact reveals the
-    // source (the generic box then applies while editing inside).
-    if (selectionTouches(state.selection, env.from, env.to)) return false;
+    for (const section of build.scan.sections) {
+        // Headings inside fully replaced regions (tables, preamble,
+        // hidden tag lines, display math) must not add decorations —
+        // overlapping replaces are rejected within one set.
+        if (build.claimed.overlaps(section.from, section.to)) continue;
 
-    const parsed = parseTabular(docText.slice(env.beginTo, env.endFrom));
-    if (!parsed) return false;
+        const line = state.doc.lineAt(section.from);
+        build.decorations.push(
+            Decoration.line({ class: `cm-heading-${section.level}` }).range(line.from),
+        );
+
+        if (isRevealed(state, line.from, line.to)) continue;
+
+        // Atomic: arrow keys skip the invisible `\section{` and `}`
+        // instead of taking several presses to cross them. The cursor
+        // can still land on the heading's text, which is what reveals
+        // it, so nothing becomes unreachable.
+        addReplace(build, section.from, section.contentFrom, true);
+        addReplace(build, section.contentTo, section.to, true);
+    }
+}
+
+/**
+ * Adds a marker widget for every `\item` the cursor is not touching.
+ *
+ * The reveal granularity is the token only: editing the item's text
+ * keeps the marker rendered, matching the env-box philosophy that
+ * editing a body must not un-render its container.
+ *
+ * @param build - The block-layer working state.
+ */
+function collectListItemDecorations(build: BlockBuild): void {
+    const { state } = build;
+
+    for (const item of build.scan.listItems) {
+        // Items inside fully replaced regions must not add replaces —
+        // overlapping replaces are rejected within one set.
+        if (build.claimed.overlaps(item.from, item.to)) continue;
+
+        if (isRevealed(state, item.from, item.to)) continue;
+
+        // Atomic: one arrow press crosses the marker rather than
+        // stepping through the hidden `\item`. Clicking it still
+        // reveals the token.
+        addReplace(build, item.from, item.to, true, new ListMarkerWidget(item.marker));
+    }
+}
+
+/**
+ * Environments handed to KaTeX as display math.
+ *
+ * Only *outer* display-math environments are listed. Inner ones
+ * (`split`, `matrix`, `array`, …) are not valid on their own and
+ * appear inside these, so they render as part of the whole — KaTeX
+ * receives the environment tags too, which is what drives its
+ * alignment and equation numbering.
+ *
+ * The list is exactly what KaTeX implements, verified by rendering
+ * each one: `multline`, `flalign`, `eqnarray` and `displaymath` are
+ * absent because KaTeX rejects them outright ("No such environment"),
+ * and an error-styled widget is worse than the generic box.
+ */
+export const MATH_ENVIRONMENTS: ReadonlySet<string> = new Set([
+    "equation",
+    "equation*",
+    "align",
+    "align*",
+    "alignat",
+    "alignat*",
+    "gather",
+    "gather*",
+    "cases",
+    "dcases",
+    "rcases",
+    "aligned",
+    "alignedat",
+    "gathered",
+    "split",
+]);
+
+/**
+ * Builds the widget that should stand in for a whole environment, or
+ * null when the environment has no special rendering and should fall
+ * back to the generic box.
+ *
+ * @param env - The environment under consideration.
+ * @param scan - The cached document scan (text plus its macros).
+ * @returns The widget to render, or null to use the box treatment.
+ */
+function buildEnvironmentWidget(env: EnvRange, scan: DocumentScan): WidgetType | null {
+    const { docText } = scan;
+
+    if (env.name === "tabular" || env.name === "tabular*") {
+        const interior = docText.slice(env.beginTo, env.endFrom);
+        const parsed = parseTabular(interior);
+
+        // The interior doubles as the widget's identity, so `eq` need
+        // not walk the parsed grid; the macros are what let a cell use
+        // a `\newcommand` the document defines.
+        return parsed ? new TableWidget(parsed, interior, scan.macros, scan.macroKey) : null;
+    }
+
+    if (MATH_ENVIRONMENTS.has(env.name)) {
+        return new MathWidget(
+            docText.slice(env.from, env.to),
+            true,
+            scan.macros,
+            scan.macroKey,
+        );
+    }
+
+    return null;
+}
+
+/**
+ * Replaces a whole environment with a rendered block widget when it
+ * has one and occupies its lines cleanly.
+ *
+ * Falls back (returns false) when the environment has no widget, its
+ * content cannot be rendered, its tag lines share content with other
+ * text, or the range collides with a display-math widget — the caller
+ * then applies the generic box treatment instead.
+ *
+ * @param build - The block-layer working state.
+ * @param env - The environment under consideration.
+ * @returns True when the environment was replaced by a widget.
+ */
+function tryReplaceEnvironment(build: BlockBuild, env: EnvRange): boolean {
+    const { state, scan } = build;
+
+    // A replaced environment is rendered wholesale, so any cursor
+    // contact reveals the source (the generic box then applies while
+    // editing inside).
+    if (isRevealed(state, env.from, env.to)) return false;
 
     const beginLine = state.doc.lineAt(env.from);
     const endLine = state.doc.lineAt(env.endFrom);
@@ -307,42 +887,71 @@ function tryReplaceTabular(
     // The block replace spans whole lines; other content on the tag
     // lines would be swallowed, so bail to the box treatment.
     const tagLinesClean =
-        docText.slice(beginLine.from, env.from).trim() === "" &&
-        docText.slice(env.to, endLine.to).trim() === "";
+        scan.docText.slice(beginLine.from, env.from).trim() === "" &&
+        scan.docText.slice(env.to, endLine.to).trim() === "";
     if (!tagLinesClean) return false;
 
-    if (overlapsAny(hiddenMath, beginLine.from, endLine.to)) return false;
+    if (build.claimed.overlaps(beginLine.from, endLine.to)) return false;
 
-    decorations.push(
-        Decoration.replace({ widget: new TableWidget(parsed), block: true }).range(
-            beginLine.from,
-            endLine.to,
-        ),
-    );
-    replacedEnvRanges.push({ from: beginLine.from, to: endLine.to });
+    // Built last: the cheap rejections above avoid parsing work.
+    const widget = buildEnvironmentWidget(env, scan);
+    if (!widget) return false;
+
+    // Not atomic: the cursor must be able to reach the region to
+    // reveal the source for editing.
+    addReplace(build, beginLine.from, endLine.to, false, widget, true);
 
     return true;
 }
 
 /**
+ * Adds a replacing decoration and records the region as claimed.
+ *
+ * @param build - The block-layer working state.
+ * @param from - Region start.
+ * @param to - Region end.
+ * @param atomic - Whether arrow keys should skip the region. Never set
+ *   for regions whose only reveal path is placing the cursor in them.
+ * @param widget - Widget to render, or undefined to hide the region.
+ * @param block - Whether the replace spans whole lines.
+ */
+function addReplace(
+    build: BlockBuild,
+    from: number,
+    to: number,
+    atomic: boolean,
+    widget?: WidgetType,
+    block = false,
+): void {
+    const decoration = Decoration.replace(widget ? { widget, block } : { block }).range(
+        from,
+        to,
+    );
+
+    build.decorations.push(decoration);
+    if (atomic) build.atomic.push(decoration);
+    if (block) build.blocks.push({ from, to });
+
+    build.claimed.add(from, to);
+}
+
+/**
  * Replaces a whole line with nothing (hiding it), once per line.
  *
- * @param decorations - Output list decorations are pushed into.
+ * @param build - The block-layer working state.
  * @param hiddenLineNumbers - Lines already hidden.
  * @param lineNumber - The 1-based line to hide.
- * @param state - The editor state.
  */
-function hideLine(
-    decorations: Range<Decoration>[],
-    hiddenLineNumbers: Set<number>,
-    lineNumber: number,
-    state: EditorState,
-): void {
+function hideLine(build: BlockBuild, hiddenLineNumbers: Set<number>, lineNumber: number): void {
     if (hiddenLineNumbers.has(lineNumber)) return;
     hiddenLineNumbers.add(lineNumber);
 
-    const line = state.doc.line(lineNumber);
-    decorations.push(Decoration.replace({ block: true }).range(line.from, line.to));
+    const line = build.state.doc.line(lineNumber);
+
+    // Never atomic: putting the cursor on a hidden tag line is the only
+    // way to reveal it, so skipping over it would make `\begin{...}`
+    // permanently uneditable by keyboard.
+    addReplace(build, line.from, line.to, false, undefined, true);
 }
 
 /**
@@ -375,46 +984,197 @@ function boxInteriorLines(
  * Collapses everything above `\begin{document}` behind a preamble
  * chip, unless the cursor is inside the preamble.
  *
- * @param decorations - Output list decorations are pushed into.
- * @param state - The editor state.
+ * @param build - The block-layer working state.
  * @param documentBeginFrom - Start position of the `\begin{document}` line.
  */
-function collapsePreamble(
-    decorations: Range<Decoration>[],
-    state: EditorState,
-    documentBeginFrom: number,
-): void {
+function collapsePreamble(build: BlockBuild, documentBeginFrom: number): void {
     // No preamble when \begin{document} is the first line.
     if (documentBeginFrom === 0) return;
 
     const preambleTo = documentBeginFrom - 1;
 
-    if (selectionTouches(state.selection, 0, preambleTo)) return;
+    if (isRevealed(build.state, 0, preambleTo)) return;
 
-    decorations.push(
-        Decoration.replace({ widget: new PreambleWidget(), block: true }).range(0, preambleTo),
-    );
+    // The chip replaces the whole preamble, so anything already
+    // rendered up there (display math in a macro definition, say) would
+    // collide. The environment loop used to make this check on the
+    // caller's behalf; it no longer does, and it never covered the
+    // preamble properly anyway.
+    if (build.claimed.overlaps(0, preambleTo)) return;
+
+    // Not atomic: the cursor must be able to enter the preamble, which
+    // is what expands it for editing.
+    addReplace(build, 0, preambleTo, false, new PreambleWidget(), true);
 }
 
-/** Whole-document field rendering block math, env boxes, and preamble. */
-const blockPreviewField = StateField.define<DecorationSet>({
+/**
+ * Whole-document field rendering block math, env boxes, headings, list
+ * markers and the preamble chip.
+ *
+ * Rebuilds on selection as well as document changes, because the
+ * cursor decides what is revealed — but the underlying scan is cached
+ * in {@link documentScanField}, so a cursor move rebuilds decorations
+ * without rescanning or re-masking the document. Unless frozen, in
+ * which case it does not rebuild at all.
+ *
+ * Exported for tests, like {@link documentScanField}, and likewise not
+ * on the barrel.
+ */
+export const blockPreviewField = StateField.define<BlockDecorationSets>({
     create: buildBlockDecorations,
 
-    update(decorations, transaction) {
-        if (transaction.docChanged || transaction.selection) {
+    update(sets, transaction) {
+        // Always, frozen or not — see `shouldRebuildInline`.
+        if (transaction.docChanged) return buildBlockDecorations(transaction.state);
+
+        if (togglesFrozen(transaction.startState, transaction.state)) {
             return buildBlockDecorations(transaction.state);
         }
-        return decorations;
+
+        // Frozen: reveal is off, so the selection cannot change the
+        // output. Unlike the inline layer this scans the whole
+        // document, so the viewport is not a factor either — a frozen
+        // block layer rebuilds only when the text does.
+        if (transaction.state.facet(frozenFacet)) return sets;
+
+        if (
+            transaction.selection ||
+            // The transaction ending a drag carries no selection, but
+            // hands reveal back to the live one.
+            togglesPointerSelection(transaction)
+        ) {
+            return buildBlockDecorations(transaction.state);
+        }
+
+        return sets;
     },
 
-    provide: (field) => EditorView.decorations.from(field),
+    provide: (field) => [
+        EditorView.decorations.from(field, (sets) => sets.decorations),
+        // Block-layer replaces that arrow keys should skip. Whole-line
+        // replaces are excluded — see `addReplace`.
+        EditorView.atomicRanges.of((view) => view.state.field(field).atomic),
+    ],
 });
+
+/**
+ * Stops the cursor inside a rendered block that vertical motion would
+ * otherwise step clean over.
+ *
+ * A `block: true` replace has no text line for CodeMirror to land on,
+ * so pressing Up from below display maths lands on the line *above* it
+ * and the maths is never revealed — leaving it editable only by
+ * clicking. The same held for hidden `\begin`/`\end` lines and the
+ * collapsed preamble, whose only reveal path is the cursor.
+ *
+ * A transaction filter is the seam because every way of moving the
+ * cursor goes through one: arrow keys, Vim's `j`/`k`, Helix's motions
+ * and anything else added later. A keymap would have covered only the
+ * first, and would have had to outrank the modal keymaps to do it.
+ *
+ * The rule is deliberately narrow — it fires only when a *single*
+ * cursor movement lands on the far side of a block whose neighbouring
+ * lines are exactly where the cursor came from and went to. Clicking is
+ * excluded outright: a click says where the user wants to be.
+ */
+const revealBlockOnVerticalMotion = EditorState.transactionFilter.of((transaction) => {
+    if (!transaction.selection || transaction.docChanged) return transaction;
+
+    // Pointer selections are explicit, and a drag across a block must
+    // not be snapped back into it.
+    if (transaction.isUserEvent("select.pointer")) return transaction;
+
+    const before = transaction.startState.selection.main;
+    const after = transaction.newSelection.main;
+    if (!before.empty || !after.empty || before.head === after.head) return transaction;
+
+    const { doc } = transaction.startState;
+    const movingUp = after.head < before.head;
+    const [lower, upper] = movingUp ? [after.head, before.head] : [before.head, after.head];
+
+    const skipped = transaction.startState
+        .field(blockPreviewField)
+        .blocks.find((block) => block.from > lower && block.to < upper);
+    if (!skipped) return transaction;
+
+    // Only a step from the line directly below to the line directly
+    // above (or the reverse) counts. A jump to the top of the file, or
+    // a search landing far away, crosses blocks without meaning to
+    // enter one.
+    const blockStart = doc.lineAt(skipped.from).number;
+    const blockEnd = doc.lineAt(skipped.to).number;
+    const fromLine = doc.lineAt(before.head).number;
+    const toLine = doc.lineAt(after.head).number;
+
+    const steppedOver = movingUp
+        ? fromLine === blockEnd + 1 && toLine === blockStart - 1
+        : fromLine === blockStart - 1 && toLine === blockEnd + 1;
+    if (!steppedOver) return transaction;
+
+    // Entering from below leaves the cursor at the end of the revealed
+    // source, and from above at its start, so the next press continues
+    // in the direction of travel.
+    //
+    // Returned as `[transaction, {...}]` rather than a fresh spec: a
+    // replacement spec keeps only what it names, so building one from
+    // `selection` and `effects` alone silently discarded every
+    // annotation the original carried — user-event tags, history
+    // markers, and whatever the modal extensions put there. Vim worked
+    // only because effects happened to be among the fields copied.
+    return [
+        transaction,
+        {
+            selection: { anchor: movingUp ? skipped.to : skipped.from },
+            scrollIntoView: true,
+        },
+    ];
+});
+
+/** Options for {@link livePreview}. */
+export interface LivePreviewOptions {
+    /**
+     * Whether cursor contact reveals rendered source (default true).
+     * Read-only mode passes false so everything stays rendered.
+     */
+    readonly reveal?: boolean | undefined;
+    /**
+     * Resolves `\includegraphics` paths to loadable URLs. Omitted
+     * (plain browser, tests), images render as placeholders.
+     *
+     * Explicitly `| undefined` because the host threads an optional
+     * value straight through: under `exactOptionalPropertyTypes`,
+     * "may be absent" and "may be present and undefined" are different
+     * types, and this is the latter.
+     */
+    readonly resolveImageSource?: ImageSourceResolver | undefined;
+    /**
+     * Opens a `\url`/`\href` target. Omitted, link chips render
+     * without an open affordance.
+     */
+    readonly openLink?: LinkOpener | undefined;
+}
 
 /**
  * The complete live-preview extension for the Moonstone editor.
  *
+ * @param options - Rendering options (e.g. disabling cursor reveal).
  * @returns The combined inline and block preview layers.
  */
-export function livePreview(): Extension {
-    return [inlineMathPlugin, blockPreviewField];
+export function livePreview(options?: LivePreviewOptions): Extension {
+    return [
+        // Must precede the layers that read it: a StateField's `create`
+        // may only access fields initialized before it.
+        documentScanField,
+        pointerSelectionTracker(),
+        inlineMathPlugin,
+        blockPreviewField,
+        revealFacet.of(options?.reveal ?? true),
+        // Pointless without reveal: read-only mode never shows source,
+        // so stopping the cursor in a block would only obstruct.
+        ...((options?.reveal ?? true) ? [revealBlockOnVerticalMotion] : []),
+        ...(options?.resolveImageSource
+            ? [imageResolverFacet.of(options.resolveImageSource)]
+            : []),
+        ...(options?.openLink ? [linkOpenerFacet.of(options.openLink)] : []),
+    ];
 }

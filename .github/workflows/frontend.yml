@@ -3,6 +3,13 @@
 # The Rust workflow covers `src-tauri` only, which left the ~19k lines of
 # TypeScript — and every one of its tests — running on developer machines
 # and nowhere else.
+#
+# **Every job here must stay within the default token permissions.**
+# `release.yml` calls this workflow, and a called workflow's jobs may not
+# request more permission than the caller holds — a rule enforced when
+# the file is loaded, so an `if:` guard does not help. Posting lint
+# findings to a pull request needs `pull-requests: write`, so it lives in
+# `review.yml` instead; see the note there.
 name: Frontend
 
 on:
@@ -70,31 +77,3 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
-
-  # Lint findings arrive as inline review comments on the pull request
-  # rather than as a wall of log output someone has to read by hand.
-  reviewdog:
-    name: ESLint review comments
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run reviewdog
-        uses: reviewdog/action-eslint@v1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review
-          fail_level: error
-          eslint_flags: "."

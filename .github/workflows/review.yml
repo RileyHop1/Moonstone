@@ -1,0 +1,48 @@
+# Posts ESLint findings as inline review comments on a pull request.
+#
+# This lives apart from `frontend.yml` for a concrete reason. Reviewing
+# a pull request needs `pull-requests: write`, and `frontend.yml` is a
+# **reusable** workflow that `release.yml` calls. A called workflow's
+# jobs may not request more permission than the caller holds, and that
+# is checked when the workflow file is *loaded* — before any `if:` is
+# evaluated. So a job guarded by `if: github.event_name ==
+# 'pull_request'` still broke every release run with:
+#
+#   The nested job 'reviewdog' is requesting 'pull-requests: write',
+#   but is only allowed 'pull-requests: none'.
+#
+# The whole release workflow failed to start, with no jobs at all. The
+# fix is not to hand the release pipeline write access to pull requests
+# it will never touch; it is to keep the thing that needs that access
+# out of the workflow meant to be reusable.
+name: Review
+
+on:
+  pull_request:
+    branches: ["main", "master"]
+
+jobs:
+  reviewdog:
+    name: ESLint review comments
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run reviewdog
+        uses: reviewdog/action-eslint@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          fail_level: error
+          eslint_flags: "."

@@ -10,17 +10,13 @@
  * the pointer outruns it, which a plain mousemove listener does not.
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import { useRef, useState } from "react";
+import { usePointerDrag } from "./usePointerDrag";
+import type { PointerDragHandleProps } from "./usePointerDrag";
 import type { DockSide } from "./useDockDrag";
 
 /** Props to spread onto the splitter element. */
-export interface PanelResizeHandleProps {
-    readonly onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
-    readonly onPointerMove: (event: ReactPointerEvent<HTMLElement>) => void;
-    readonly onPointerUp: (event: ReactPointerEvent<HTMLElement>) => void;
-    readonly onPointerCancel: (event: ReactPointerEvent<HTMLElement>) => void;
-}
+export type PanelResizeHandleProps = PointerDragHandleProps;
 
 /** State and handlers returned by {@link usePanelResize}. */
 export interface PanelResize {
@@ -87,62 +83,29 @@ export function usePanelResize({
 }: PanelResizeOptions): PanelResize {
     const [isResizing, setIsResizing] = useState(false);
 
-    // Refs mirror the gesture's state so the stable callbacks below
-    // never read a stale closure — same reason `useDockDrag` does it.
-    const pressedRef = useRef(false);
-    const startXRef = useRef(0);
+    // The width when the gesture began; every move is measured from it
+    // rather than accumulated, so rounding cannot drift.
     const startWidthRef = useRef(0);
 
-    // The latest values, so a dock flip or a resized window mid-drag is
-    // picked up without rebuilding the handlers.
-    const sideRef = useRef(side);
-    sideRef.current = side;
-    const getWidthRef = useRef(getWidth);
-    getWidthRef.current = getWidth;
-    const getAvailableWidthRef = useRef(getAvailableWidth);
-    getAvailableWidthRef.current = getAvailableWidth;
-    const onResizeRef = useRef(onResize);
-    onResizeRef.current = onResize;
+    const handleProps = usePointerDrag({
+        onStart: () => {
+            startWidthRef.current = getWidth();
+            setIsResizing(true);
+        },
+        onMove: ({ deltaX }) => {
+            // Docked right, the panel grows as the pointer moves left,
+            // so the delta is inverted.
+            const delta = side === "left" ? deltaX : -deltaX;
 
-    const onPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-        if (!event.isPrimary || event.button !== 0) return;
-
-        event.preventDefault();
-        event.currentTarget.setPointerCapture(event.pointerId);
-
-        pressedRef.current = true;
-        startXRef.current = event.clientX;
-        startWidthRef.current = getWidthRef.current();
-        setIsResizing(true);
-    }, []);
-
-    const onPointerMove = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-        if (!pressedRef.current) return;
-
-        // Docked right, the panel grows as the pointer moves left, so
-        // the delta is inverted.
-        const travelled = event.clientX - startXRef.current;
-        const delta = sideRef.current === "left" ? travelled : -travelled;
-
-        onResizeRef.current(
-            clampPanelWidth(startWidthRef.current + delta, getAvailableWidthRef.current()),
-        );
-    }, []);
-
-    const endResize = useCallback(() => {
-        pressedRef.current = false;
-        setIsResizing(false);
-    }, []);
-
-    const handleProps = useMemo<PanelResizeHandleProps>(
-        () => ({
-            onPointerDown,
-            onPointerMove,
-            onPointerUp: endResize,
-            onPointerCancel: endResize,
-        }),
-        [onPointerDown, onPointerMove, endResize],
-    );
+            onResize(clampPanelWidth(startWidthRef.current + delta, getAvailableWidth()));
+        },
+        onEnd: () => {
+            setIsResizing(false);
+        },
+        onCancel: () => {
+            setIsResizing(false);
+        },
+    });
 
     return { isResizing, handleProps };
 }

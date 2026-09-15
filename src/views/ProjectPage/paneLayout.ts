@@ -409,6 +409,49 @@ export function resizeSplit(
     };
 }
 
+/** Smallest a pane may be dragged to, in pixels. */
+export const MIN_PANE_PX = 120;
+
+/**
+ * Where a dragged boundary leaves the two panes either side of it.
+ *
+ * Works in pixels and converts back to shares at the end: shares are
+ * relative to a container whose size the arithmetic would otherwise
+ * have to guess, and the pointer has to track the boundary exactly.
+ *
+ * @param beforePx - Extent of the pane before the boundary, at the
+ *   moment the drag began.
+ * @param afterPx - Extent of the pane after it, likewise.
+ * @param travelled - How far the pointer has moved along the axis.
+ * @param total - The two panes' combined share, preserved in the result
+ *   so the rest of the split is undisturbed.
+ * @returns The new shares, or null when the pair is too small to divide.
+ */
+export function boundaryShares(
+    beforePx: number,
+    afterPx: number,
+    travelled: number,
+    total: number,
+): readonly [number, number] | null {
+    const pairExtent = beforePx + afterPx;
+
+    // Too little room for both at their minimum: leave the boundary
+    // where it is rather than pick a side to squash.
+    if (pairExtent < MIN_PANE_PX * 2) return null;
+
+    // Clamped so neither neighbour is dragged away entirely; a pane
+    // collapsed to nothing has no edge left to drag back.
+    const nextBefore = Math.min(
+        Math.max(beforePx + travelled, MIN_PANE_PX),
+        pairExtent - MIN_PANE_PX,
+    );
+
+    return [
+        (nextBefore / pairExtent) * total,
+        ((pairExtent - nextBefore) / pairExtent) * total,
+    ];
+}
+
 /**
  * Picks the pane that should take focus after another one closes.
  *

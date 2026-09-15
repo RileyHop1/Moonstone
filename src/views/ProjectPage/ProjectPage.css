@@ -197,3 +197,44 @@
     outline: 1px dashed var(--accent);
     outline-offset: -6px;
 }
+
+/* The draggable boundary between two panes.
+
+   Wider than the line it draws, for the same reason the file browser's
+   splitter is: a 2px hit target is a frustrating thing to aim at. Only
+   the inner sliver lights up on hover, so it reads as an edge rather
+   than a piece of UI. */
+.pane-splitter {
+    flex: 0 0 var(--pane-splitter-size);
+    --pane-splitter-size: 10px;
+    /* Pointer capture needs the raw events; disable touch scrolling. */
+    touch-action: none;
+}
+
+.pane-splitter-row {
+    cursor: col-resize;
+}
+
+.pane-splitter-column {
+    cursor: row-resize;
+}
+
+.pane-splitter-row:hover {
+    background: linear-gradient(
+        to right,
+        transparent calc(50% - 1px),
+        var(--accent) calc(50% - 1px),
+        var(--accent) calc(50% + 1px),
+        transparent calc(50% + 1px)
+    );
+}
+
+.pane-splitter-column:hover {
+    background: linear-gradient(
+        to bottom,
+        transparent calc(50% - 1px),
+        var(--accent) calc(50% - 1px),
+        var(--accent) calc(50% + 1px),
+        transparent calc(50% + 1px)
+    );
+}

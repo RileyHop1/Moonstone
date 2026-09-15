@@ -15,6 +15,7 @@ import type { ContextMenuItem } from "../../../components/ContextMenu";
 import { RenameInput } from "./RenameInput";
 import type { DockDragHandleProps } from "../../../shared/useDockDrag";
 import { hasFileDragPayload, writeFileDragPayload } from "../../../shared/dragPayload";
+import { isAtOrInside } from "../../../shared/paths";
 import { assertNever } from "../../../shared/types";
 import type { FileNode, LoadState } from "../../../shared/types";
 import "./FileBrowser.css";
@@ -260,11 +261,7 @@ export function FileBrowser({
  * @returns True when the move must be rejected.
  */
 function isInvalidMove(source: string, destDir: string): boolean {
-    return (
-        destDir === source ||
-        destDir.startsWith(`${source}\\`) ||
-        destDir.startsWith(`${source}/`)
-    );
+    return isAtOrInside(source, destDir);
 }
 
 /**

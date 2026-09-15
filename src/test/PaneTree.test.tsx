@@ -41,7 +41,8 @@ const CONFIGURATION: EditorConfiguration = {
 function renderTree(
     layout: PaneNode,
     documents: ReadonlyMap<PaneId, PaneDocument> = new Map(),
-): HTMLElement {
+): { container: HTMLElement; onResizeSplit: ReturnType<typeof vi.fn> } {
+    const onResizeSplit = vi.fn();
     const panes = listPanes(layout);
     const firstId = panes[0]?.id;
     if (firstId === undefined) throw new Error("The layout has no panes");
@@ -62,10 +63,11 @@ function renderTree(
             onDocChanged={vi.fn()}
             onSaveRequested={vi.fn()}
             onDiagnosticsToggled={vi.fn()}
+            onResizeSplit={onResizeSplit}
         />,
     );
 
-    return container;
+    return { container, onResizeSplit };
 }
 
 /** Builds a row of `count` panes, split repeatedly to the right. */
@@ -89,14 +91,14 @@ function rowOf(count: number): PaneNode {
 
 describe("PaneTree", () => {
     it("renders a lone pane without a split wrapper", () => {
-        const container = renderTree(createLayout("main.tex", "pane-1"));
+        const { container } = renderTree(createLayout("main.tex", "pane-1"));
 
         expect(container.querySelectorAll(".editor-pane")).toHaveLength(1);
         expect(container.querySelector(".pane-split")).toBeNull();
     });
 
     it("renders a row of panes", () => {
-        const container = renderTree(rowOf(3));
+        const { container } = renderTree(rowOf(3));
 
         expect(container.querySelectorAll(".editor-pane")).toHaveLength(3);
         expect(container.querySelector(".pane-split-row")).not.toBeNull();
@@ -111,7 +113,7 @@ describe("PaneTree", () => {
             { paneId: "pane-2", splitId: "split-1" },
         );
 
-        const container = renderTree(layout);
+        const { container } = renderTree(layout);
 
         expect(container.querySelector(".pane-split-column")).not.toBeNull();
     });
@@ -128,7 +130,7 @@ describe("PaneTree", () => {
             splitId: nextId(),
         });
 
-        const container = renderTree(layout);
+        const { container } = renderTree(layout);
 
         expect(container.querySelector(".pane-split-row")).not.toBeNull();
         expect(container.querySelector(".pane-split-row .pane-split-column")).not.toBeNull();
@@ -136,7 +138,7 @@ describe("PaneTree", () => {
     });
 
     it("gives two panes an equal share", () => {
-        const container = renderTree(rowOf(2));
+        const { container } = renderTree(rowOf(2));
         const panes = container.querySelectorAll<HTMLElement>(".editor-pane");
 
         expect(panes[0]?.style.flexGrow).toBe("0.5");
@@ -158,7 +160,7 @@ describe("PaneTree", () => {
             splitId: nextId(),
         });
 
-        const container = renderTree(layout);
+        const { container } = renderTree(layout);
         const grows = Array.from(
             container.querySelectorAll<HTMLElement>(".editor-pane"),
             (pane) => pane.style.flexGrow,
@@ -172,20 +174,58 @@ describe("PaneTree", () => {
             ["pane-1", { path: "C:\\p\\main.tex", initialDoc: "" }],
         ]);
 
-        const container = renderTree(createLayout("main.tex", "pane-1"), documents);
+        const { container } = renderTree(createLayout("main.tex", "pane-1"), documents);
 
         expect(container.textContent).toContain("main.tex");
     });
 
     it("offers no close button when only one pane is open", () => {
-        const container = renderTree(createLayout("main.tex", "pane-1"));
+        const { container } = renderTree(createLayout("main.tex", "pane-1"));
 
         expect(container.querySelector(".editor-pane-close")).toBeNull();
     });
 
     it("offers a close button on each pane once there are several", () => {
-        const container = renderTree(rowOf(3));
+        const { container } = renderTree(rowOf(3));
 
         expect(container.querySelectorAll(".editor-pane-close")).toHaveLength(3);
+    });
+});
+
+describe("PaneTree splitters", () => {
+    it("puts a splitter between each neighbouring pair, and none at the ends", () => {
+        const { container } = renderTree(rowOf(3));
+
+        expect(container.querySelectorAll(".pane-splitter")).toHaveLength(2);
+    });
+
+    it("has no splitter for a lone pane", () => {
+        const { container } = renderTree(createLayout("main.tex", "pane-1"));
+
+        expect(container.querySelector(".pane-splitter")).toBeNull();
+    });
+
+    it("orients the splitter across the axis its split divides", () => {
+        const layout = splitPane(
+            createLayout("one.tex", "pane-1"),
+            "pane-1",
+            "bottom",
+            "two.tex",
+            { paneId: "pane-2", splitId: "split-1" },
+        );
+
+        const { container } = renderTree(layout);
+        const splitter = container.querySelector(".pane-splitter");
+
+        expect(splitter?.classList.contains("pane-splitter-column")).toBe(true);
+        expect(splitter?.getAttribute("aria-orientation")).toBe("horizontal");
+    });
+
+    it("describes itself to assistive technology", () => {
+        const { container } = renderTree(rowOf(2));
+        const splitter = container.querySelector(".pane-splitter");
+
+        expect(splitter?.getAttribute("role")).toBe("separator");
+        expect(splitter?.getAttribute("aria-label")).toBe("Resize panes");
     });
 });

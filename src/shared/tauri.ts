@@ -8,6 +8,15 @@
 
 import { convertFileSrc, invoke, isTauri } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import {
+    basename,
+    dirname,
+    isAbsolute,
+    join,
+    segmentsOf,
+    separatorOf,
+    withSeparator,
+} from "./paths";
 import type {
     AppSettings,
     FileNode,
@@ -65,24 +74,21 @@ export function createImageSourceResolver(
 ): (imagePath: string) => string | null {
     if (!isTauri() || documentPath === null) return () => null;
 
-    const separator = documentPath.includes("\\") ? "\\" : "/";
-    const documentDirectory = documentPath.slice(
-        0,
-        Math.max(documentPath.lastIndexOf("/"), documentPath.lastIndexOf("\\")),
-    );
+    const documentDirectory = dirname(documentPath);
+    const separator = separatorOf(documentPath);
 
     return (imagePath: string): string | null => {
-        const segments = imagePath.split(/[/\\]/);
-        if (segments.includes("..")) return null;
+        if (segmentsOf(imagePath).includes("..")) return null;
 
         // No extension means LaTeX would go looking for one; we cannot.
-        const fileName = segments[segments.length - 1] ?? "";
-        if (!fileName.includes(".")) return null;
+        if (!basename(imagePath).includes(".")) return null;
 
-        const isAbsolute = /^([a-zA-Z]:[\\/]|[\\/])/.test(imagePath);
-        const fullPath = isAbsolute
+        // An author on Windows may still write `figures/plot.png`, so
+        // the relative part is restated in the document's own style
+        // rather than handed to the asset protocol as a mixture.
+        const fullPath = isAbsolute(imagePath)
             ? imagePath
-            : `${documentDirectory}${separator}${segments.join(separator)}`;
+            : join(documentDirectory, withSeparator(imagePath, separator));
 
         return convertFileSrc(fullPath);
     };

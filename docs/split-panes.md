@@ -7,10 +7,10 @@ Source: `src/views/ProjectPage/paneLayout.ts` (the model),
 Tests: `src/test/paneLayout.test.ts`, `src/test/PaneTree.test.tsx`,
 `src/test/EditorPane.test.tsx`
 
-> **Status:** the model, rendering and drop handling are complete and
-> tested. Wiring into `ProjectPage` — per-pane documents, save, focus —
-> is the next stage; until then nothing mounts a `PaneTree`. Interactive
-> splitter dragging is also still to come; see "Still to do".
+> **Status:** the model, rendering, drop handling and the draggable
+> splitter are complete and tested. Wiring into `ProjectPage` — per-pane
+> documents, save, focus — is the next stage; until then nothing mounts a
+> `PaneTree`.
 
 ## The model
 
@@ -96,6 +96,25 @@ Each split stores its children's shares, summing to 1 and rendered as
   or not finite — applying those would leave `sizes` and `children` out
   of step, which every other function here assumes cannot happen.
 
+### Dragging a boundary
+
+`PaneSplitter` sits between each neighbouring pair, built on the shared
+`usePointerDrag` gesture. The arithmetic lives in `boundaryShares`, in
+the model, so it is testable without a DOM.
+
+It works in **pixels and converts back to shares at the end**. Shares
+are relative to a container whose size the splitter would otherwise have
+to guess, and the pointer has to track the boundary exactly or the drag
+feels like it is slipping. The split's extent is measured when the drag
+starts rather than kept in state — it changes with every window resize,
+and a stale value scales the whole gesture.
+
+Only the two panes either side move: their **combined** share is
+preserved, so dragging the first boundary of a three-column row leaves
+the third column exactly where it was. Neither neighbour can be dragged
+below `MIN_PANE_PX`, because a pane collapsed to nothing has no edge
+left to drag back.
+
 ## Drop targets
 
 Dragging a file from the browser onto a pane splits it. `edgeForPoint`
@@ -123,9 +142,7 @@ trap — is in `docs/project-page.md`.
 - **Wiring into `ProjectPage`:** per-pane documents, dirty tracking,
   save and focus, and a `Map<PaneId, EditorView>` maintained through
   `onViewReady` / `onViewDestroyed`.
-- **A draggable splitter.** The model supports any sizes and renders
-  them, but nothing yet lets the user drag the boundary. It needs the
-  shared pointer-drag primitive that `useDockDrag` and `usePanelResize`
-  are also waiting on, so it lands with that refactor.
 - **Persisting layouts** across sessions. The id factory is ready for
   it; nothing else is.
+- **Keyboard resizing.** The splitter is a `role="separator"` but does
+  not yet respond to arrow keys.

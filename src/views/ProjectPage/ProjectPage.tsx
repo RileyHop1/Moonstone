@@ -28,6 +28,7 @@ import {
     saveFile,
 } from "../../shared/tauri";
 import type { FileNode, LoadState, ProjectInfo, Reference, ViewMode } from "../../shared/types";
+import { isAtOrInside, reparent } from "../../shared/paths";
 import { useDockDrag } from "../../shared/useDockDrag";
 import type { DockSide } from "../../shared/useDockDrag";
 import { openSearchPanel } from "@codemirror/search";
@@ -268,7 +269,7 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
         const openPath = openFileRef.current?.path;
         if (openPath === undefined) return;
 
-        const newPath = renamedOpenFilePath(openPath, from, to);
+        const newPath = reparent(openPath, from, to);
         if (newPath === null) return;
 
         const currentDoc =
@@ -314,10 +315,7 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
             // directory of it) was deleted.
             const openPath = openFileRef.current?.path;
             const deletedOpenFile =
-                openPath !== undefined &&
-                (openPath === operation.path ||
-                    openPath.startsWith(`${operation.path}\\`) ||
-                    openPath.startsWith(`${operation.path}/`));
+                openPath !== undefined && isAtOrInside(operation.path, openPath);
             if (deletedOpenFile) {
                 setOpenFile(null);
                 setIsDirty(false);
@@ -569,30 +567,4 @@ function dialogTitle(dialog: FileDialogState): string {
         default:
             return "";
     }
-}
-
-/**
- * Computes the open file's new path after a rename, if affected.
- *
- * @param openPath - Path of the currently open file.
- * @param renamedFrom - Path of the entry that was renamed.
- * @param renamedTo - The entry's new path.
- * @returns The open file's updated path, or null when unaffected.
- */
-function renamedOpenFilePath(
-    openPath: string,
-    renamedFrom: string,
-    renamedTo: string,
-): string | null {
-    if (openPath === renamedFrom) return renamedTo;
-
-    // The open file lives inside a renamed directory.
-    for (const separator of ["\\", "/"]) {
-        const prefix = `${renamedFrom}${separator}`;
-        if (openPath.startsWith(prefix)) {
-            return `${renamedTo}${separator}${openPath.slice(prefix.length)}`;
-        }
-    }
-
-    return null;
 }

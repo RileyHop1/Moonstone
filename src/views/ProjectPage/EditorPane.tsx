@@ -21,6 +21,7 @@ import type { EditorView } from "@codemirror/view";
 import { TextEditor } from "../editor/TextEditor";
 import type { EditorConfiguration } from "../editor/TextEditor/editorConfiguration";
 import { hasFileDragPayload, readFileDragPayload } from "../../shared/dragPayload";
+import { basename } from "../../shared/paths";
 import { edgeForPoint } from "./paneLayout";
 import type { DropSide, PaneId } from "./paneLayout";
 
@@ -197,7 +198,7 @@ export function EditorPane({
         [onActivate, onDropFile, paneId],
     );
 
-    const fileName = paneDocument?.path.split(/[\\/]/).pop() ?? "No file";
+    const fileName = paneDocument ? basename(paneDocument.path) : "No file";
 
     return (
         <section

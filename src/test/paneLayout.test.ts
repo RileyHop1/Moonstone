@@ -16,6 +16,8 @@ import {
     findPane,
     focusAfterClose,
     listPanes,
+    boundaryShares,
+    MIN_PANE_PX,
     resizeSplit,
     setPaneFile,
     splitPane,
@@ -469,5 +471,43 @@ describe("paneLayout", () => {
 
         expect(findPane(layout, "pane-1")?.path).toBe("one.tex");
         expect(findPane(layout, "nope")).toBeNull();
+    });
+});
+
+describe("boundaryShares", () => {
+    it("moves space from one pane to its neighbour", () => {
+        // 400px and 400px, dragged 100px right, out of a combined 0.5.
+        const shares = boundaryShares(400, 400, 100, 0.5);
+
+        expect(shares).toEqual([0.3125, 0.1875]);
+    });
+
+    it("leaves the pair's combined share untouched", () => {
+        // The rest of the split must not move when one boundary does.
+        const shares = boundaryShares(400, 400, 137, 0.5);
+
+        expect((shares?.[0] ?? 0) + (shares?.[1] ?? 0)).toBeCloseTo(0.5);
+    });
+
+    it("does not drag a pane below the minimum", () => {
+        const shares = boundaryShares(400, 400, -10_000, 1);
+
+        expect(shares?.[0]).toBeCloseTo(MIN_PANE_PX / 800);
+    });
+
+    it("does not drag the neighbour below the minimum", () => {
+        const shares = boundaryShares(400, 400, 10_000, 1);
+
+        expect(shares?.[1]).toBeCloseTo(MIN_PANE_PX / 800);
+    });
+
+    it("refuses a pair too small to divide", () => {
+        // Both minimums cannot fit, so there is no honest answer and
+        // squashing one side arbitrarily would be worse than nothing.
+        expect(boundaryShares(100, 100, 20, 1)).toBeNull();
+    });
+
+    it("is a no-op for a drag that has not moved", () => {
+        expect(boundaryShares(300, 500, 0, 1)).toEqual([0.375, 0.625]);
     });
 });

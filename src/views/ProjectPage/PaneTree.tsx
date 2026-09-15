@@ -17,6 +17,11 @@ import type { EditorConfiguration } from "../editor/TextEditor/editorConfigurati
 export interface PaneTreeProps {
     /** The subtree to render. */
     readonly node: PaneNode;
+    /**
+     * This node's share of its parent split, rendered as `flex-grow`.
+     * Omitted at the root, which simply fills the editor area.
+     */
+    readonly size?: number | undefined;
     /** Open documents, keyed by pane. */
     readonly documents: ReadonlyMap<PaneId, PaneDocument>;
     /** Panes with unsaved changes. */
@@ -43,11 +48,12 @@ export interface PaneTreeProps {
  * @param props - The subtree plus everything a pane needs.
  * @returns The rendered subtree.
  */
-export function PaneTree({ node, ...shared }: PaneTreeProps) {
+export function PaneTree({ node, size, ...shared }: PaneTreeProps) {
     if (node.kind === "leaf") {
         return (
             <EditorPane
                 paneId={node.id}
+                size={size}
                 document={shared.documents.get(node.id) ?? null}
                 isActive={node.id === shared.activePaneId}
                 isDirty={shared.dirtyPanes.has(node.id)}
@@ -66,12 +72,22 @@ export function PaneTree({ node, ...shared }: PaneTreeProps) {
     }
 
     return (
-        <div className={`pane-split pane-split-${node.direction}`}>
-            {node.children.map((child) => (
+        // The root split fills the editor area; a nested one takes the
+        // share its parent allotted it.
+        <div
+            className={`pane-split pane-split-${node.direction}`}
+            style={{ flexGrow: size ?? 1 }}
+        >
+            {node.children.map((child, index) => (
                 // Keyed by node id, never by position: keying by index
                 // would remount every editor below an insertion and
                 // throw away its undo history.
-                <PaneTree key={child.id} node={child} {...shared} />
+                <PaneTree
+                    key={child.id}
+                    node={child}
+                    size={node.sizes[index] ?? 1 / node.children.length}
+                    {...shared}
+                />
             ))}
         </div>
     );

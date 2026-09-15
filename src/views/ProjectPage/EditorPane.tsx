@@ -21,6 +21,7 @@ import type { EditorView } from "@codemirror/view";
 import { TextEditor } from "../editor/TextEditor";
 import type { EditorConfiguration } from "../editor/TextEditor/editorConfiguration";
 import { hasFileDragPayload, readFileDragPayload } from "../../shared/dragPayload";
+import { edgeForPoint } from "./paneLayout";
 import type { DropSide, PaneId } from "./paneLayout";
 
 /** The document a pane has open. */
@@ -32,6 +33,11 @@ export interface PaneDocument {
 /** Props for {@link EditorPane}. */
 export interface EditorPaneProps {
     readonly paneId: PaneId;
+    /**
+     * This pane's share of its parent split, rendered as `flex-grow`.
+     * Omitted for a lone pane, which fills the editor area.
+     */
+    readonly size?: number | undefined;
     /** The open document, or null for a pane with nothing in it. */
     readonly document: PaneDocument | null;
     /** True when this pane has focus and drives the toolbar. */
@@ -64,38 +70,24 @@ export interface EditorPaneProps {
     readonly onDiagnosticsToggled: (visible: boolean) => void;
 }
 
-/** How much of a pane's width or height each edge zone claims. */
-const EDGE_FRACTION = 0.25;
-
 /**
- * Works out which edge of a pane the pointer is nearest.
+ * Which edge of the pane a drag is over.
  *
- * The middle of the pane is not an edge: dropping there replaces the
- * pane's file rather than splitting, which is what VS Code does and
- * what stops every drop from making another column.
+ * The geometry itself lives in `paneLayout.ts` as a pure function, so
+ * it can be tested without a DOM; this only turns an event and a
+ * rectangle into coordinates for it.
  *
  * @param event - The drag event.
  * @param bounds - The pane's rectangle.
  * @returns The edge, or null for the middle.
  */
 function edgeAt(event: ReactDragEvent<HTMLElement>, bounds: DOMRect): DropSide | null {
-    const x = (event.clientX - bounds.left) / bounds.width;
-    const y = (event.clientY - bounds.top) / bounds.height;
-
-    // Whichever edge the pointer is closest to wins, so the corners
-    // resolve to something rather than to nothing.
-    const distances: readonly (readonly [DropSide, number])[] = [
-        ["left", x],
-        ["right", 1 - x],
-        ["top", y],
-        ["bottom", 1 - y],
-    ];
-
-    const [side, distance] = distances.reduce((best, candidate) =>
-        candidate[1] < best[1] ? candidate : best,
+    return edgeForPoint(
+        event.clientX - bounds.left,
+        event.clientY - bounds.top,
+        bounds.width,
+        bounds.height,
     );
-
-    return distance <= EDGE_FRACTION ? side : null;
 }
 
 /**
@@ -106,6 +98,7 @@ function edgeAt(event: ReactDragEvent<HTMLElement>, bounds: DOMRect): DropSide |
  */
 export function EditorPane({
     paneId,
+    size,
     document: paneDocument,
     isActive,
     isDirty,
@@ -210,6 +203,7 @@ export function EditorPane({
         <section
             ref={paneRef}
             className={`editor-pane${isActive ? " editor-pane-active" : ""}`}
+            style={{ flexGrow: size ?? 1 }}
             onPointerDownCapture={() => onActivate(paneId)}
             onFocusCapture={() => onActivate(paneId)}
             onDragEnter={handleDragEnter}

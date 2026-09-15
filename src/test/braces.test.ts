@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { findGroupEnd } from "../views/editor/TextEditor/LivePreview/braces";
+import { findGroupEnd } from "../views/editor/TextEditor/latex/braces";
 
 describe("findGroupEnd", () => {
     it("matches a flat group", () => {

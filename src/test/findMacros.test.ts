@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { findMacros } from "../views/editor/TextEditor/LivePreview/findMacros";
+import { findMacros } from "../views/editor/TextEditor/latex/findMacros";
 
 describe("findMacros", () => {
     it("reads a simple definition", () => {

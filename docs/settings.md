@@ -161,3 +161,36 @@ normalization in `normalizeSettings`, and a control in the relevant
 panel.
 
 Tests: `src/test/Settings.test.tsx`, `settings_tests` in `settings.rs`.
+
+## Persisting is not done inside a state updater
+
+`updateSettings` computes the next value and saves it **outside**
+`setSettings`:
+
+```ts
+const next = normalizeSettings({ ...settingsRef.current, ...partial });
+setSettings(next);
+void (saveSettings(next).then(/* … */));
+```
+
+React may invoke a state updater more than once — it does, under
+StrictMode — so an updater that performed the save wrote the settings
+file twice for every change. Updaters have to be pure.
+
+`Settings.test.tsx` pins this by mounting the **provider** under
+StrictMode and counting `save_settings` calls. Mounting the _page_
+under StrictMode does not work: `renderWithProviders` puts the provider
+outside it, and an updater outside StrictMode is only ever called once
+— so the test passes against the bug.
+
+## Confirmations
+
+Discarding unsaved changes, deleting a file, and deleting a project all
+go through `ConfirmDialog` (`useConfirm`), not `window.confirm`. The
+native dialog is unstyled — a browser dialog in the middle of a themed
+desktop app — blocks the event loop, and cannot be tested without
+stubbing a global, which is why the _declining_ path had no coverage
+at all before.
+
+`useConfirm` bridges a React modal back to the promise-shaped call the
+old code had: `await confirm({...})` resolves when the user answers.

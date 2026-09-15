@@ -19,7 +19,7 @@ import type { Extension } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { linter } from "@codemirror/lint";
 import type { Diagnostic } from "@codemirror/lint";
-import { findInertRegions, maskChunk } from "../LivePreview";
+import { findInertRegions, maskChunk } from "../latex";
 import { loadDictionary } from "./dictionary";
 import { findProseWords } from "./findProseWords";
 import "./spellCheck.css";

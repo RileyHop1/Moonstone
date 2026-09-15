@@ -13,6 +13,7 @@ import { NameDialog } from "../../components/NameDialog";
 import type { NameDialogResult } from "../../components/NameDialog";
 import { useNavigation } from "../../shared/navigation";
 import { useAppActions } from "../../shared/appActions";
+import { useConfirm } from "../../components/useConfirm";
 import { deleteProject, listProjects, renameProject } from "../../shared/tauri";
 import { assertNever } from "../../shared/types";
 import type { LoadState, ProjectInfo } from "../../shared/types";
@@ -40,6 +41,7 @@ export function ProjectBrowser() {
         status: "loading",
     });
     const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const { confirm, dialog: confirmationDialog } = useConfirm();
     const [menu, setMenu] = useState<MenuState | null>(null);
     const [renaming, setRenaming] = useState<ProjectInfo | null>(null);
 
@@ -122,9 +124,12 @@ export function ProjectBrowser() {
      */
     const handleDeleteProject = useCallback(
         async (project: ProjectInfo): Promise<void> => {
-            const confirmed = window.confirm(
-                `Delete the project "${project.name}"? It will be moved to the recycle bin.`,
-            );
+            const confirmed = await confirm({
+                title: "Delete this project?",
+                message: `"${project.name}" and everything in it will be moved to the recycle bin.`,
+                confirmLabel: "Delete",
+                isDestructive: true,
+            });
             if (!confirmed) return;
 
             const result = await deleteProject(project.path);
@@ -136,7 +141,7 @@ export function ProjectBrowser() {
 
             void loadProjects();
         },
-        [loadProjects],
+        [loadProjects, confirm],
     );
 
     return (
@@ -152,6 +157,8 @@ export function ProjectBrowser() {
                     void loadProjects();
                 },
             )}
+
+            {confirmationDialog}
 
             {isDialogOpen && (
                 <NewProjectDialog

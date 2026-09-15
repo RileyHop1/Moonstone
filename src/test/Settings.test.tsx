@@ -4,8 +4,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
+import { act, renderHook, screen, fireEvent, waitFor } from "@testing-library/react";
 import { Settings } from "../views/Settings";
+import { SettingsProvider, useSettings } from "../shared/settings";
 import { THEMES } from "../shared/themes";
 import { invokeMock, mockCommands, resetInvokeMock } from "./mockTauri";
 import { renderWithProviders } from "./testUtils";
@@ -299,5 +301,66 @@ describe("Settings", () => {
 
             expect(navigateCalls).toEqual([{ kind: "project", project }]);
         });
+    });
+});
+
+describe("settings persistence", () => {
+    beforeEach(() => {
+        resetInvokeMock();
+        mockCommands({ save_settings: () => null });
+    });
+
+    /** Every `save_settings` invocation so far. */
+    function saveCalls(): unknown[][] {
+        return invokeMock.mock.calls.filter((call) => call[0] === "save_settings");
+    }
+
+    /**
+     * Mounts the settings provider under StrictMode and hands back its
+     * value.
+     *
+     * StrictMode has to wrap the **provider**, not the page inside it:
+     * what is under test is whether React double-invoking an updater
+     * causes a second write, and an updater outside StrictMode is only
+     * ever called once.
+     */
+    function mountProvider() {
+        return renderHook(() => useSettings(), {
+            wrapper: ({ children }) => (
+                <StrictMode>
+                    <SettingsProvider>{children}</SettingsProvider>
+                </StrictMode>
+            ),
+        });
+    }
+
+    it("writes to disk once per change", async () => {
+        // The save used to live inside a `setState` updater. React may
+        // invoke an updater more than once — it does under StrictMode —
+        // so every settings change fired two `save_settings` calls
+        // (finding F-1). Updaters have to be pure.
+        const { result } = mountProvider();
+
+        await act(async () => {
+            result.current.updateSettings({ theme: "light" });
+            await Promise.resolve();
+        });
+
+        expect(saveCalls()).toHaveLength(1);
+    });
+
+    it("writes once per change when several are made", async () => {
+        const { result } = mountProvider();
+
+        await act(async () => {
+            result.current.updateSettings({ theme: "light" });
+            await Promise.resolve();
+        });
+        await act(async () => {
+            result.current.updateSettings({ editorFontSize: 18 });
+            await Promise.resolve();
+        });
+
+        expect(saveCalls()).toHaveLength(2);
     });
 });

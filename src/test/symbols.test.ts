@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { findSymbolRanges, SYMBOLS } from "../views/editor/TextEditor/LivePreview/symbols";
+import { findSymbolRanges, SYMBOLS } from "../views/editor/TextEditor/latex/symbols";
 
 describe("findSymbolRanges", () => {
     it("finds a known command", () => {

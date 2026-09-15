@@ -21,6 +21,25 @@ export interface ProjectInfo {
 }
 
 /**
+ * Settings as the backend stores them, straight off the IPC boundary.
+ *
+ * Every field is `unknown` on purpose. These values come from a JSON
+ * file on disk that an older build — or the user with a text editor —
+ * may have written, so the only honest type for them is "no idea yet".
+ * `normalizeSettings` is what turns them into a usable
+ * {@link AppSettings}; declaring them as `string`/`boolean` here would
+ * make its guards look redundant and invite someone to delete them.
+ */
+export interface StoredSettings {
+    readonly theme: unknown;
+    readonly editorFontSize: unknown;
+    readonly modalMode: unknown;
+    readonly spellCheckEnabled: unknown;
+    readonly lineNumberMode: unknown;
+    readonly showDiagnostics: unknown;
+}
+
+/**
  * A starting point offered by the new-project dialog, as returned by
  * the `list_templates` command.
  */

@@ -17,6 +17,7 @@ import { Compartment, Facet } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { vim } from "@replit/codemirror-vim";
 import { helix } from "codemirror-helix";
+import { assertNever } from "../../../shared/types";
 import type { ModalMode } from "../../../shared/types";
 
 /** Compartment holding the active modal keymap (or nothing). */
@@ -74,5 +75,7 @@ export function modalExtensionForMode(mode: ModalMode): Extension {
             return [modalModeFacet.of(mode), vim(VIM_OPTIONS)];
         case "helix":
             return [modalModeFacet.of(mode), helix(HELIX_OPTIONS)];
+        default:
+            return assertNever(mode);
     }
 }

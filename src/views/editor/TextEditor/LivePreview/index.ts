@@ -1,36 +1,19 @@
-export {
-    ClaimedRanges,
-    documentScanField,
-    livePreview,
-    MATH_ENVIRONMENTS,
-} from "./livePreview";
+/**
+ * What the live preview offers the rest of the app.
+ *
+ * Deliberately small. This barrel used to re-export all 33 of the
+ * module's internals — every scanner, `ClaimedRanges`, `findGroupEnd`
+ * — because the test suite imported through it, which made the public
+ * API a mirror of the implementation: any internal rename was a
+ * breaking change to a "public" surface nobody outside consumed.
+ *
+ * Two things fixed that. The scanners moved to `../latex`, where the
+ * spell checker and diagnostics can reach them without going through a
+ * rendering module; and tests now import the concrete module they are
+ * testing, which is more honest about what they exercise. What is left
+ * here is what the preview actually offers: an extension, and the two
+ * hooks the host fills in.
+ */
+
+export { livePreview } from "./livePreview";
 export type { ImageSourceResolver, LinkOpener, LivePreviewOptions } from "./livePreview";
-export { applyTextReplacements, findTextReplacements } from "./findTextReplacements";
-export type { TextReplacement } from "./findTextReplacements";
-export { findGraphicsRanges } from "./findGraphics";
-export type { GraphicsRange } from "./findGraphics";
-export { findMathRanges } from "./findMath";
-export type { MathRange } from "./findMath";
-export { findEnvironments } from "./findEnvironments";
-export type { EnvRange } from "./findEnvironments";
-export { findSymbolRanges, SYMBOLS } from "./symbols";
-export type { SymbolRange } from "./symbols";
-export { parseTabular } from "./parseTabular";
-export type { TabularCell, TabularRows } from "./parseTabular";
-export { findGroupEnd } from "./braces";
-export { findSections } from "./findSections";
-export type { SectionRange } from "./findSections";
-export { findFormatRanges } from "./findFormatting";
-export type { FormatRange, FormatStyle } from "./findFormatting";
-export { enumerateLabel, findListItems } from "./findListItems";
-export type { ListItem } from "./findListItems";
-export { findRefRanges } from "./findRefs";
-export type { RefKind, RefRange } from "./findRefs";
-export {
-    findCommentRanges,
-    findInertRegions,
-    findLiteralRanges,
-    maskChunk,
-    maskInertRegions,
-} from "./inertRegions";
-export type { InertRegions, Interval } from "./inertRegions";

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { findEnvironments } from "../views/editor/TextEditor/LivePreview/findEnvironments";
+import { findEnvironments } from "../views/editor/TextEditor/latex/findEnvironments";
 
 describe("findEnvironments", () => {
     it("finds a simple pair", () => {

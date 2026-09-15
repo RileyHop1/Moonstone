@@ -5,16 +5,14 @@
 
 import { WidgetType } from "@codemirror/view";
 import katex from "katex";
-import { findMathRanges } from "./findMath";
-import type { MathRange } from "./findMath";
-import { findFormatRanges } from "./findFormatting";
-import type { FormatRange } from "./findFormatting";
-import { findSymbolRanges } from "./symbols";
-import { applyTextReplacements, findTextReplacements } from "./findTextReplacements";
-import { findRefRanges } from "./findRefs";
-import type { RefKind } from "./findRefs";
-import type { TabularRows } from "./parseTabular";
-import type { MacroTable } from "./findMacros";
+import type { MathRange } from "../latex/findMath";
+import type { FormatRange } from "../latex/findFormatting";
+import { applyTextReplacements } from "../latex/findTextReplacements";
+import type { RefKind } from "../latex/findRefs";
+import type { TabularRows } from "../latex/parseTabular";
+import type { MacroTable } from "../latex/findMacros";
+import { scanInline } from "../latex/scanInline";
+import { findInertRegions, maskChunk } from "../latex/inertRegions";
 
 /**
  * Replaces a math source range with its KaTeX rendering. Invalid
@@ -149,19 +147,38 @@ export class SymbolWidget extends WidgetType {
 export class TableWidget extends WidgetType {
     /**
      * @param rows - The parsed cell grid.
+     * @param source - The environment's raw source, used as a cheap
+     *   identity in {@link eq}.
+     * @param macros - Document-defined macros, for KaTeX.
+     * @param macroKey - A cheap identity for those macros.
      */
-    constructor(private readonly rows: TabularRows) {
+    constructor(
+        private readonly rows: TabularRows,
+        private readonly source: string,
+        private readonly macros: MacroTable = {},
+        private readonly macroKey = "",
+    ) {
         super();
     }
 
     /**
      * Compares widgets so unchanged tables are not re-rendered.
      *
+     * Compares the source the grid was parsed from rather than the grid
+     * itself: `eq` runs on every keystroke and every cursor move, and
+     * serialising the whole table twice per call to answer a question
+     * the source already answers is pure waste.
+     *
+     * The macro key is part of the identity because a table's cells can
+     * use document-defined macros, so editing a definition has to
+     * re-render tables that use it — the same reason `MathWidget`
+     * carries one.
+     *
      * @param other - The widget to compare against.
      * @returns True when both render the same grid.
      */
     override eq(other: TableWidget): boolean {
-        return JSON.stringify(other.rows) === JSON.stringify(this.rows);
+        return other.source === this.source && other.macroKey === this.macroKey;
     }
 
     /**
@@ -183,7 +200,7 @@ export class TableWidget extends WidgetType {
                 if (cell.span > 1) tableCell.colSpan = cell.span;
                 if (cell.rowSpan > 1) tableCell.rowSpan = cell.rowSpan;
                 if (cell.align !== null) tableCell.style.textAlign = cell.align;
-                renderCellContents(tableCell, cell.source);
+                renderCellContents(tableCell, cell.source, this.macros);
                 tableRow.appendChild(tableCell);
             }
 
@@ -213,34 +230,46 @@ export class TableWidget extends WidgetType {
  * reuse the decoration pipeline — but it reuses the same scanners, so
  * a cell shows what its content means everywhere else.
  *
+ * Comments and verbatim spans are masked before scanning, for the same
+ * reason they are everywhere else: a `%` inside a cell comments out the
+ * rest of it, and scanning that text as live source finds constructs
+ * the author never wrote.
+ *
  * @param cell - The td element to fill.
  * @param source - The cell's LaTeX source.
  */
-function renderCellContents(cell: HTMLElement, source: string): void {
-    const mathRanges = findMathRanges(source, 0);
-    const refRanges = findRefRanges(source, 0, mathRanges);
-    const formatRanges = findFormatRanges(source, 0, [...mathRanges, ...refRanges]);
-    const claimed = [...mathRanges, ...refRanges, ...formatRanges];
-    const symbolRanges = findSymbolRanges(source, 0, claimed);
-    const textRanges = findTextReplacements(source, 0, claimed);
+function renderCellContents(cell: HTMLElement, source: string, macros: MacroTable = {}): void {
+    // Scanned against masked text so inert regions find nothing, but
+    // rendered from the real source, exactly as the decoration layers
+    // do it.
+    const scanText = maskChunk(source, 0, findInertRegions(source));
+
+    // The same scan order the document uses, so a construct means the
+    // same thing in a cell as it does outside one. Graphics are skipped:
+    // the table renderer does not lay out an image, and scanning for one
+    // would only claim the range and leave it blank.
+    const scan = scanInline(scanText, 0, { includeGraphics: false });
 
     const pieces = [
-        ...mathRanges.map((range) => ({ range, render: () => renderMath(source, range) })),
+        ...scan.math.map((range) => ({
+            range,
+            render: () => renderMath(source, range, macros),
+        })),
         // Chips render inside a cell exactly as they do outside one —
         // a citation in a table is still a citation. No opener is
         // passed: a link inside a rendered table is not clickable, and
         // offering an affordance that does nothing would be worse.
-        ...refRanges.map((range) => ({
+        ...scan.refs.map((range) => ({
             range,
             render: () =>
                 new RefChipWidget(range.kind, range.keys, range.note, range.target).toDOM(),
         })),
-        ...formatRanges.map((range) => ({
+        ...scan.formats.map((range) => ({
             range,
-            render: () => renderFormatted(source, range),
+            render: () => renderFormatted(source, range, macros),
         })),
-        ...symbolRanges.map((range) => ({ range, render: () => textNode(range.symbol) })),
-        ...textRanges.map((range) => ({ range, render: () => textNode(range.text) })),
+        ...scan.symbols.map((range) => ({ range, render: () => textNode(range.symbol) })),
+        ...scan.replacements.map((range) => ({ range, render: () => textNode(range.text) })),
     ].sort((left, right) => left.range.from - right.range.from);
 
     let position = 0;
@@ -279,15 +308,21 @@ function textNode(text: string): HTMLElement {
  *
  * @param source - The cell's source.
  * @param range - The math segment.
+ * @param macros - Document-defined macros to expand.
  * @returns The rendered element.
  */
-function renderMath(source: string, range: MathRange): HTMLElement {
+function renderMath(source: string, range: MathRange, macros: MacroTable): HTMLElement {
     const span = document.createElement("span");
 
     try {
         katex.render(source.slice(range.innerFrom, range.innerTo), span, {
             displayMode: false,
             throwOnError: false,
+            // A copy per render: KaTeX writes into this object for
+            // gdef. Without it a document-defined macro renders
+            // correctly everywhere except inside a table, where it
+            // turns red.
+            macros: { ...macros },
         });
     } catch {
         span.textContent = source.slice(range.from, range.to);
@@ -303,10 +338,16 @@ function renderMath(source: string, range: MathRange): HTMLElement {
  * @param range - The formatting command.
  * @returns The styled element.
  */
-function renderFormatted(source: string, range: FormatRange): HTMLElement {
+function renderFormatted(source: string, range: FormatRange, macros: MacroTable): HTMLElement {
     const span = document.createElement("span");
     span.className = `cm-fmt-${range.style}`;
-    span.textContent = source.slice(range.contentFrom, range.contentTo);
+
+    // Rendered rather than inserted as text, so `	extbf{alpha}` shows
+    // a bold α in a cell exactly as it does in the document. The
+    // content is strictly shorter than what contains it, so this
+    // terminates.
+    renderCellContents(span, source.slice(range.contentFrom, range.contentTo), macros);
+
     return span;
 }
 

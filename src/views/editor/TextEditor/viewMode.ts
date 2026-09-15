@@ -14,6 +14,7 @@
 import { Compartment, EditorState, Facet } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { assertNever } from "../../../shared/types";
 import type { ViewMode } from "../../../shared/types";
 import { livePreview } from "./LivePreview";
 import type { ImageSourceResolver, LinkOpener } from "./LivePreview";
@@ -67,5 +68,10 @@ export function previewExtensionForMode(
                 EditorState.readOnly.of(true),
                 EditorView.editable.of(false),
             ];
+        default:
+            // A fourth mode must fail loudly here rather than silently
+            // returning nothing, which is what the missing-return check
+            // alone would allow once someone adds a default elsewhere.
+            return assertNever(mode);
     }
 }

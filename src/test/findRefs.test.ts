@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { findRefRanges } from "../views/editor/TextEditor/LivePreview/findRefs";
+import { findRefRanges } from "../views/editor/TextEditor/latex/findRefs";
 
 describe("findRefRanges", () => {
     it("finds each command kind", () => {

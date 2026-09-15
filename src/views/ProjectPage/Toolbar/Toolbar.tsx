@@ -2,7 +2,12 @@
  * Editor toolbar: save/undo/redo, LaTeX snippet insertion, and exit.
  */
 
-import type { EditorActions, SnippetName } from "../../../shared/appActions";
+import type {
+    EditorCommands,
+    ProjectActions,
+    SnippetName,
+    ViewModeControl,
+} from "../../../shared/appActions";
 import type { ViewMode } from "../../../shared/types";
 import "./Toolbar.css";
 
@@ -18,10 +23,14 @@ export interface ToolbarProps {
     readonly isDirty: boolean;
     /** True when a file is open in the editor. */
     readonly hasOpenFile: boolean;
-    /** The editor's current view mode (drives the segmented control). */
-    readonly viewMode: ViewMode;
-    /** The editor actions the buttons delegate to. */
-    readonly actions: EditorActions;
+    /**
+     * The editor actions the buttons delegate to.
+     *
+     * The view mode is read from `actions` rather than taken as its own
+     * prop: it used to be both, which is two sources of truth for one
+     * value and nothing keeping them in step.
+     */
+    readonly actions: EditorCommands & ViewModeControl & ProjectActions;
     /** Status shown at the right edge (e.g. "Saved ✓" or errors). */
     readonly statusMessage: StatusMessage | null;
 }
@@ -67,15 +76,9 @@ const SNIPPET_BUTTONS: readonly SnippetButton[] = [
  * @param props - Editor state and actions.
  * @returns The toolbar element.
  */
-export function Toolbar({
-    isDirty,
-    hasOpenFile,
-    viewMode,
-    actions,
-    statusMessage,
-}: ToolbarProps) {
+export function Toolbar({ isDirty, hasOpenFile, actions, statusMessage }: ToolbarProps) {
     // Read-only mode is non-editable, so snippet insertion is disabled.
-    const canEdit = hasOpenFile && viewMode !== "readonly";
+    const canEdit = hasOpenFile && actions.viewMode !== "readonly";
 
     return (
         <div className="editor-toolbar">
@@ -123,7 +126,7 @@ export function Toolbar({
                     <button
                         key={segment.mode}
                         type="button"
-                        className={`toolbar-segment-button${viewMode === segment.mode ? " toolbar-segment-active" : ""}`}
+                        className={`toolbar-segment-button${actions.viewMode === segment.mode ? " toolbar-segment-active" : ""}`}
                         disabled={!hasOpenFile}
                         title={segment.title}
                         onClick={() => actions.setViewMode(segment.mode)}

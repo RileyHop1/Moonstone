@@ -40,8 +40,11 @@ function toCompletion(reference: Reference): Completion {
         type: "reference",
         detail: describeReference(reference),
         // The title is the long form, shown in the side panel where
-        // there is room for it.
-        info: reference.title || undefined,
+        // there is room for it. Omitted entirely when the entry has
+        // none: CodeMirror's `Completion.info` is not declared as
+        // accepting `undefined`, and an explicit undefined is a
+        // different thing from an absent key.
+        ...(reference.title ? { info: reference.title } : {}),
     };
 }
 

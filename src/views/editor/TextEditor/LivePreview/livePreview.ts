@@ -27,24 +27,21 @@ import {
     togglesPointerSelection,
     updateTogglesPointerSelection,
 } from "./pointerSelection";
-import { findMathRanges } from "./findMath";
-import type { MathRange } from "./findMath";
-import { findEnvironments } from "./findEnvironments";
-import type { EnvRange } from "./findEnvironments";
-import { findInertRegions, maskChunk } from "./inertRegions";
-import type { InertRegions } from "./inertRegions";
-import { findFormatRanges } from "./findFormatting";
-import { findListItems } from "./findListItems";
-import type { ListItem } from "./findListItems";
-import { findGraphicsRanges } from "./findGraphics";
-import { findRefRanges } from "./findRefs";
-import { findMacros } from "./findMacros";
-import type { MacroTable } from "./findMacros";
-import { findTextReplacements } from "./findTextReplacements";
-import { findSections } from "./findSections";
-import type { SectionRange } from "./findSections";
-import { findSymbolRanges } from "./symbols";
-import { parseTabular } from "./parseTabular";
+import { findMathRanges } from "../latex/findMath";
+import type { MathRange } from "../latex/findMath";
+import { findEnvironments } from "../latex/findEnvironments";
+import type { EnvRange } from "../latex/findEnvironments";
+import { findInertRegions, maskChunk } from "../latex/inertRegions";
+import type { InertRegions } from "../latex/inertRegions";
+import type { FormatRange } from "../latex/findFormatting";
+import { scanInline } from "../latex/scanInline";
+import { findListItems } from "../latex/findListItems";
+import type { ListItem } from "../latex/findListItems";
+import { findMacros } from "../latex/findMacros";
+import type { MacroTable } from "../latex/findMacros";
+import { findSections } from "../latex/findSections";
+import type { SectionRange } from "../latex/findSections";
+import { parseTabular } from "../latex/parseTabular";
 import {
     GraphicsWidget,
     ListMarkerWidget,
@@ -56,6 +53,7 @@ import {
 } from "./MathWidget";
 import "katex/dist/katex.min.css";
 import "./livePreview.css";
+import type { Interval } from "../latex/interval";
 
 /**
  * Reports whether any selection range touches `[from, to]`.
@@ -171,7 +169,20 @@ function buildInlineDecorations(view: EditorView): InlineDecorationSets {
         // viewport. Widget content is still read from the real
         // document below.
         const text = maskChunk(state.doc.sliceString(from, to), from, inertRegions);
-        const mathRanges = findMathRanges(text, from);
+
+        // Taken from the cached whole-document scan rather than scanned
+        // again. Besides saving a pass per chunk, it fixes a real edge
+        // case: a `$…$` that *starts* above the viewport is invisible to
+        // a chunk scan, because the chunk is cut at a line boundary —
+        // so it used to render as raw source until scrolled past. Any
+        // range overlapping the chunk counts, not just one contained by
+        // it.
+        const mathRanges = scan.math.filter((math) => math.to > from && math.from < to);
+
+        // The scanners run in one shared order (see `latex/scanInline`),
+        // so a table cell resolves overlapping constructs exactly as
+        // the document around it does.
+        const inline = scanInline(text, from, { math: mathRanges });
 
         for (const math of mathRanges) {
             // Display math is the block layer's responsibility.
@@ -187,11 +198,10 @@ function buildInlineDecorations(view: EditorView): InlineDecorationSets {
             );
         }
 
-        collectFormattingDecorations(state, text, from, mathRanges, replaces, marks);
+        collectFormattingDecorations(state, inline.formats, replaces, marks);
 
-        const refRanges = findRefRanges(text, from, mathRanges);
         const openLink = state.facet(linkOpenerFacet);
-        for (const ref of refRanges) {
+        for (const ref of inline.refs) {
             if (isRevealed(state, ref.from, ref.to)) continue;
 
             replaces.push(
@@ -207,8 +217,7 @@ function buildInlineDecorations(view: EditorView): InlineDecorationSets {
             );
         }
 
-        const graphicsRanges = findGraphicsRanges(text, from, mathRanges);
-        for (const graphics of graphicsRanges) {
+        for (const graphics of inline.graphics) {
             if (isRevealed(state, graphics.from, graphics.to)) continue;
 
             const resolveImageSource = state.facet(imageResolverFacet);
@@ -222,12 +231,7 @@ function buildInlineDecorations(view: EditorView): InlineDecorationSets {
             );
         }
 
-        // Everything already claimed by a widget: those commands are
-        // replaced wholesale, so their interiors must not be scanned
-        // again. Math is excluded too — KaTeX owns its source.
-        const claimedInline = [...mathRanges, ...refRanges, ...graphicsRanges];
-
-        for (const symbol of findSymbolRanges(text, from, claimedInline)) {
+        for (const symbol of inline.symbols) {
             if (isRevealed(state, symbol.from, symbol.to)) continue;
 
             replaces.push(
@@ -238,7 +242,7 @@ function buildInlineDecorations(view: EditorView): InlineDecorationSets {
             );
         }
 
-        for (const replacement of findTextReplacements(text, from, claimedInline)) {
+        for (const replacement of inline.replacements) {
             if (isRevealed(state, replacement.from, replacement.to)) continue;
 
             replaces.push(
@@ -269,13 +273,11 @@ function buildInlineDecorations(view: EditorView): InlineDecorationSets {
  */
 function collectFormattingDecorations(
     state: EditorState,
-    text: string,
-    offset: number,
-    mathRanges: readonly Interval[],
+    formats: readonly FormatRange[],
     replaces: Range<Decoration>[],
     marks: Range<Decoration>[],
 ): void {
-    for (const format of findFormatRanges(text, offset, mathRanges)) {
+    for (const format of formats) {
         if (isRevealed(state, format.from, format.to)) continue;
 
         replaces.push(Decoration.replace({}).range(format.from, format.contentFrom));
@@ -325,12 +327,6 @@ const inlineMathPlugin = ViewPlugin.fromClass(
             ),
     },
 );
-
-/** A half-open interval used for overlap bookkeeping. */
-interface Interval {
-    readonly from: number;
-    readonly to: number;
-}
 
 /**
  * Everything the block layer scans out of the document, plus the two
@@ -764,8 +760,13 @@ function buildEnvironmentWidget(env: EnvRange, scan: DocumentScan): WidgetType |
     const { docText } = scan;
 
     if (env.name === "tabular" || env.name === "tabular*") {
-        const parsed = parseTabular(docText.slice(env.beginTo, env.endFrom));
-        return parsed ? new TableWidget(parsed) : null;
+        const interior = docText.slice(env.beginTo, env.endFrom);
+        const parsed = parseTabular(interior);
+
+        // The interior doubles as the widget's identity, so `eq` need
+        // not walk the parsed grid; the macros are what let a cell use
+        // a `\newcommand` the document defines.
+        return parsed ? new TableWidget(parsed, interior, scan.macros, scan.macroKey) : null;
     }
 
     if (MATH_ENVIRONMENTS.has(env.name)) {
@@ -1017,11 +1018,20 @@ const revealBlockOnVerticalMotion = EditorState.transactionFilter.of((transactio
     // Entering from below leaves the cursor at the end of the revealed
     // source, and from above at its start, so the next press continues
     // in the direction of travel.
-    return {
-        selection: { anchor: movingUp ? skipped.to : skipped.from },
-        effects: transaction.effects,
-        scrollIntoView: true,
-    };
+    //
+    // Returned as `[transaction, {...}]` rather than a fresh spec: a
+    // replacement spec keeps only what it names, so building one from
+    // `selection` and `effects` alone silently discarded every
+    // annotation the original carried — user-event tags, history
+    // markers, and whatever the modal extensions put there. Vim worked
+    // only because effects happened to be among the fields copied.
+    return [
+        transaction,
+        {
+            selection: { anchor: movingUp ? skipped.to : skipped.from },
+            scrollIntoView: true,
+        },
+    ];
 });
 
 /** Options for {@link livePreview}. */
@@ -1030,17 +1040,22 @@ export interface LivePreviewOptions {
      * Whether cursor contact reveals rendered source (default true).
      * Read-only mode passes false so everything stays rendered.
      */
-    readonly reveal?: boolean;
+    readonly reveal?: boolean | undefined;
     /**
      * Resolves `\includegraphics` paths to loadable URLs. Omitted
      * (plain browser, tests), images render as placeholders.
+     *
+     * Explicitly `| undefined` because the host threads an optional
+     * value straight through: under `exactOptionalPropertyTypes`,
+     * "may be absent" and "may be present and undefined" are different
+     * types, and this is the latter.
      */
-    readonly resolveImageSource?: ImageSourceResolver;
+    readonly resolveImageSource?: ImageSourceResolver | undefined;
     /**
      * Opens a `\url`/`\href` target. Omitted, link chips render
      * without an open affordance.
      */
-    readonly openLink?: LinkOpener;
+    readonly openLink?: LinkOpener | undefined;
 }
 
 /**

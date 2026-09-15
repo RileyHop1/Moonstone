@@ -552,6 +552,20 @@ body {
     cursor: default;
 }
 
+/* Destructive confirmations (deleting a file) read in the error
+   colour rather than the accent: the accent is what every harmless
+   primary action already uses, so it says nothing about consequence. */
+.dialog-button-destructive {
+    background: var(--error-color);
+    border-color: var(--error-color);
+}
+
+.dialog-message {
+    margin: 0 0 1rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
 /* ---- New-project template picker ---- */
 
 /* The template list needs more room than a name prompt. */

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { findMathRanges } from "../views/editor/TextEditor/LivePreview/findMath";
+import { findMathRanges } from "../views/editor/TextEditor/latex/findMath";
 
 describe("findMathRanges", () => {
     it("finds simple inline math", () => {

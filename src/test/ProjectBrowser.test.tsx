@@ -125,7 +125,6 @@ describe("ProjectBrowser", () => {
     });
 
     it("deletes a project via the context menu after confirmation", async () => {
-        vi.spyOn(window, "confirm").mockReturnValue(true);
         mockCommands({
             list_projects: () => PROJECTS,
             delete_project: () => null,
@@ -135,12 +134,33 @@ describe("ProjectBrowser", () => {
 
         fireEvent.contextMenu(await screen.findByText("thesis"));
         fireEvent.click(screen.getByText("Delete"));
+        fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
 
         await waitFor(() => {
             expect(invokeMock).toHaveBeenCalledWith("delete_project", {
                 projectPath: "C:/root/thesis",
             });
         });
+    });
+
+    it("does not delete a project when the confirmation is declined", async () => {
+        // The native dialog this replaced was untestable without
+        // stubbing a global, so the declining path was never covered.
+        mockCommands({
+            list_projects: () => PROJECTS,
+            delete_project: () => null,
+        });
+
+        renderWithProviders(<ProjectBrowser />);
+
+        fireEvent.contextMenu(await screen.findByText("thesis"));
+        fireEvent.click(screen.getByText("Delete"));
+        fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+
+        await waitFor(() => {
+            expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+        });
+        expect(invokeMock).not.toHaveBeenCalledWith("delete_project", expect.anything());
     });
 
     it("renames a project via the context menu", async () => {

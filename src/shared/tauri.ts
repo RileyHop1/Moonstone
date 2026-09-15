@@ -9,6 +9,17 @@
 import { convertFileSrc, invoke, isTauri } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
+    parseArrayOf,
+    parseFileNode,
+    parseNothing,
+    parseProjectInfo,
+    parseReference,
+    parseStoredSettings,
+    parseString,
+    parseTemplateInfo,
+} from "./parseBackend";
+import type { Parser } from "./parseBackend";
+import {
     basename,
     dirname,
     isAbsolute,
@@ -23,6 +34,7 @@ import type {
     ProjectInfo,
     Reference,
     Result,
+    StoredSettings,
     TemplateInfo,
 } from "./types";
 
@@ -94,24 +106,9 @@ export function createImageSourceResolver(
     };
 }
 
-/**
- * Settings as the backend stores them, straight off the IPC boundary.
- *
- * Every field is `unknown` on purpose. These values come from a JSON
- * file on disk that an older build — or the user with a text editor —
- * may have written, so the only honest type for them is "no idea yet".
- * {@link normalizeSettings} is what turns them into a usable
- * {@link AppSettings}; declaring them as `string`/`boolean` here would
- * make its guards look redundant and invite someone to delete them.
- */
-export interface StoredSettings {
-    readonly theme: unknown;
-    readonly editorFontSize: unknown;
-    readonly modalMode: unknown;
-    readonly spellCheckEnabled: unknown;
-    readonly lineNumberMode: unknown;
-    readonly showDiagnostics: unknown;
-}
+// Declared in `types.ts`, beside the settings it normalises into;
+// re-exported here because callers reach for it alongside the commands.
+export type { StoredSettings } from "./types";
 
 /**
  * Converts an unknown thrown value into a human-readable message.
@@ -139,6 +136,7 @@ function toErrorMessage(error: unknown): string {
  */
 async function invokeCommand<T>(
     command: string,
+    parse: Parser<T>,
     args?: Record<string, unknown>,
 ): Promise<Result<T>> {
     // Running in a plain browser (`npm run dev`) leaves the Tauri bridge
@@ -154,11 +152,37 @@ async function invokeCommand<T>(
     }
 
     try {
-        const data = await invoke<T>(command, args);
-        return { ok: true, data };
+        // `invoke` is typed `<T>` but checks nothing, so the response is
+        // taken as `unknown` and validated. Without this a malformed or
+        // version-skewed answer surfaces as `undefined.children` deep
+        // inside a render, far from the boundary it crossed.
+        const raw: unknown = await invoke(command, args);
+        const data = parse(raw);
+
+        if (data === null && !acceptsNull(parse)) {
+            return {
+                ok: false,
+                error: `Moonstone could not understand the response to '${command}'. This usually means the app and its backend are different versions.`,
+            };
+        }
+
+        return { ok: true, data: data as T };
     } catch (error: unknown) {
         return { ok: false, error: toErrorMessage(error) };
     }
+}
+
+/**
+ * Whether null is this parser's success value rather than its failure.
+ *
+ * A command returning `()` sends `null`, which is a perfectly good
+ * answer — the one case where "parsed to null" is not a rejection.
+ *
+ * @param parse - The parser to check.
+ * @returns True for {@link parseNothing}.
+ */
+function acceptsNull(parse: Parser<unknown>): boolean {
+    return parse === parseNothing;
 }
 
 /**
@@ -167,7 +191,7 @@ async function invokeCommand<T>(
  * @returns All projects, sorted by name.
  */
 export function listProjects(): Promise<Result<readonly ProjectInfo[]>> {
-    return invokeCommand("list_projects");
+    return invokeCommand("list_projects", parseArrayOf(parseProjectInfo));
 }
 
 /**
@@ -178,7 +202,7 @@ export function listProjects(): Promise<Result<readonly ProjectInfo[]>> {
  * @returns Metadata of the created project.
  */
 export function createProject(name: string, templateId: string): Promise<Result<ProjectInfo>> {
-    return invokeCommand("create_project", { name, templateId });
+    return invokeCommand("create_project", parseProjectInfo, { name, templateId });
 }
 
 /**
@@ -187,7 +211,7 @@ export function createProject(name: string, templateId: string): Promise<Result<
  * @returns The available templates, in the order they are offered.
  */
 export function listTemplates(): Promise<Result<readonly TemplateInfo[]>> {
-    return invokeCommand("list_templates", {});
+    return invokeCommand("list_templates", parseArrayOf(parseTemplateInfo), {});
 }
 
 /**
@@ -198,7 +222,7 @@ export function listTemplates(): Promise<Result<readonly TemplateInfo[]>> {
  * @returns The project's references.
  */
 export function listReferences(projectPath: string): Promise<Result<readonly Reference[]>> {
-    return invokeCommand("list_references", { projectPath });
+    return invokeCommand("list_references", parseArrayOf(parseReference), { projectPath });
 }
 
 /**
@@ -208,7 +232,7 @@ export function listReferences(projectPath: string): Promise<Result<readonly Ref
  * @returns Nothing on success.
  */
 export function deleteProject(projectPath: string): Promise<Result<null>> {
-    return invokeCommand("delete_project", { projectPath });
+    return invokeCommand("delete_project", parseNothing, { projectPath });
 }
 
 /**
@@ -218,7 +242,7 @@ export function deleteProject(projectPath: string): Promise<Result<null>> {
  * @returns The root directory node of the project.
  */
 export function listProjectFiles(projectPath: string): Promise<Result<FileNode>> {
-    return invokeCommand("list_project_files", { projectPath });
+    return invokeCommand("list_project_files", parseFileNode, { projectPath });
 }
 
 /**
@@ -228,7 +252,7 @@ export function listProjectFiles(projectPath: string): Promise<Result<FileNode>>
  * @returns The file contents.
  */
 export function readFile(filePath: string): Promise<Result<string>> {
-    return invokeCommand("read_file", { filePath });
+    return invokeCommand("read_file", parseString, { filePath });
 }
 
 /**
@@ -239,7 +263,7 @@ export function readFile(filePath: string): Promise<Result<string>> {
  * @returns Nothing on success.
  */
 export function saveFile(filePath: string, contents: string): Promise<Result<null>> {
-    return invokeCommand("save_file", { filePath, contents });
+    return invokeCommand("save_file", parseNothing, { filePath, contents });
 }
 
 /**
@@ -256,7 +280,7 @@ export function createFile(
     fileName: string,
     fileExtension: string,
 ): Promise<Result<string>> {
-    return invokeCommand("create_file", {
+    return invokeCommand("create_file", parseString, {
         parentDirectory,
         fileName,
         fileExtension,
@@ -271,7 +295,7 @@ export function createFile(
  * @returns The renamed project's path.
  */
 export function renameProject(projectPath: string, newName: string): Promise<Result<string>> {
-    return invokeCommand("rename_project", { projectPath, newName });
+    return invokeCommand("rename_project", parseString, { projectPath, newName });
 }
 
 /**
@@ -285,7 +309,7 @@ export function createDirectory(
     parentDirectory: string,
     dirName: string,
 ): Promise<Result<string>> {
-    return invokeCommand("create_directory", { parentDirectory, dirName });
+    return invokeCommand("create_directory", parseString, { parentDirectory, dirName });
 }
 
 /**
@@ -296,7 +320,7 @@ export function createDirectory(
  * @returns The full path of the renamed entry.
  */
 export function renameEntry(path: string, newName: string): Promise<Result<string>> {
-    return invokeCommand("rename_entry", { path, newName });
+    return invokeCommand("rename_entry", parseString, { path, newName });
 }
 
 /**
@@ -307,7 +331,7 @@ export function renameEntry(path: string, newName: string): Promise<Result<strin
  * @returns The entry's full path at its new location.
  */
 export function moveEntry(sourcePath: string, destinationDir: string): Promise<Result<string>> {
-    return invokeCommand("move_entry", { sourcePath, destinationDir });
+    return invokeCommand("move_entry", parseString, { sourcePath, destinationDir });
 }
 
 /**
@@ -317,7 +341,7 @@ export function moveEntry(sourcePath: string, destinationDir: string): Promise<R
  * @returns Nothing on success.
  */
 export function deleteEntry(path: string): Promise<Result<null>> {
-    return invokeCommand("delete_entry", { path });
+    return invokeCommand("delete_entry", parseNothing, { path });
 }
 
 /**
@@ -326,7 +350,7 @@ export function deleteEntry(path: string): Promise<Result<null>> {
  * @returns The stored settings (theme not yet narrowed).
  */
 export function getSettings(): Promise<Result<StoredSettings>> {
-    return invokeCommand("get_settings");
+    return invokeCommand("get_settings", parseStoredSettings);
 }
 
 /**
@@ -336,5 +360,5 @@ export function getSettings(): Promise<Result<StoredSettings>> {
  * @returns Nothing on success.
  */
 export function saveSettings(settings: AppSettings): Promise<Result<null>> {
-    return invokeCommand("save_settings", { settings });
+    return invokeCommand("save_settings", parseNothing, { settings });
 }

@@ -8,6 +8,7 @@
  */
 
 import { findGroupEnd } from "./braces";
+import type { Interval } from "./interval";
 
 /** The visual style a formatting command applies. */
 export type FormatStyle =
@@ -33,12 +34,6 @@ export interface FormatRange {
     readonly contentFrom: number;
     /** End offset of the content, at the closing `}`. */
     readonly contentTo: number;
-}
-
-/** A half-open interval used for exclusion. */
-interface Interval {
-    readonly from: number;
-    readonly to: number;
 }
 
 /**

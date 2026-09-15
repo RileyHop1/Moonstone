@@ -15,7 +15,8 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "version:set": "node scripts/setVersion.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "6.20.0",
@@ -55,6 +56,7 @@
     "typescript": "~5.6.2",
     "typescript-eslint": "^8.70.0",
     "vite": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "yaml": "^2.9.1"
   }
 }

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { findFormatRanges } from "../views/editor/TextEditor/LivePreview/findFormatting";
+import { findFormatRanges } from "../views/editor/TextEditor/latex/findFormatting";
 
 describe("findFormatRanges", () => {
     it("maps each command to its style", () => {

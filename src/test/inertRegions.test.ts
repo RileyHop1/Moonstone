@@ -10,11 +10,11 @@ import {
     findLiteralRanges,
     maskChunk,
     maskInertRegions,
-} from "../views/editor/TextEditor/LivePreview/inertRegions";
-import { findMathRanges } from "../views/editor/TextEditor/LivePreview/findMath";
-import { findSymbolRanges } from "../views/editor/TextEditor/LivePreview/symbols";
-import { findSections } from "../views/editor/TextEditor/LivePreview/findSections";
-import { findEnvironments } from "../views/editor/TextEditor/LivePreview/findEnvironments";
+} from "../views/editor/TextEditor/latex/inertRegions";
+import { findMathRanges } from "../views/editor/TextEditor/latex/findMath";
+import { findSymbolRanges } from "../views/editor/TextEditor/latex/symbols";
+import { findSections } from "../views/editor/TextEditor/latex/findSections";
+import { findEnvironments } from "../views/editor/TextEditor/latex/findEnvironments";
 
 describe("findCommentRanges", () => {
     it("finds a comment running to the end of its line", () => {

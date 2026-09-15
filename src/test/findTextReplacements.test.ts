@@ -7,7 +7,7 @@ import { describe, it, expect } from "vitest";
 import {
     applyTextReplacements as render,
     findTextReplacements,
-} from "../views/editor/TextEditor/LivePreview/findTextReplacements";
+} from "../views/editor/TextEditor/latex/findTextReplacements";
 
 describe("escaped punctuation", () => {
     it("renders escaped characters as themselves", () => {

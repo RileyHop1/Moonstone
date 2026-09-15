@@ -1,3 +1,4 @@
+import type { Interval } from "./interval";
 /**
  * Pure scanner for `\includegraphics` commands, rendered as inline
  * images (or a placeholder when the file cannot be resolved).
@@ -13,12 +14,6 @@ export interface GraphicsRange {
     readonly path: string;
     /** The optional argument's contents (`width=5cm`), or null. */
     readonly options: string | null;
-}
-
-/** A half-open interval used for exclusion. */
-interface Interval {
-    readonly from: number;
-    readonly to: number;
 }
 
 /**

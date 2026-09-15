@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { parseTabular } from "../views/editor/TextEditor/LivePreview/parseTabular";
-import type { TabularCell } from "../views/editor/TextEditor/LivePreview/parseTabular";
+import { parseTabular } from "../views/editor/TextEditor/latex/parseTabular";
+import type { TabularCell } from "../views/editor/TextEditor/latex/parseTabular";
 
 /** Builds a plain single-span cell, the common case in expectations. */
 function cell(source: string): TabularCell {

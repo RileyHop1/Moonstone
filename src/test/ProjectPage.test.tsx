@@ -392,7 +392,6 @@ describe("ProjectPage", () => {
     });
 
     it("deletes a file via the context menu after confirmation", async () => {
-        vi.spyOn(window, "confirm").mockReturnValue(true);
         mockCommands({
             list_project_files: () => TREE,
             read_file: () => "",
@@ -402,6 +401,7 @@ describe("ProjectPage", () => {
 
         fireEvent.contextMenu(await findFileRow("demo.tex"));
         fireEvent.click(screen.getByText("Delete"));
+        fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
 
         await waitFor(() => {
             expect(invokeMock).toHaveBeenCalledWith("delete_entry", {
@@ -411,7 +411,6 @@ describe("ProjectPage", () => {
     });
 
     it("closes the editor when the open file is deleted", async () => {
-        vi.spyOn(window, "confirm").mockReturnValue(true);
         mockCommands({
             list_project_files: () => TREE,
             read_file: () => "",
@@ -423,6 +422,7 @@ describe("ProjectPage", () => {
 
         fireEvent.contextMenu(fileRow("demo.tex"));
         fireEvent.click(screen.getByText("Delete"));
+        fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
 
         await waitFor(() => {
             expect(screen.queryByTestId("mock-editor")).not.toBeInTheDocument();
@@ -537,5 +537,83 @@ describe("ProjectPage", () => {
         fireEvent.click(await screen.findByRole("button", { name: "Exit" }));
 
         await waitFor(() => expect(navigateCalls).toEqual([{ kind: "browser" }]));
+    });
+});
+
+describe("ProjectPage against a malformed backend", () => {
+    beforeEach(() => {
+        resetInvokeMock();
+    });
+
+    it("shows an error instead of crashing on a malformed file tree", async () => {
+        // A directory with no `children` array used to arrive typed as a
+        // FileNode and throw inside the render (finding C-1).
+        mockCommands({
+            list_project_files: () => ({
+                kind: "directory",
+                name: "demo",
+                path: "C:/root/demo",
+            }),
+        });
+
+        renderWithProviders(<ProjectPage project={PROJECT} />);
+
+        expect(
+            await screen.findByText(/could not understand the response/i),
+        ).toBeInTheDocument();
+    });
+});
+
+describe("ProjectPage auto-open", () => {
+    beforeEach(() => {
+        resetInvokeMock();
+    });
+
+    it("opens a file from a subdirectory when the root has none", async () => {
+        // The bundled book and thesis templates both put chapters in a
+        // subdirectory. A project restructured that way used to open to
+        // an empty editor, because the search never recursed (F-5).
+        mockCommands({
+            list_project_files: () => ({
+                kind: "directory",
+                name: "demo",
+                path: "C:/root/demo",
+                children: [
+                    {
+                        kind: "directory",
+                        name: "chapters",
+                        path: "C:/root/demo/chapters",
+                        children: [
+                            {
+                                kind: "file",
+                                name: "intro.tex",
+                                path: "C:/root/demo/chapters/intro.tex",
+                            },
+                        ],
+                    },
+                ],
+            }),
+            read_file: () => "",
+        });
+
+        renderWithProviders(<ProjectPage project={PROJECT} />);
+
+        await waitFor(() => {
+            expect(invokeMock).toHaveBeenCalledWith("read_file", {
+                filePath: "C:/root/demo/chapters/intro.tex",
+            });
+        });
+    });
+
+    it("prefers a root-level file named after the project", async () => {
+        mockCommands({ list_project_files: () => TREE, read_file: () => "" });
+
+        renderWithProviders(<ProjectPage project={PROJECT} />);
+
+        await waitFor(() => {
+            expect(invokeMock).toHaveBeenCalledWith("read_file", {
+                filePath: "C:/root/demo/demo.tex",
+            });
+        });
     });
 });

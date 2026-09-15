@@ -4,7 +4,15 @@
  * saves changes back through the backend.
  */
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+    createContext,
+    useCallback,
+    useContext,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import type { ReactNode } from "react";
 import { getSettings, saveSettings } from "./tauri";
 import type { StoredSettings } from "./tauri";
@@ -59,6 +67,23 @@ export function useSettings(): SettingsValue {
 }
 
 /**
+ * Narrows an unknown value to one of a fixed set of strings.
+ *
+ * The cast is contained here, once, instead of appearing twice at each
+ * call site — where a reader has to check for themselves that the value
+ * being asserted is the one that was just tested. `normalizeTheme` in
+ * `themes.ts` already works this way.
+ *
+ * @param allowed - The values this setting may take.
+ * @param value - The stored value, straight off disk.
+ * @param fallback - Used when the value is not one of `allowed`.
+ * @returns One of `allowed`.
+ */
+function oneOf<T extends string>(allowed: readonly T[], value: unknown, fallback: T): T {
+    return allowed.find((candidate) => candidate === value) ?? fallback;
+}
+
+/**
  * Narrows and clamps raw stored settings into a valid AppSettings.
  *
  * The stored value crosses the IPC boundary, so nothing about its
@@ -80,19 +105,17 @@ export function normalizeSettings(stored: StoredSettings | null | undefined): Ap
         ? Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, Math.round(rawFontSize)))
         : DEFAULT_SETTINGS.editorFontSize;
 
-    const modalMode: ModalMode = MODAL_MODES.includes(stored.modalMode as ModalMode)
-        ? (stored.modalMode as ModalMode)
-        : DEFAULT_SETTINGS.modalMode;
+    const modalMode = oneOf(MODAL_MODES, stored.modalMode, DEFAULT_SETTINGS.modalMode);
 
     // Anything that is not an explicit `false` leaves checking on: a
     // missing or malformed value should not silently disable it.
     const spellCheckEnabled = stored.spellCheckEnabled !== false;
 
-    const lineNumberMode: LineNumberMode = LINE_NUMBER_MODES.includes(
-        stored.lineNumberMode as LineNumberMode,
-    )
-        ? (stored.lineNumberMode as LineNumberMode)
-        : DEFAULT_SETTINGS.lineNumberMode;
+    const lineNumberMode = oneOf(
+        LINE_NUMBER_MODES,
+        stored.lineNumberMode,
+        DEFAULT_SETTINGS.lineNumberMode,
+    );
 
     // Developer-facing and off unless explicitly asked for.
     const showDiagnostics = stored.showDiagnostics === true;
@@ -152,17 +175,24 @@ export function SettingsProvider({ children }: { readonly children: ReactNode })
         applySettingsToDom(settings);
     }, [settings]);
 
+    // Mirrors the applied settings so the updater below can compute the
+    // next value without reading state through a React updater.
+    const settingsRef = useRef(settings);
+    settingsRef.current = settings;
+
     const updateSettings = useCallback((partial: Partial<AppSettings>) => {
-        setSettings((previous) => {
-            const next = normalizeSettings({ ...previous, ...partial });
+        const next = normalizeSettings({ ...settingsRef.current, ...partial });
 
-            // Persist in the background; a failed save should not
-            // block the UI change.
-            void saveSettings(next).then((result) => {
-                if (!result.ok) console.error("Failed to save settings:", result.error);
-            });
+        // Computed and persisted outside the updater. React may invoke
+        // an updater more than once — it does, under StrictMode — and an
+        // updater that saved would then write the file twice per change.
+        // Updaters have to be pure.
+        setSettings(next);
 
-            return next;
+        // Persisted in the background; a failed save should not block
+        // the UI change.
+        void saveSettings(next).then((result) => {
+            if (!result.ok) console.error("Failed to save settings:", result.error);
         });
     }, []);
 

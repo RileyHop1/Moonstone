@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { findSections } from "../views/editor/TextEditor/LivePreview/findSections";
+import { findSections } from "../views/editor/TextEditor/latex/findSections";
 
 describe("findSections", () => {
     it("finds all three levels with correct offsets", () => {

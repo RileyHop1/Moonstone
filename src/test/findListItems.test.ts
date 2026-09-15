@@ -3,10 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import {
-    enumerateLabel,
-    findListItems,
-} from "../views/editor/TextEditor/LivePreview/findListItems";
+import { enumerateLabel, findListItems } from "../views/editor/TextEditor/latex/findListItems";
 
 /** Wraps lines in a `\begin{name}...\end{name}` environment. */
 function env(name: string, body: string): string {

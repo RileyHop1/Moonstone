@@ -114,12 +114,19 @@ export default tseslint.config(
         },
     },
 
-    // Root config files: no type information available.
+    // Node scripts and root config files. `tsconfig.json` covers `src`
+    // only, so there is no type information for these and the
+    // type-aware rules would throw rather than skip them.
     {
-        files: ["*.{js,ts}"],
+        files: ["*.{js,ts,mjs}", "scripts/**/*.{js,mjs}"],
         extends: [tseslint.configs.disableTypeChecked],
         languageOptions: {
             globals: globals.node,
+        },
+        rules: {
+            // These are developer tooling; telling the developer what
+            // they did is the whole point.
+            "no-console": "off",
         },
     },
 );

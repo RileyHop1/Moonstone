@@ -1,3 +1,4 @@
+import type { Interval } from "./interval";
 /**
  * Special-character rendering: maps LaTeX commands (`\alpha`, `\leq`,
  * …) to their unicode glyphs and scans text for occurrences.
@@ -153,12 +154,6 @@ export interface SymbolRange {
     readonly to: number;
     /** The unicode glyph to render. */
     readonly symbol: string;
-}
-
-/** A half-open interval used for exclusion. */
-interface Interval {
-    readonly from: number;
-    readonly to: number;
 }
 
 /** Matches a backslash command made of letters. */

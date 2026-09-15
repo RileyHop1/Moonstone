@@ -1,3 +1,4 @@
+import type { Interval } from "./interval";
 /**
  * Pure scanner for reference-like commands (`\ref{...}`, `\eqref{...}`,
  * `\cite{...}`, `\label{...}`), rendered as small chips.
@@ -23,12 +24,6 @@ export interface RefRange {
     readonly note: string | null;
     /** For `url`/`href`, the target address; null otherwise. */
     readonly target: string | null;
-}
-
-/** A half-open interval used for exclusion. */
-interface Interval {
-    readonly from: number;
-    readonly to: number;
 }
 
 /**

@@ -1,5 +1,19 @@
 # Live Preview
 
+> **Module layout.** The LaTeX scanners live in
+> `src/views/editor/TextEditor/latex/` — pure string scanning that knows
+> nothing about CodeMirror. `LivePreview/` is the rendering built on top
+> of them. The spell checker and diagnostics depend on `latex/` directly,
+> rather than reaching through a rendering module to ask where the
+> comments are, which is what they used to do.
+>
+> **One scan order.** `latex/scanInline.ts` owns the sequence the inline
+> scanners run in and what each is allowed to look at. That sequence is a
+> behavioural contract, not an implementation detail: `\alpha` is a
+> symbol, but inside `$…$` it is KaTeX's, and inside `\cite{}` it is part
+> of a key. It had been written twice — once for the document, once for
+> table cells — and the copies disagreed. See "Table cells" below.
+
 Obsidian-style inline rendering for LaTeX inside CodeMirror 6. Source
 text is replaced by rendered widgets whenever the cursor is elsewhere;
 touching a rendered region with the cursor (click or arrow keys)
@@ -650,3 +664,51 @@ rendering to 5 of 5.
   parsed into `GraphicsRange.options` and then ignored.
 - **Extension-less image paths**, which need a filesystem probe
   through the backend.
+
+## Table cells
+
+A `tabular` environment renders as a real HTML table, and each cell's
+contents are rendered wholesale rather than decorated — so this path
+cannot reuse the decoration pipeline. It does reuse everything else:
+
+- **The same scan order** (`latex/scanInline.ts`), so a construct means
+  the same thing in a cell as outside one.
+- **The document's macros.** `TableWidget` carries `macros` and
+  `macroKey`, and `katex.render` is given a _copy_ per call, because
+  KaTeX writes into that object for `\gdef`. Without this a
+  document-defined `\dmodel` rendered correctly everywhere except inside
+  a table, where it turned red — the one place an author is most likely
+  to use it.
+- **Inert-region masking.** A `%` comment inside a cell comments out the
+  rest of it; scanning the raw text found constructs nobody wrote.
+- **Recursive rendering of formatting content**, so `\textbf{\alpha}` is
+  a bold α rather than a bold `\alpha`.
+
+`TableWidget.eq` compares the **source the grid was parsed from**, plus
+the macro key — not the parsed grid. `eq` runs on every decoration-set
+comparison, which is every keystroke and every cursor move, and it used
+to answer by serialising the whole table twice per call.
+
+## Drag-selection tracking
+
+`pointerSelection.ts` freezes what counts as "revealed" for the length
+of a drag, so revealing a block mid-gesture cannot shift lines out from
+under the pointer.
+
+Its `pointerup`/`pointercancel` listeners are on the **window**, because
+the pointer routinely leaves the editor while dragging. That makes
+teardown load-bearing: it runs as a `ViewPlugin` whose `destroy()`
+aborts an `AbortController` covering every listener. Without that, an
+editor unmounted mid-drag — a pane closed, the file deleted, the view
+mode switched — left them attached until the next click anywhere in the
+app, whereupon they dispatched into a destroyed view. **CodeMirror
+silently ignores a dispatch to a destroyed view**, so the leak produced
+no error at all.
+
+## Inline math comes from the cached scan
+
+The inline layer filters the cached whole-document scan by the visible
+ranges rather than re-scanning each chunk. Besides saving a pass per
+chunk, it fixes an edge case: a `$…$` that _starts_ above the viewport
+is invisible to a chunk scan, because chunks are cut at line boundaries
+— so it used to render as raw source until scrolled past.

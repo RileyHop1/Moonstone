@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { ClaimedRanges } from "../views/editor/TextEditor/LivePreview";
+import { ClaimedRanges } from "../views/editor/TextEditor/LivePreview/livePreview";
 
 describe("ClaimedRanges", () => {
     it("reports nothing claimed when empty", () => {

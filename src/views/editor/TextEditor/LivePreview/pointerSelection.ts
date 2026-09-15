@@ -20,8 +20,8 @@
 
 import { StateEffect, StateField } from "@codemirror/state";
 import type { EditorSelection, EditorState, Extension, Transaction } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import type { ViewUpdate } from "@codemirror/view";
+import { ViewPlugin } from "@codemirror/view";
+import type { EditorView, PluginValue, ViewUpdate } from "@codemirror/view";
 
 /** Starts a gesture, carrying the selection to freeze reveal at. */
 const startPointerSelection = StateEffect.define<EditorSelection>();
@@ -88,34 +88,82 @@ export function updateTogglesPointerSelection(update: ViewUpdate): boolean {
  * @returns The field and its mouse tracking.
  */
 export function pointerSelectionTracker(): Extension {
-    return [
-        pointerSelectionField,
-        EditorView.domEventHandlers({
-            // `pointerdown`, not `mousedown`: it fires first, so the
-            // selection captured here is the one from *before* the
-            // click. Capturing after CodeMirror has moved the cursor
-            // would freeze reveal at a cursor sitting inside the block,
-            // which reveals it — the very thing being avoided.
-            pointerdown(event, view) {
-                // Only a primary-button drag selects text.
-                if (!event.isPrimary || event.button !== 0) return false;
+    return [pointerSelectionField, ViewPlugin.fromClass(PointerSelectionGestures)];
+}
 
-                // Released anywhere — the pointer routinely leaves the
-                // editor while dragging — so the listener is on the
-                // window and removes itself.
-                const finish = (): void => {
-                    window.removeEventListener("pointerup", finish);
-                    window.removeEventListener("pointercancel", finish);
-                    view.dispatch({ effects: endPointerSelection.of(null) });
-                };
-                window.addEventListener("pointerup", finish);
-                window.addEventListener("pointercancel", finish);
+/**
+ * Registers the drag-selection listeners and, crucially, takes them
+ * away again when the editor goes.
+ *
+ * A `ViewPlugin` rather than plain `domEventHandlers` because the
+ * gesture's `pointerup`/`pointercancel` listeners live on the
+ * **window** — the pointer routinely leaves the editor mid-drag — and
+ * nothing else in an extension gets told when the view is destroyed. An
+ * editor unmounted mid-drag (a pane closed, the file deleted, the view
+ * mode switched) would otherwise leave those listeners attached until
+ * the next click anywhere in the app, whereupon they dispatch into a
+ * destroyed view. CodeMirror ignores that dispatch, so the leak is
+ * completely silent.
+ *
+ * One `AbortController` covers every listener, so `destroy` cannot
+ * forget one.
+ */
+class PointerSelectionGestures implements PluginValue {
+    /** Aborted on destroy, removing every listener at once. */
+    private readonly gestures = new AbortController();
 
-                view.dispatch({ effects: startPointerSelection.of(view.state.selection) });
+    /** Aborted when the current drag ends; null when none is running. */
+    private active: AbortController | null = null;
 
-                // Never handled here: CodeMirror still owns the drag.
-                return false;
-            },
-        }),
-    ];
+    /**
+     * @param view - The editor this plugin belongs to.
+     */
+    constructor(private readonly view: EditorView) {
+        view.dom.addEventListener("pointerdown", this.handlePointerDown, {
+            signal: this.gestures.signal,
+        });
+    }
+
+    /**
+     * Starts tracking a drag-selection gesture.
+     *
+     * `pointerdown`, not `mousedown`: it fires first, so the selection
+     * captured here is the one from *before* the click. Capturing after
+     * CodeMirror has moved the cursor would freeze reveal at a cursor
+     * sitting inside the block, which reveals it — the very thing being
+     * avoided.
+     */
+    private readonly handlePointerDown = (event: PointerEvent): void => {
+        // Only a primary-button drag selects text.
+        if (!event.isPrimary || event.button !== 0) return;
+
+        this.active?.abort();
+        const gesture = new AbortController();
+        this.active = gesture;
+
+        const finish = (): void => {
+            gesture.abort();
+            this.active = null;
+            this.view.dispatch({ effects: endPointerSelection.of(null) });
+        };
+
+        // Released anywhere, so these go on the window rather than the
+        // editor. Both the gesture's own controller and the plugin's
+        // can cancel them.
+        for (const type of ["pointerup", "pointercancel"]) {
+            window.addEventListener(type, finish, {
+                signal: AbortSignal.any([gesture.signal, this.gestures.signal]),
+            });
+        }
+
+        this.view.dispatch({
+            effects: startPointerSelection.of(this.view.state.selection),
+        });
+    };
+
+    /** Removes every listener this plugin registered. */
+    destroy(): void {
+        this.gestures.abort();
+        this.active = null;
+    }
 }

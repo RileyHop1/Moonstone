@@ -1,3 +1,8 @@
+import type { Interval } from "./interval";
+
+// Re-exported because callers of the masking helpers work in the same
+// ranges these return.
+export type { Interval };
 /**
  * Identifies the regions of a LaTeX document whose contents must never
  * be rendered by the preview: comments and verbatim-style literals.
@@ -23,10 +28,6 @@
  */
 
 /** A half-open interval of the document. */
-export interface Interval {
-    readonly from: number;
-    readonly to: number;
-}
 
 /** The regions of a document whose contents must not be rendered. */
 export interface InertRegions {

@@ -7,9 +7,12 @@ name: Frontend
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "master"]
   pull_request:
-    branches: ["main"]
+    branches: ["main", "master"]
+  # Callable from the release workflow, so a release is gated on the
+  # same checks a pull request is rather than on a second copy of them.
+  workflow_call:
 
 jobs:
   check:

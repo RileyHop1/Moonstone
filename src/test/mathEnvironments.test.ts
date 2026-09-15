@@ -10,7 +10,7 @@
 
 import { describe, it, expect } from "vitest";
 import katex from "katex";
-import { MATH_ENVIRONMENTS } from "../views/editor/TextEditor/LivePreview";
+import { MATH_ENVIRONMENTS } from "../views/editor/TextEditor/LivePreview/livePreview";
 
 /**
  * A representative body for each supported environment. Bodies differ

@@ -8,11 +8,11 @@
  * decorations are produced.
  */
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { EditorView } from "@codemirror/view";
-import { EditorSelection } from "@codemirror/state";
+import { EditorSelection, Transaction } from "@codemirror/state";
 import type { ViewMode } from "../shared/types";
-import { documentScanField } from "../views/editor/TextEditor/LivePreview";
+import { documentScanField } from "../views/editor/TextEditor/LivePreview/livePreview";
 import { previewExtensionForMode } from "../views/editor/TextEditor/viewMode";
 
 /** Editors mounted by the current test, torn down afterwards. */
@@ -94,6 +94,27 @@ function renderedText(view: EditorView): string {
     if (!content) return "";
 
     const visible = content.cloneNode(true) as HTMLElement;
+    for (const mathml of visible.querySelectorAll(".katex-mathml")) mathml.remove();
+
+    return visible.textContent ?? "";
+}
+
+/**
+ * The visible text of one rendered element, MathML stripped.
+ *
+ * Needed where the document also contains source that would satisfy the
+ * assertion — a `\newcommand` line is on screen as source, so asking
+ * whether the *table* expanded the macro has to look only at the table.
+ *
+ * @param view - The mounted view.
+ * @param selector - A CSS selector for the element to read.
+ * @returns Its visible text, or an empty string when absent.
+ */
+function renderedTextOf(view: EditorView, selector: string): string {
+    const element = view.dom.querySelector(selector);
+    if (!element) return "";
+
+    const visible = element.cloneNode(true) as HTMLElement;
     for (const mathml of visible.querySelectorAll(".katex-mathml")) mathml.remove();
 
     return visible.textContent ?? "";
@@ -222,6 +243,71 @@ describe("live preview — block layer", () => {
         expect(hasElement(view, ".cm-table-widget .cm-fmt-bold")).toBe(true);
         expect(renderedText(view)).toContain("α");
         expect(renderedText(view)).not.toContain("\\textbf");
+    });
+
+    it("expands a document-defined macro inside a table cell", () => {
+        // Macros reached every other rendered construct but not table
+        // cells, which called KaTeX with no macro table — so a command
+        // the document defines rendered as red error text there and
+        // nowhere else (finding B-1).
+        const view = mountPreview(
+            [
+                String.raw`\newcommand{\dmodel}{d_{\text{model}}}`,
+                String.raw`\begin{tabular}{ll}`,
+                String.raw`Size & $\dmodel$ \\`,
+                String.raw`\end{tabular}`,
+            ].join("\n"),
+        );
+
+        // Scoped to the table: the `\newcommand` line is itself on
+        // screen as source, and would satisfy a document-wide check.
+        const table = renderedTextOf(view, ".cm-table-widget");
+        expect(table).toContain("model");
+        expect(table).not.toContain(String.raw`\dmodel`);
+    });
+
+    it("renders a symbol nested inside formatting in a table cell", () => {
+        // The cell renderer had its own scan order, which excluded
+        // formatting from the symbol pass — so `\textbf{\alpha}` showed
+        // a bold α in the document and a bold `\alpha` in a table. Both
+        // paths now run the same sequence (finding B-1).
+        const view = mountPreview(
+            [
+                String.raw`\begin{tabular}{ll}`,
+                String.raw`A & \textbf{\alpha} \\`,
+                String.raw`\end{tabular}`,
+            ].join("\n"),
+        );
+
+        const table = renderedTextOf(view, ".cm-table-widget");
+        expect(table).toContain("α");
+        expect(table).not.toContain(String.raw`\alpha`);
+    });
+
+    it("keeps the formatting style around nested content in a cell", () => {
+        const view = mountPreview(
+            [
+                String.raw`\begin{tabular}{ll}`,
+                String.raw`A & \textbf{\alpha} \\`,
+                String.raw`\end{tabular}`,
+            ].join("\n"),
+        );
+
+        expect(hasElement(view, ".cm-table-widget .cm-fmt-bold")).toBe(true);
+    });
+
+    it("ignores a comment inside a table cell", () => {
+        // Cells were scanned as live source, so a construct written
+        // after a `%` was rendered rather than left alone.
+        const view = mountPreview(
+            [
+                String.raw`\begin{tabular}{ll}`,
+                String.raw`A & B % \alpha \\`,
+                String.raw`\end{tabular}`,
+            ].join("\n"),
+        );
+
+        expect(renderedText(view)).not.toContain("α");
     });
 
     it("drops booktabs rules from a table", () => {
@@ -397,6 +483,46 @@ describe("live preview — block layer", () => {
             // step as the first test, so only the annotation differs.
             view.dispatch({ selection: { anchor: below } });
             expect(moveTo(view, above, "select.pointer")).toBe(above);
+        });
+
+        it("keeps the annotations of the transaction it redirects", () => {
+            // The filter used to return a fresh spec carrying only
+            // `selection`, `effects` and `scrollIntoView`, which
+            // silently dropped every annotation — user-event tags,
+            // history markers, modal-mode bookkeeping. Vim kept working
+            // only because effects happened to be among the fields
+            // copied (finding B-5).
+            const applied: (string | undefined)[] = [];
+
+            const parent = document.createElement("div");
+            document.body.appendChild(parent);
+            const text = doc + INERT_TAIL;
+            const view = new EditorView({
+                doc: text,
+                selection: { anchor: text.indexOf("after") },
+                extensions: [
+                    previewExtensionForMode("live"),
+                    EditorView.updateListener.of((update) => {
+                        for (const transaction of update.transactions) {
+                            applied.push(transaction.annotation(Transaction.userEvent));
+                        }
+                    }),
+                ],
+                parent,
+            });
+            mounted.push(view);
+
+            const below = view.state.doc.line(4).from;
+            const above = view.state.doc.line(2).from;
+            view.dispatch({ selection: { anchor: below } });
+            applied.length = 0;
+
+            view.dispatch({ selection: { anchor: above }, userEvent: "select.vertical" });
+
+            // The redirect happened...
+            expect(view.state.selection.main.head).toBe(mathTo);
+            // ...and the annotation survived it.
+            expect(applied).toContain("select.vertical");
         });
 
         it("leaves a jump across the whole document alone", () => {
@@ -773,5 +899,58 @@ describe("live preview — selecting across a block", () => {
         view.dispatch({ selection: EditorSelection.single(0, DOC.length) });
 
         expect(renderedText(view)).toContain(BEGIN_TAG);
+    });
+});
+
+describe("live preview — drag-selection tracking", () => {
+    it("stops listening once the editor is destroyed", () => {
+        // The gesture's pointerup/pointercancel listeners live on the
+        // window, because the pointer routinely leaves the editor
+        // mid-drag. An editor unmounted during a drag — a pane closed,
+        // the file deleted, the view mode switched — used to leave them
+        // attached until the next click anywhere in the app, whereupon
+        // they dispatched into a destroyed view. CodeMirror ignores
+        // that dispatch, so the leak was completely silent (B-4).
+        const view = mountPreview("Some prose to drag across.");
+
+        view.contentDOM.dispatchEvent(
+            new PointerEvent("pointerdown", {
+                bubbles: true,
+                isPrimary: true,
+                button: 0,
+                pointerId: 1,
+            }),
+        );
+
+        const dispatch = vi.spyOn(view, "dispatch");
+        view.destroy();
+
+        // The gesture is still "in progress" as far as the window is
+        // concerned; releasing must now reach nothing.
+        window.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1 }));
+
+        expect(dispatch).not.toHaveBeenCalled();
+
+        // Already destroyed; drop it so the teardown hook does not
+        // destroy it twice.
+        mounted = mounted.filter((mountedView) => mountedView !== view);
+    });
+
+    it("ends the gesture normally while the editor is alive", () => {
+        const view = mountPreview("Some prose to drag across.");
+
+        view.contentDOM.dispatchEvent(
+            new PointerEvent("pointerdown", {
+                bubbles: true,
+                isPrimary: true,
+                button: 0,
+                pointerId: 1,
+            }),
+        );
+
+        const dispatch = vi.spyOn(view, "dispatch");
+        window.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1 }));
+
+        expect(dispatch).toHaveBeenCalled();
     });
 });

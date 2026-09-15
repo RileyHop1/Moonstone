@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { redo, undo } from "@codemirror/commands";
 import { NameDialog } from "../../components/NameDialog";
+import { useConfirm } from "../../components/useConfirm";
 import type { NameDialogResult } from "../../components/NameDialog";
 import { ResizablePanel } from "../../components/ResizablePanel";
 import { DEFAULT_FILE_EXTENSION } from "../../shared/fileTypes";
@@ -142,6 +143,7 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
     const { settings, updateSettings } = useSettings();
     const { modalMode, spellCheckEnabled, lineNumberMode, showDiagnostics, theme } = settings;
 
+    const { confirm, dialog: confirmationDialog } = useConfirm();
     const panes = usePaneWorkspace();
     const panesRef = useRef(panes);
     panesRef.current = panes;
@@ -190,16 +192,27 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
      *   every pane at once (leaving the project).
      * @returns True when it is safe to proceed.
      */
-    const confirmDiscardChanges = useCallback((paneId: PaneId | null): boolean => {
-        const dirty =
-            paneId === null
-                ? panesRef.current.hasUnsavedChanges
-                : panesRef.current.dirtyPanes.has(paneId);
+    const confirmDiscardChanges = useCallback(
+        async (paneId: PaneId | null): Promise<boolean> => {
+            const dirty =
+                paneId === null
+                    ? panesRef.current.hasUnsavedChanges
+                    : panesRef.current.dirtyPanes.has(paneId);
 
-        if (!dirty) return true;
+            if (!dirty) return true;
 
-        return window.confirm("You have unsaved changes. Discard them?");
-    }, []);
+            return confirm({
+                title: "Discard changes?",
+                message:
+                    paneId === null
+                        ? "This project has unsaved changes. Leaving now discards them."
+                        : "This pane has unsaved changes. Opening another file discards them.",
+                confirmLabel: "Discard",
+                isDestructive: true,
+            });
+        },
+        [confirm],
+    );
 
     /**
      * Reads a file and shows it, either in a pane or beside one.
@@ -214,7 +227,7 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
      */
     const openFileInPane = useCallback(
         async (paneId: PaneId, path: string, side: DropSide | null = null): Promise<void> => {
-            if (side === null && !confirmDiscardChanges(paneId)) return;
+            if (side === null && !(await confirmDiscardChanges(paneId))) return;
 
             const request = (openRequestRef.current += 1);
             const result = await readFile(path);
@@ -355,9 +368,12 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
                 return;
             }
 
-            const confirmed = window.confirm(
-                `Delete ${operation.name}? It will be moved to the recycle bin.`,
-            );
+            const confirmed = await confirm({
+                title: "Delete this entry?",
+                message: `"${operation.name}" will be moved to the recycle bin.`,
+                confirmLabel: "Delete",
+                isDestructive: true,
+            });
             if (!confirmed) return;
 
             const result = await deleteEntry(operation.path);
@@ -373,7 +389,7 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
 
             void refreshTree();
         },
-        [refreshTree, showStatus],
+        [refreshTree, showStatus, confirm],
     );
 
     /**
@@ -459,8 +475,10 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
                 setDialog({ kind: "newFile", parentDir: project.path });
             },
             exitProject: () => {
-                if (!confirmDiscardChanges(null)) return;
-                navigate({ kind: "browser" });
+                void (async () => {
+                    if (!(await confirmDiscardChanges(null))) return;
+                    navigate({ kind: "browser" });
+                })();
             },
             viewMode,
             setViewMode: (mode: ViewMode) => setViewMode(mode),
@@ -525,7 +543,6 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
             <Toolbar
                 isDirty={panes.isActiveDirty}
                 hasOpenFile={panes.activeDocument !== null}
-                viewMode={viewMode}
                 actions={actions}
                 statusMessage={statusMessage}
             />
@@ -581,6 +598,8 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
                     onCancel={() => setDialog(null)}
                 />
             )}
+
+            {confirmationDialog}
 
             {isDragging && (
                 <div className="dock-zones">

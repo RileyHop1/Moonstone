@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { findGraphicsRanges } from "../views/editor/TextEditor/LivePreview/findGraphics";
+import { findGraphicsRanges } from "../views/editor/TextEditor/latex/findGraphics";
 
 describe("findGraphicsRanges", () => {
     it("finds a bare command", () => {

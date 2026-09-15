@@ -1,3 +1,4 @@
+import type { Interval } from "./interval";
 /**
  * Pure scanner for LaTeX's text-mode spellings: escaped punctuation
  * (`\&`), ligature dashes (`---`), quote pairs (` `` `), tie spaces
@@ -21,12 +22,6 @@ export interface TextReplacement {
     readonly to: number;
     /** The text to display in its place. */
     readonly text: string;
-}
-
-/** A half-open interval used for exclusion. */
-interface Interval {
-    readonly from: number;
-    readonly to: number;
 }
 
 /**

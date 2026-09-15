@@ -33,6 +33,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import type { EditorView } from "@codemirror/view";
 import { TextEditor } from "../../views/editor/TextEditor/TextEditor";
+import { DEFAULT_EDITOR_PROFILE } from "../../views/editor/TextEditor/editorProfile";
 import type { EditorConfiguration } from "../../views/editor/TextEditor/editorConfiguration";
 import { normalizeTheme } from "../../shared/themes";
 import type { LineNumberMode, ModalMode, ViewMode } from "../../shared/types";
@@ -130,6 +131,7 @@ function mountHarness(): void {
         ),
         showDiagnostics: false,
         references: [],
+        profile: DEFAULT_EDITOR_PROFILE,
     };
 
     createRoot(root).render(

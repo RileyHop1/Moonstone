@@ -9,6 +9,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { EditorPane } from "../views/ProjectPage/EditorPane";
+import { DEFAULT_EDITOR_PROFILE } from "../views/editor/TextEditor/editorProfile";
 import type { EditorConfiguration } from "../views/editor/TextEditor/editorConfiguration";
 import { writeFileDragPayload } from "../shared/dragPayload";
 import type { FileDragPayload } from "../shared/dragPayload";
@@ -22,6 +23,7 @@ const CONFIGURATION: EditorConfiguration = {
     lineNumberMode: "absolute",
     showDiagnostics: false,
     references: [],
+    profile: DEFAULT_EDITOR_PROFILE,
 };
 
 /**
@@ -314,5 +316,63 @@ describe("EditorPane edge resolution", () => {
         fireDragEvent(pane, "drop", { dataTransfer: transfer, clientX: 400, clientY: 300 });
 
         expect(onDropFile).toHaveBeenCalledWith("pane-1", null, "C:\\p\\main.tex");
+    });
+});
+
+describe("EditorPane and the editor's own drop handling", () => {
+    it("claims the drop before an inner element can consume it", () => {
+        // CodeMirror registers a `drop` handler on its content DOM: it
+        // inserts the dragged text and stops propagation. A pane
+        // listening in the bubble phase therefore never runs — which in
+        // the real app pasted the dragged file's *path* into the
+        // document instead of splitting the pane, and left the drop
+        // hint on screen because nothing cleared it.
+        const { pane, onDropFile } = renderPane();
+        const inner = pane.querySelector(".editor-pane-header");
+        if (!inner) throw new Error("The pane header did not render");
+
+        inner.addEventListener("drop", (event) => {
+            event.stopPropagation();
+        });
+
+        const transfer = transferFor({ kind: "file", path: "C:\\p\\main.tex" });
+        fireDragEvent(pane, "dragenter", { dataTransfer: transfer });
+        fireDragEvent(pane, "dragover", { dataTransfer: transfer });
+        fireDragEvent(inner, "drop", { dataTransfer: transfer });
+
+        expect(onDropFile).toHaveBeenCalledWith("pane-1", null, "C:\\p\\main.tex");
+    });
+
+    it("clears the drop hint even when an inner element consumes the drop", () => {
+        const { pane } = renderPane();
+        const inner = pane.querySelector(".editor-pane-header");
+        if (!inner) throw new Error("The pane header did not render");
+
+        inner.addEventListener("drop", (event) => {
+            event.stopPropagation();
+        });
+
+        const transfer = transferFor({ kind: "file", path: "C:\\p\\main.tex" });
+        fireDragEvent(pane, "dragenter", { dataTransfer: transfer });
+        fireDragEvent(pane, "dragover", { dataTransfer: transfer });
+        expect(pane.querySelector(".pane-drop-hint")).not.toBeNull();
+
+        fireDragEvent(inner, "drop", { dataTransfer: transfer });
+
+        expect(pane.querySelector(".pane-drop-hint")).toBeNull();
+    });
+
+    it("leaves a drag the editor should handle alone", () => {
+        // Dragging a text selection within the editor is CodeMirror's
+        // to handle; the pane must not preventDefault it.
+        const { pane, onDropFile } = renderPane();
+        const transfer = makeDataTransfer({ "text/plain": "some prose" });
+
+        fireDragEvent(pane, "dragenter", { dataTransfer: transfer });
+        fireDragEvent(pane, "dragover", { dataTransfer: transfer });
+        fireDragEvent(pane, "drop", { dataTransfer: transfer });
+
+        expect(onDropFile).not.toHaveBeenCalled();
+        expect(transfer.dropEffect).toBe("none");
     });
 });

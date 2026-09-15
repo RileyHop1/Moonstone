@@ -35,6 +35,29 @@ export const viewModeFacet = Facet.define<ViewMode, ViewMode>({
     combine: (values) => values[0] ?? DEFAULT_VIEW_MODE,
 });
 
+/** Everything the preview needs beyond the view mode itself. */
+export interface PreviewOptions {
+    /**
+     * Turns `\includegraphics` paths into loadable URLs; omitted,
+     * images render as placeholders.
+     */
+    readonly resolveImageSource?: ImageSourceResolver | undefined;
+    /**
+     * Opens `\url`/`\href` targets; omitted, link chips render without
+     * an open affordance.
+     */
+    readonly openLink?: LinkOpener | undefined;
+    /**
+     * False for a file whose profile says it must not be rendered — a
+     * `.sty` or a `.csv`. Separate from the view mode because the two
+     * answer different questions: the mode is what the *user* asked
+     * for and applies to the whole page, while this is what the *file*
+     * can support. A `.bib` open beside a `.tex` must stay raw without
+     * dragging the `.tex` out of live mode.
+     */
+    readonly renderPreview?: boolean | undefined;
+}
+
 /**
  * Maps a view mode to the extension the preview compartment should
  * hold.
@@ -44,27 +67,34 @@ export const viewModeFacet = Facet.define<ViewMode, ViewMode>({
  * - `readonly` — preview with reveal disabled, and the editor made
  *   non-editable so the source never shows.
  *
+ * Read-only survives `renderPreview: false`: the user asked for a
+ * document they cannot edit, and a file that happens not to render is
+ * still not theirs to type into.
+ *
  * @param mode - The desired view mode.
- * @param resolveImageSource - Turns `\includegraphics` paths into
- *   loadable URLs; omitted, images render as placeholders.
- * @param openLink - Opens `\url`/`\href` targets; omitted, link chips
- *   render without an open affordance.
+ * @param options - Preview resolvers, and whether this file renders at
+ *   all.
  * @returns The extension for that mode.
  */
 export function previewExtensionForMode(
     mode: ViewMode,
-    resolveImageSource?: ImageSourceResolver,
-    openLink?: LinkOpener,
+    options: PreviewOptions = {},
 ): Extension {
+    const { resolveImageSource, openLink, renderPreview = true } = options;
+
     switch (mode) {
         case "source":
             return [viewModeFacet.of(mode)];
         case "live":
-            return [viewModeFacet.of(mode), livePreview({ resolveImageSource, openLink })];
+            return renderPreview
+                ? [viewModeFacet.of(mode), livePreview({ resolveImageSource, openLink })]
+                : [viewModeFacet.of(mode)];
         case "readonly":
             return [
                 viewModeFacet.of(mode),
-                livePreview({ reveal: false, resolveImageSource, openLink }),
+                ...(renderPreview
+                    ? [livePreview({ reveal: false, resolveImageSource, openLink })]
+                    : []),
                 EditorState.readOnly.of(true),
                 EditorView.editable.of(false),
             ];

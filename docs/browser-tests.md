@@ -171,3 +171,18 @@ simulation: jsdom has no layout, so there are no size changes to
 report, and a fake that invented some would mislead. Components that
 watch their container mount cleanly under jsdom and are tested for real
 here.
+
+## Split panes
+
+`splitPanes.browser.spec.ts` drives drop-to-split against a real
+`PaneTree`, mounted by `workspaceHarness.html?panes=on`. The harness
+feeds `usePaneWorkspace` canned file contents, so no Tauri mock is
+needed — `PaneTree` takes its documents as a prop.
+
+It covers what jsdom cannot: that a browser actually accepts the drop
+(the `effectAllowed`/`dropEffect` pairing, which resolves to `"none"`
+and fires no `drop` at all when mismatched), which edge a point
+resolves to, and that the hint clears.
+
+It does **not** cover CodeMirror competing for the drop; see
+`docs/split-panes.md`.

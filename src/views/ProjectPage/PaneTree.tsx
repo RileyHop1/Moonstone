@@ -13,7 +13,7 @@ import type { PaneDocument } from "./EditorPane";
 import { PaneSplitter } from "./PaneSplitter";
 import type { DropSide, PaneId, PaneNode, PaneSplit } from "./paneLayout";
 import type { EditorView } from "@codemirror/view";
-import type { EditorConfiguration } from "../editor/TextEditor/editorConfiguration";
+import type { PaneConfigurationLookup } from "./usePaneConfigurations";
 
 /** Everything a pane needs, passed unchanged down the whole tree. */
 export interface PaneTreeShared {
@@ -25,8 +25,14 @@ export interface PaneTreeShared {
     readonly activePaneId: PaneId;
     /** False when only one pane is open, hiding its close button. */
     readonly canClose: boolean;
-    /** Settings every pane's editor runs under. */
-    readonly configuration: EditorConfiguration;
+    /**
+     * Settings for a pane's editor, looked up by the file it has open.
+     *
+     * A lookup rather than one shared object because two of the fields
+     * follow the *document*, not the user's preferences: the file-type
+     * profile and the image resolver.
+     */
+    readonly configurationFor: PaneConfigurationLookup;
     readonly onActivate: (paneId: PaneId) => void;
     readonly onDropFile: (paneId: PaneId, side: DropSide | null, path: string) => void;
     readonly onClose: (paneId: PaneId) => void;
@@ -77,15 +83,17 @@ function sizeAt(node: PaneSplit, index: number): number {
  */
 export function PaneTree({ node, size, ...shared }: PaneTreeProps) {
     if (node.kind === "leaf") {
+        const document = shared.documents.get(node.id) ?? null;
+
         return (
             <EditorPane
                 paneId={node.id}
                 size={size}
-                document={shared.documents.get(node.id) ?? null}
+                document={document}
                 isActive={node.id === shared.activePaneId}
                 isDirty={shared.dirtyPanes.has(node.id)}
                 canClose={shared.canClose}
-                configuration={shared.configuration}
+                configuration={shared.configurationFor(document?.path ?? null)}
                 onActivate={shared.onActivate}
                 onDropFile={shared.onDropFile}
                 onClose={shared.onClose}

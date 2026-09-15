@@ -180,12 +180,41 @@ new version; `repointPaths` keeps the old one.
 it rebuilt the view whenever that prop changed, it would undo this
 behind the parent's back.
 
+## Each pane has its own settings
+
+`PaneTree` takes a `configurationFor` lookup rather than one shared
+configuration object, because two fields follow the **document** rather
+than the user: the file-type profile and the image resolver. See
+[Per-pane configuration](editor-configuration.md#per-pane-configuration)
+— it exists because handing every pane the _active_ document's
+configuration was a real bug.
+
 ## Still to do
 
-- **Wiring into `ProjectPage`:** per-pane documents, dirty tracking,
-  save and focus, and a `Map<PaneId, EditorView>` maintained through
-  `onViewReady` / `onViewDestroyed`.
 - **Persisting layouts** across sessions. The id factory is ready for
   it; nothing else is.
 - **Keyboard resizing.** The splitter is a `role="separator"` but does
   not yet respond to arrow keys.
+
+## The pane claims drops before the editor sees them
+
+The pane's drag handlers are registered in the **capture** phase
+(`onDropCapture` and friends), not the bubble phase. That is not
+tidiness — it is the fix for a bug found by driving the real app:
+
+CodeMirror registers its own `drop` handler on the editor's content DOM.
+It inserts the dragged text and stops propagation. So a pane listening
+in the bubble phase never ran, and dropping a file onto a pane **pasted
+the file's path into the document** instead of splitting — leaving the
+drop hint on screen too, because nothing cleared it.
+
+Capturing means the pane decides first. Anything it does not recognise
+is left untouched and carries on down to CodeMirror, so dragging a text
+selection inside the editor still works exactly as before.
+
+**Worth knowing if you are tempted to simplify this:** the Playwright
+specs in `splitPanes.browser.spec.ts` pass either way — Chromium does
+not reproduce WebView2's propagation-stopping here, verified by
+reverting the fix. The guard is the jsdom test _"claims the drop before
+an inner element can consume it"_ in `EditorPane.test.tsx`, which
+simulates the stopped propagation directly.

@@ -28,7 +28,6 @@ import {
     listReferences,
     moveEntry,
     readFile,
-    createImageSourceResolver,
     openExternalLink,
     renameEntry,
     saveFile,
@@ -37,12 +36,12 @@ import type { FileNode, LoadState, ProjectInfo, Reference, ViewMode } from "../.
 import { useDockDrag } from "../../shared/useDockDrag";
 import type { DockSide } from "../../shared/useDockDrag";
 import { openSearchPanel } from "@codemirror/search";
-import type { EditorConfiguration } from "../editor/TextEditor/editorConfiguration";
 import { DEFAULT_VIEW_MODE } from "../editor/TextEditor/viewMode";
 import { SNIPPETS, insertSnippetIntoView } from "../editor/TextEditor/snippets";
 import { FileBrowser } from "./FileBrowser";
 import type { FileOperation } from "./FileBrowser";
 import { PaneTree } from "./PaneTree";
+import { usePaneConfigurations } from "./usePaneConfigurations";
 import { usePaneWorkspace } from "./usePaneWorkspace";
 import type { DropSide, PaneId } from "./paneLayout";
 import { Toolbar } from "./Toolbar";
@@ -492,17 +491,14 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
         [savePane, confirmDiscardChanges, navigate, project.path, viewMode],
     );
 
-    // Image paths in LaTeX are relative to the document, so the resolver
-    // follows whichever file the active pane has open.
-    const resolveImageSource = useMemo(
-        () => createImageSourceResolver(panes.activeDocument?.path ?? null),
-        [panes.activeDocument?.path],
-    );
-
-    // The settings every editor on this page runs under. The editor
-    // applies these itself, so the page does not hold a view in order
-    // to change a setting — which is what lets a second editor exist.
-    const configuration = useMemo<EditorConfiguration>(
+    // The settings every editor on this page shares. The editor applies
+    // these itself, so the page does not hold a view in order to change
+    // a setting — which is what lets a second editor exist.
+    //
+    // The two per-*file* fields are deliberately absent: the file type
+    // and the image resolver depend on which document a pane has open,
+    // and `usePaneConfigurations` fills them in per pane.
+    const sharedSettings = useMemo(
         () => ({
             viewMode,
             modalMode,
@@ -511,7 +507,6 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
             lineNumberMode,
             showDiagnostics,
             references,
-            resolveImageSource,
             openLink: openExternalLink,
         }),
         [
@@ -522,9 +517,10 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
             lineNumberMode,
             showDiagnostics,
             references,
-            resolveImageSource,
         ],
     );
+
+    const configurationFor = usePaneConfigurations(sharedSettings);
 
     // Make the hotbar's Save/Undo/Redo/Insert items work while this
     // page is open.
@@ -570,7 +566,7 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
                         dirtyPanes={panes.dirtyPanes}
                         activePaneId={panes.activePaneId}
                         canClose={panes.hasSeveralPanes}
-                        configuration={configuration}
+                        configurationFor={configurationFor}
                         onActivate={panes.activate}
                         onDropFile={(paneId, side, path) => {
                             void openFileInPane(paneId, path, side);

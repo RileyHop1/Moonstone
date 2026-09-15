@@ -11,12 +11,18 @@
 
 import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
+import type { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { language } from "@codemirror/language";
 import {
     editorExtensions,
     reconfigurationEffects,
 } from "../views/editor/TextEditor/editorConfiguration";
 import type { EditorConfiguration } from "../views/editor/TextEditor/editorConfiguration";
+import {
+    DEFAULT_EDITOR_PROFILE,
+    editorProfileForExtension,
+} from "../views/editor/TextEditor/editorProfile";
 import type { Reference } from "../shared/types";
 
 /** One bibliography entry, for the references field. */
@@ -39,6 +45,7 @@ const BASE: EditorConfiguration = {
     lineNumberMode: "absolute",
     showDiagnostics: false,
     references: [],
+    profile: DEFAULT_EDITOR_PROFILE,
 };
 
 /**
@@ -58,6 +65,7 @@ const CHANGES: Record<keyof EditorConfiguration, Partial<EditorConfiguration>> =
     references: { references: [KNUTH] },
     resolveImageSource: { resolveImageSource: () => "moonstone://image" },
     openLink: { openLink: () => undefined },
+    profile: { profile: editorProfileForExtension("csv") },
 };
 
 describe("reconfigurationEffects", () => {
@@ -116,8 +124,43 @@ describe("reconfigurationEffects", () => {
 });
 
 describe("editorExtensions", () => {
-    it("builds one extension per synced compartment", () => {
-        expect(editorExtensions(BASE)).toHaveLength(6);
+    /** Stands in for `basicSetup`, so its position can be pointed at. */
+    const BASE_SETUP: Extension = [];
+
+    it("builds one extension per synced compartment, around the base setup", () => {
+        expect(editorExtensions(BASE, BASE_SETUP)).toHaveLength(8);
+    });
+
+    it("puts the modal keymap before the base setup and the language after", () => {
+        // Precedence, not cosmetics. Vim and Helix must see keys before
+        // the default bindings; the language's `autoCloseTags` handler
+        // must see input *after* basicSetup's `closeBrackets`, which is
+        // where it sat before it moved into a compartment.
+        const built = editorExtensions(BASE, BASE_SETUP);
+        const baseIndex = built.indexOf(BASE_SETUP);
+
+        expect(baseIndex).toBeGreaterThan(0);
+        expect(baseIndex).toBe(built.length - 2);
+    });
+
+    it("omits the language entirely for a file that is not LaTeX", () => {
+        // A `.csv` must not be parsed, highlighted or linted as LaTeX.
+        const plain = { ...BASE, profile: editorProfileForExtension("csv") };
+        const state = EditorState.create({
+            doc: "a,b\n1,2\n",
+            extensions: editorExtensions(plain, BASE_SETUP),
+        });
+
+        expect(state.facet(language)).toBeNull();
+    });
+
+    it("installs the LaTeX language for a .tex file", () => {
+        const state = EditorState.create({
+            doc: "\\textbf{hi}",
+            extensions: editorExtensions(BASE, BASE_SETUP),
+        });
+
+        expect(state.facet(language)).not.toBeNull();
     });
 
     it("produces a state the effects can then reconfigure", () => {
@@ -127,7 +170,7 @@ describe("editorExtensions", () => {
         const view = new EditorView({
             state: EditorState.create({
                 doc: "Hello",
-                extensions: editorExtensions(BASE),
+                extensions: editorExtensions(BASE, BASE_SETUP),
             }),
         });
 

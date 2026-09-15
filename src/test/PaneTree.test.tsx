@@ -20,8 +20,10 @@ import {
 } from "../views/ProjectPage/paneLayout";
 import type { PaneId, PaneNode } from "../views/ProjectPage/paneLayout";
 import type { EditorConfiguration } from "../views/editor/TextEditor/editorConfiguration";
+import { editorProfileForPath } from "../views/editor/TextEditor/editorProfile";
 
-const CONFIGURATION: EditorConfiguration = {
+/** Settings shared by every pane, before the file type is known. */
+const SHARED_SETTINGS = {
     viewMode: "live",
     modalMode: "none",
     spellCheckEnabled: false,
@@ -29,7 +31,18 @@ const CONFIGURATION: EditorConfiguration = {
     lineNumberMode: "absolute",
     showDiagnostics: false,
     references: [],
-};
+} as const satisfies Omit<EditorConfiguration, "profile">;
+
+/**
+ * Builds the configuration a pane showing `path` runs under, the way
+ * the page does: per file, not per page.
+ *
+ * @param path - The open document's path, or null for an empty pane.
+ * @returns That file's configuration.
+ */
+function buildConfiguration(path: string | null): EditorConfiguration {
+    return { ...SHARED_SETTINGS, profile: editorProfileForPath(path) };
+}
 
 /**
  * Renders a layout with no documents open in any pane.
@@ -41,8 +54,13 @@ const CONFIGURATION: EditorConfiguration = {
 function renderTree(
     layout: PaneNode,
     documents: ReadonlyMap<PaneId, PaneDocument> = new Map(),
-): { container: HTMLElement; onResizeSplit: ReturnType<typeof vi.fn> } {
+): {
+    container: HTMLElement;
+    onResizeSplit: ReturnType<typeof vi.fn>;
+    configurationFor: ReturnType<typeof vi.fn>;
+} {
     const onResizeSplit = vi.fn();
+    const configurationFor = vi.fn(buildConfiguration);
     const panes = listPanes(layout);
     const firstId = panes[0]?.id;
     if (firstId === undefined) throw new Error("The layout has no panes");
@@ -54,7 +72,7 @@ function renderTree(
             dirtyPanes={new Set()}
             activePaneId={firstId}
             canClose={panes.length > 1}
-            configuration={CONFIGURATION}
+            configurationFor={configurationFor}
             onActivate={vi.fn()}
             onDropFile={vi.fn()}
             onClose={vi.fn()}
@@ -67,7 +85,7 @@ function renderTree(
         />,
     );
 
-    return { container, onResizeSplit };
+    return { container, onResizeSplit, configurationFor };
 }
 
 /** Builds a row of `count` panes, split repeatedly to the right. */

@@ -20,6 +20,8 @@
 
 import type { Compartment, Extension, StateEffect } from "@codemirror/state";
 import { diagnosticsVisibilityEffect } from "./Diagnostics";
+import type { EditorProfile } from "./editorProfile";
+import { languageCompartment, languageExtensionForProfile } from "./language";
 import { lineNumbersCompartment, lineNumbersExtensionForMode } from "./LineNumbers";
 import type { ImageSourceResolver, LinkOpener } from "./LivePreview";
 import { modalCompartment, modalExtensionForMode } from "./modalMode";
@@ -53,6 +55,14 @@ export interface EditorConfiguration {
     readonly showDiagnostics: boolean;
     readonly references: readonly Reference[];
     /**
+     * What the editor should do with this file, decided by its
+     * extension. Unlike the rest of this object it is per-*file* rather
+     * than per-preference, so two panes showing different file types
+     * run under different configurations even though the user's
+     * settings are the same.
+     */
+    readonly profile: EditorProfile;
+    /**
      * Resolves `\includegraphics` paths to loadable URLs. Omitted,
      * images render as placeholders.
      */
@@ -81,6 +91,17 @@ interface SyncedCompartment {
      * not six.
      */
     readonly hasChanged: (previous: EditorConfiguration, next: EditorConfiguration) => boolean;
+    /**
+     * True for a row that must sit *after* the editor's base setup in
+     * precedence order (see {@link editorExtensions}).
+     *
+     * Precedence is part of the mapping, not an accident of where the
+     * caller happened to concatenate things: the language's
+     * `autoCloseTags` input handler has to see input *after*
+     * basicSetup's `closeBrackets`, which is where it sat before it
+     * moved into a compartment.
+     */
+    readonly afterBase?: boolean;
 }
 
 /**
@@ -92,17 +113,21 @@ interface SyncedCompartment {
  */
 const SYNCED: readonly SyncedCompartment[] = [
     {
+        // The profile has a veto here: the user's view mode says what
+        // they want to see, the profile says what this file can
+        // support, and a `.csv` renders no maths in any mode.
         compartment: previewCompartment,
         build: (configuration) =>
-            previewExtensionForMode(
-                configuration.viewMode,
-                configuration.resolveImageSource,
-                configuration.openLink,
-            ),
+            previewExtensionForMode(configuration.viewMode, {
+                resolveImageSource: configuration.resolveImageSource,
+                openLink: configuration.openLink,
+                renderPreview: configuration.profile.usesPreview,
+            }),
         hasChanged: (previous, next) =>
             previous.viewMode !== next.viewMode ||
             previous.resolveImageSource !== next.resolveImageSource ||
-            previous.openLink !== next.openLink,
+            previous.openLink !== next.openLink ||
+            previous.profile.usesPreview !== next.profile.usesPreview,
     },
     {
         compartment: modalCompartment,
@@ -140,27 +165,51 @@ const SYNCED: readonly SyncedCompartment[] = [
             spellCheckExtensionForEnabled(configuration.spellCheckEnabled),
         hasChanged: (previous, next) => previous.spellCheckEnabled !== next.spellCheckEnabled,
     },
+    {
+        // Compared by identity: profiles are module singletons, so two
+        // `.tex` files share one object and changing file type is the
+        // only thing that reconfigures the parser.
+        compartment: languageCompartment,
+        build: (configuration) => languageExtensionForProfile(configuration.profile),
+        hasChanged: (previous, next) => previous.profile !== next.profile,
+        afterBase: true,
+    },
 ];
 
 /**
- * Builds the compartment-wrapped extensions an editor mounts with.
+ * Builds the compartment-wrapped extensions an editor mounts with,
+ * around the editor's base setup.
  *
- * The modal keymap comes first because Vim and Helix register
- * high-precedence keymaps that must see keys before the default
- * bindings do.
+ * Ordering is the whole reason `base` is threaded through here rather
+ * than concatenated by the caller. The modal keymap comes first because
+ * Vim and Helix register high-precedence keymaps that must see keys
+ * before the default bindings do; the language comes last for the
+ * mirror-image reason (see {@link SyncedCompartment.afterBase}). Both
+ * facts belong with the table that knows about them.
  *
  * @param configuration - The settings to start under.
- * @returns The extensions, ready to hand to an `EditorView`.
+ * @param base - The editor's foundational extensions, typically
+ *   `basicSetup`.
+ * @returns The extensions, in precedence order, ready to hand to an
+ *   `EditorView`.
  */
-export function editorExtensions(configuration: EditorConfiguration): Extension[] {
+export function editorExtensions(
+    configuration: EditorConfiguration,
+    base: Extension,
+): Extension[] {
     const modal = SYNCED.find((synced) => synced.compartment === modalCompartment);
-    const rest = SYNCED.filter((synced) => synced.compartment !== modalCompartment);
 
     // `modal` is a member of SYNCED by construction; the guard keeps
     // the types honest rather than describing a reachable state.
     if (!modal) throw new Error("The modal compartment is missing from SYNCED");
 
-    return [modal, ...rest].map((synced) => synced.compartment.of(synced.build(configuration)));
+    const before = SYNCED.filter((synced) => synced !== modal && synced.afterBase !== true);
+    const after = SYNCED.filter((synced) => synced.afterBase === true);
+
+    const wrap = (synced: SyncedCompartment): Extension =>
+        synced.compartment.of(synced.build(configuration));
+
+    return [...[modal, ...before].map(wrap), base, ...after.map(wrap)];
 }
 
 /**

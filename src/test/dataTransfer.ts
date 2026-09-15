@@ -9,6 +9,8 @@
  * formats, so drag code behaves the way it will in a browser.
  */
 
+import { act } from "@testing-library/react";
+
 /**
  * Builds a `DataTransfer` stand-in that actually stores data.
  *
@@ -81,5 +83,10 @@ export function fireDragEvent(element: Element, type: string, init: DragEventIni
     // events that do have it.
     Object.defineProperty(event, "dataTransfer", { value: init.dataTransfer });
 
-    element.dispatchEvent(event);
+    // Wrapped in `act` because this dispatches natively rather than
+    // through `fireEvent`: without it React has not flushed the state
+    // the handler set by the time the next assertion runs.
+    act(() => {
+        element.dispatchEvent(event);
+    });
 }

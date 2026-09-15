@@ -16,7 +16,6 @@ import { useEffect, useRef } from "react";
 import { EditorView, basicSetup } from "codemirror";
 import { keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
-import { latex } from "codemirror-lang-latex";
 import { editorDiagnostics } from "./Diagnostics";
 import { editorExtensions, reconfigurationEffects } from "./editorConfiguration";
 import type { EditorConfiguration } from "./editorConfiguration";
@@ -100,21 +99,10 @@ export function TextEditor({
         const editor = new EditorView({
             doc: initialDocRef.current,
             extensions: [
-                ...editorExtensions(appliedRef.current),
-                basicSetup,
-                latex({
-                    autoCloseTags: true,
-                    enableLinting: true,
-                    enableTooltips: true,
-                    // The package would otherwise install its own
-                    // `autocompletion({override: […]})`, and `override`
-                    // replaces every other completion source — which
-                    // silently kills reference search. Its LaTeX
-                    // completions are registered through language data
-                    // regardless, so basicSetup's autocompletion still
-                    // offers them alongside ours.
-                    enableAutocomplete: false,
-                }),
+                // `basicSetup` goes *through* the configuration rather
+                // than beside it: which compartments outrank it is part
+                // of the settings mapping, not a decision for this file.
+                ...editorExtensions(appliedRef.current, basicSetup),
                 editorDiagnostics({
                     initialVisible: appliedRef.current.showDiagnostics,
                     onVisibilityChange: (visible) => {

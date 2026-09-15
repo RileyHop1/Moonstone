@@ -216,10 +216,20 @@ export function EditorPane({
             style={{ flexGrow: size ?? 1 }}
             onPointerDownCapture={() => onActivate(paneId)}
             onFocusCapture={() => onActivate(paneId)}
-            onDragEnter={handleDragEnter}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
+            // Capture, not bubble. CodeMirror registers its own drop
+            // handler on the editor's content DOM, which inserts the
+            // dragged text and stops propagation — so a bubble-phase
+            // handler here never runs. Dropping a file on a pane pasted
+            // its *path* into the document instead of splitting.
+            //
+            // Claiming these in the capture phase means the pane decides
+            // first. Anything it does not recognise is left untouched and
+            // carries on down to CodeMirror, so dragging a text selection
+            // inside the editor still works.
+            onDragEnterCapture={handleDragEnter}
+            onDragOverCapture={handleDragOver}
+            onDragLeaveCapture={handleDragLeave}
+            onDropCapture={handleDrop}
         >
             <header className="editor-pane-header">
                 <span className="editor-pane-name" title={paneDocument?.path ?? ""}>

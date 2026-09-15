@@ -8,10 +8,13 @@
  * that drifted from the real one would produce tests that pass while
  * the app is broken.
  *
- * The editor pane is a placeholder rather than a real `TextEditor`:
- * what is under test is how the panes share width, and mounting
- * CodeMirror here would only add noise. It carries the real
- * `project-editor-panel` class so it flexes exactly as the editor does.
+ * The editor area has two modes. By default it is a placeholder, since
+ * what those specs test is how the panes share width and mounting
+ * CodeMirror would only add noise. With `panes=on` it mounts the real
+ * `PaneTree` over the real `usePaneWorkspace`, which is the only way to
+ * exercise drop-to-split under real layout: the drag payload, the edge
+ * geometry, and CodeMirror's own competing drop handler all matter, and
+ * none of the three is visible to jsdom.
  *
  * | Param   | Values             | Default |
  * |---------|--------------------|---------|
@@ -19,15 +22,20 @@
  * | `width` | initial panel width in px | 220 |
  * | `names` | `long` \| `short`  | `long` |
  * | `theme` | any registered theme id | `dark` |
+ * | `panes` | `on` \| `off`      | `off` |
  */
 
-import { StrictMode } from "react";
+import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { ResizablePanel } from "../../components/ResizablePanel";
 import { FileBrowser } from "../../views/ProjectPage/FileBrowser";
+import { PaneTree } from "../../views/ProjectPage/PaneTree";
+import { usePaneWorkspace } from "../../views/ProjectPage/usePaneWorkspace";
 import { normalizeTheme } from "../../shared/themes";
 import type { DockSide } from "../../shared/useDockDrag";
 import type { FileNode, LoadState } from "../../shared/types";
+import type { EditorConfiguration } from "../../views/editor/TextEditor/editorConfiguration";
+import { editorProfileForPath } from "../../views/editor/TextEditor/editorProfile";
 import "../../styles/styles.css";
 import "../../views/ProjectPage/ProjectPage.css";
 
@@ -41,6 +49,113 @@ export interface WorkspaceHarnessWindow extends Window {
 
 /** A name long enough to need truncating in any sane panel width. */
 const LONG_NAME = "an-extremely-long-chapter-filename-about-methodology.tex";
+
+/** Settings the harness's editors share, before the file type is known. */
+const SHARED_SETTINGS = {
+    viewMode: "live",
+    modalMode: "none",
+    spellCheckEnabled: false,
+    theme: "dark",
+    lineNumberMode: "absolute",
+    showDiagnostics: false,
+    references: [],
+} as const satisfies Omit<EditorConfiguration, "profile">;
+
+/**
+ * Configurations by path, built once each.
+ *
+ * The app's own `usePaneConfigurations` is not reused here because it
+ * pulls in `createImageSourceResolver`, which needs Tauri; the harness
+ * runs in a plain browser. What matters for these specs is the shape —
+ * one stable object per open path — which this reproduces.
+ */
+const CONFIGURATIONS = new Map<string | null, EditorConfiguration>();
+
+/**
+ * The configuration a pane showing `path` runs under.
+ *
+ * @param path - The open document's path, or null for an empty pane.
+ * @returns That file's configuration; the same object every time.
+ */
+function configurationFor(path: string | null): EditorConfiguration {
+    const cached = CONFIGURATIONS.get(path);
+    if (cached) return cached;
+
+    const built: EditorConfiguration = {
+        ...SHARED_SETTINGS,
+        profile: editorProfileForPath(path),
+    };
+
+    CONFIGURATIONS.set(path, built);
+    return built;
+}
+
+/**
+ * Stand-in contents for a dropped file.
+ *
+ * Two deliberate choices. It contains no LaTeX a scanner would render,
+ * because what the specs assert is the text itself. And it names the
+ * file by its *base name*, never its full path — so "the document
+ * contains a path" can only mean CodeMirror pasted the dragged payload
+ * in, which is the regression these specs exist to catch.
+ *
+ * @param path - The file dropped.
+ * @returns Its contents.
+ */
+function contentsFor(path: string): string {
+    const name = path.split(/[/\\]/).pop() ?? path;
+
+    return `contents of ${name}\n`;
+}
+
+/**
+ * The real pane tree over the real workspace, minus the backend.
+ *
+ * `usePaneWorkspace` takes documents as values rather than reading
+ * them, so no Tauri mock is needed — which keeps the harness honest.
+ *
+ * @returns The editor area.
+ */
+function PaneArea() {
+    const panes = usePaneWorkspace();
+    const { activePaneId, showDocument } = panes;
+
+    // One document open to begin with, so the starting state matches
+    // the app's rather than an empty pane.
+    useEffect(() => {
+        showDocument(activePaneId, {
+            path: "main.tex",
+            initialDoc: contentsFor("main.tex"),
+        });
+        // Mount only: re-running would reload the document under the user.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    return (
+        <PaneTree
+            node={panes.layout}
+            documents={panes.documents}
+            dirtyPanes={panes.dirtyPanes}
+            activePaneId={panes.activePaneId}
+            canClose={panes.hasSeveralPanes}
+            configurationFor={configurationFor}
+            onActivate={panes.activate}
+            onDropFile={(paneId, side, path) => {
+                const loaded = { path, initialDoc: contentsFor(path) };
+
+                if (side === null) panes.showDocument(paneId, loaded);
+                else panes.splitWith(paneId, side, loaded);
+            }}
+            onClose={panes.close}
+            onViewReady={panes.registerView}
+            onViewDestroyed={panes.unregisterView}
+            onDocChanged={panes.markDirty}
+            onSaveRequested={() => undefined}
+            onDiagnosticsToggled={() => undefined}
+            onResizeSplit={panes.resize}
+        />
+    );
+}
 
 /**
  * Builds the fixture tree.
@@ -102,6 +217,7 @@ function mountHarness(): void {
     const requestedWidth = Number.parseInt(params.get("width") ?? "", 10);
     const initialWidth = Number.isInteger(requestedWidth) ? requestedWidth : 220;
     const useLongNames = readEnum("names", ["long", "short"] as const, "long") === "long";
+    const usePanes = readEnum("panes", ["on", "off"] as const, "off") === "on";
 
     // The app sets this on the document element; the harness has no
     // settings backend, so it applies the same attribute directly.
@@ -149,7 +265,11 @@ function mountHarness(): void {
                     </ResizablePanel>
 
                     <section className="project-editor-panel">
-                        <div className="editor-placeholder">Editor pane</div>
+                        {usePanes ? (
+                            <PaneArea />
+                        ) : (
+                            <div className="editor-placeholder">Editor pane</div>
+                        )}
                     </section>
                 </div>
             </div>

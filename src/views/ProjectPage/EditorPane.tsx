@@ -29,6 +29,15 @@ import type { DropSide, PaneId } from "./paneLayout";
 export interface PaneDocument {
     readonly path: string;
     readonly initialDoc: string;
+    /**
+     * Counts genuinely new loads into this pane.
+     *
+     * The editor is keyed on it, so it — and only it — decides when the
+     * editor remounts. A rename changes `path` while leaving this alone,
+     * because remounting would silently throw away the undo history of
+     * a file the author is in the middle of editing.
+     */
+    readonly version: number;
 }
 
 /** Props for {@link EditorPane}. */
@@ -232,9 +241,11 @@ export function EditorPane({
 
             {paneDocument ? (
                 <TextEditor
-                    // Remount per file: a clean editor and a fresh undo
-                    // history, matching what a newly opened file means.
-                    key={paneDocument.path}
+                    // Remount per *load*, not per path: a newly opened
+                    // file deserves a clean editor and a fresh undo
+                    // history, but a rename of the file already open
+                    // must not cost the author theirs.
+                    key={`${paneId}:${paneDocument.version}`}
                     initialDoc={paneDocument.initialDoc}
                     configuration={configuration}
                     onDiagnosticsToggled={onDiagnosticsToggled}

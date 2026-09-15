@@ -1,10 +1,15 @@
 /**
- * Project page: dockable file browser, toolbar, file management, and
- * the live-preview editor for one open file.
+ * Project page: dockable file browser, toolbar, file management, and a
+ * split editor area showing one or more files.
+ *
+ * The page orchestrates; it owns very little itself. Pane state lives in
+ * `usePaneWorkspace`, editor settings in `EditorConfiguration`, and the
+ * layout arithmetic in `paneLayout.ts`. What is left here is the
+ * project's own concerns: the file tree, the bibliography, file
+ * management dialogs, and the actions the toolbar registers.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { EditorView } from "@codemirror/view";
 import { redo, undo } from "@codemirror/commands";
 import { NameDialog } from "../../components/NameDialog";
 import type { NameDialogResult } from "../../components/NameDialog";
@@ -28,16 +33,17 @@ import {
     saveFile,
 } from "../../shared/tauri";
 import type { FileNode, LoadState, ProjectInfo, Reference, ViewMode } from "../../shared/types";
-import { isAtOrInside, reparent } from "../../shared/paths";
 import { useDockDrag } from "../../shared/useDockDrag";
 import type { DockSide } from "../../shared/useDockDrag";
 import { openSearchPanel } from "@codemirror/search";
-import { TextEditor } from "../editor/TextEditor";
 import type { EditorConfiguration } from "../editor/TextEditor/editorConfiguration";
 import { DEFAULT_VIEW_MODE } from "../editor/TextEditor/viewMode";
 import { SNIPPETS, insertSnippetIntoView } from "../editor/TextEditor/snippets";
 import { FileBrowser } from "./FileBrowser";
 import type { FileOperation } from "./FileBrowser";
+import { PaneTree } from "./PaneTree";
+import { usePaneWorkspace } from "./usePaneWorkspace";
+import type { DropSide, PaneId } from "./paneLayout";
 import { Toolbar } from "./Toolbar";
 import type { StatusMessage } from "./Toolbar";
 import "./ProjectPage.css";
@@ -55,12 +61,6 @@ export interface ProjectPageProps {
     readonly isActive?: boolean;
 }
 
-/** The file currently loaded into the editor. */
-interface OpenFile {
-    readonly path: string;
-    readonly initialDoc: string;
-}
-
 /** A pending name-prompt dialog for a file operation. */
 type FileDialogState =
     | { readonly kind: "newFile"; readonly parentDir: string }
@@ -73,8 +73,12 @@ const STATUS_CLEAR_MS = 2000;
 const DEFAULT_BROWSER_WIDTH_PX = 220;
 
 /**
- * Picks the file to auto-open for a freshly loaded project: the
- * root-level `<name>.tex` if present, else the first root-level file.
+ * Picks the file to auto-open for a freshly loaded project.
+ *
+ * Prefers a root-level `<name>.tex`, then a root-level `main.tex`, then
+ * the first root-level file — and failing all of those, searches the
+ * subdirectories. A project whose `.tex` files all live in `chapters/`
+ * otherwise opens to an empty editor.
  *
  * @param tree - The project's root directory node.
  * @param projectName - The project's name.
@@ -85,16 +89,39 @@ function findMainFilePath(tree: FileNode, projectName: string): string | null {
 
     const files = tree.children.filter((child) => child.kind === "file");
 
-    const mainFile = files.find((file) => file.name === `${projectName}.tex`);
-    if (mainFile) return mainFile.path;
+    const named = files.find((file) => file.name === `${projectName}.tex`);
+    if (named) return named.path;
 
-    return files[0]?.path ?? null;
+    const main = files.find((file) => file.name === "main.tex");
+    if (main) return main.path;
+
+    const rootFile = files[0];
+    if (rootFile) return rootFile.path;
+
+    return findFirstFile(tree);
+}
+
+/**
+ * The first file anywhere below a node, depth first.
+ *
+ * @param node - The node to search.
+ * @returns A file path, or null when the subtree holds none.
+ */
+function findFirstFile(node: FileNode): string | null {
+    if (node.kind === "file") return node.path;
+
+    for (const child of node.children) {
+        const found = findFirstFile(child);
+        if (found) return found;
+    }
+
+    return null;
 }
 
 /**
  * Renders the project page and owns its state: the file tree, the
- * open file, dirtiness, dock side, file-management dialogs, and the
- * editor actions it registers with the global hotbar.
+ * bibliography, dock side, file-management dialogs, and the editor
+ * actions it registers with the global hotbar.
  *
  * @param props - The project to display.
  * @returns The project page element.
@@ -104,8 +131,6 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
     const { registerEditor } = useAppActions();
 
     const [tree, setTree] = useState<LoadState<FileNode>>({ status: "loading" });
-    const [openFile, setOpenFile] = useState<OpenFile | null>(null);
-    const [isDirty, setIsDirty] = useState(false);
     const [dockSide, setDockSide] = useState<DockSide>("left");
     const [statusMessage, setStatusMessage] = useState<StatusMessage | null>(null);
     const [dialog, setDialog] = useState<FileDialogState | null>(null);
@@ -117,15 +142,20 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
     const { settings, updateSettings } = useSettings();
     const { modalMode, spellCheckEnabled, lineNumberMode, showDiagnostics, theme } = settings;
 
-    const viewRef = useRef<EditorView | null>(null);
+    const panes = usePaneWorkspace();
+    const panesRef = useRef(panes);
+    panesRef.current = panes;
+
     const statusTimerRef = useRef<number | null>(null);
 
-    // Refs mirror state read inside stable callbacks so those
-    // callbacks never see stale values.
-    const isDirtyRef = useRef(isDirty);
-    isDirtyRef.current = isDirty;
-    const openFileRef = useRef<OpenFile | null>(openFile);
-    openFileRef.current = openFile;
+    /**
+     * Counts file-open requests so a slow one cannot overwrite a newer.
+     *
+     * Two quick clicks would otherwise resolve last-to-finish rather
+     * than last-clicked, and the editor would show whichever read
+     * happened to come back second.
+     */
+    const openRequestRef = useRef(0);
 
     /**
      * Shows a status message; info messages clear themselves.
@@ -153,19 +183,45 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
         };
     }, []);
 
-    const confirmDiscardChanges = useCallback((): boolean => {
-        if (!isDirtyRef.current) return true;
+    /**
+     * Asks before throwing away unsaved work in a particular pane.
+     *
+     * @param paneId - The pane about to be reused, or null to ask about
+     *   every pane at once (leaving the project).
+     * @returns True when it is safe to proceed.
+     */
+    const confirmDiscardChanges = useCallback((paneId: PaneId | null): boolean => {
+        const dirty =
+            paneId === null
+                ? panesRef.current.hasUnsavedChanges
+                : panesRef.current.dirtyPanes.has(paneId);
+
+        if (!dirty) return true;
 
         return window.confirm("You have unsaved changes. Discard them?");
     }, []);
 
-    const openFileByPath = useCallback(
-        async (path: string): Promise<void> => {
-            if (path === openFileRef.current?.path) return;
+    /**
+     * Reads a file and shows it, either in a pane or beside one.
+     *
+     * Re-opening the file a pane already shows is deliberately *not* a
+     * no-op: it re-reads from disk, which is the only way to discard
+     * unsaved changes and start again.
+     *
+     * @param paneId - The pane to open in, or to split.
+     * @param path - The file to read.
+     * @param side - Which edge to split on, or null to open in place.
+     */
+    const openFileInPane = useCallback(
+        async (paneId: PaneId, path: string, side: DropSide | null = null): Promise<void> => {
+            if (side === null && !confirmDiscardChanges(paneId)) return;
 
-            if (!confirmDiscardChanges()) return;
-
+            const request = (openRequestRef.current += 1);
             const result = await readFile(path);
+
+            // A newer request has been made since; its answer is the one
+            // the user is waiting for.
+            if (request !== openRequestRef.current) return;
 
             if (!result.ok) {
                 showStatus({ kind: "error", text: result.error });
@@ -173,10 +229,20 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
             }
 
             showStatus(null);
-            setIsDirty(false);
-            setOpenFile({ path, initialDoc: result.data });
+
+            const document = { path, initialDoc: result.data };
+            if (side === null) panesRef.current.showDocument(paneId, document);
+            else panesRef.current.splitWith(paneId, side, document);
         },
         [confirmDiscardChanges, showStatus],
+    );
+
+    /** Opens a file in whichever pane the toolbar is acting on. */
+    const openFileByPath = useCallback(
+        (path: string): void => {
+            void openFileInPane(panesRef.current.activePaneId, path);
+        },
+        [openFileInPane],
     );
 
     /**
@@ -193,15 +259,14 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
     }, [project.path]);
 
     /** Re-fetches the project's file tree. */
-    const refreshTree = useCallback(async (): Promise<LoadState<FileNode>> => {
+    const refreshTree = useCallback(async (): Promise<void> => {
         const result = await listProjectFiles(project.path);
 
-        const next: LoadState<FileNode> = result.ok
-            ? { status: "ready", data: result.data }
-            : { status: "error", message: result.error };
-
-        setTree(next);
-        return next;
+        setTree(
+            result.ok
+                ? { status: "ready", data: result.data }
+                : { status: "error", message: result.error },
+        );
     }, [project.path]);
 
     // Initial tree load; auto-open the project's main file. The
@@ -221,16 +286,18 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
 
             setTree({ status: "ready", data: result.data });
 
-            if (openFileRef.current === null) {
+            if (panesRef.current.activeDocument === null) {
                 const mainFilePath = findMainFilePath(result.data, project.name);
-                if (mainFilePath) void openFileByPath(mainFilePath);
+                if (mainFilePath) {
+                    void openFileInPane(panesRef.current.activePaneId, mainFilePath);
+                }
             }
         })();
 
         return () => {
             cancelled = true;
         };
-    }, [project.path, project.name, openFileByPath]);
+    }, [project.path, project.name, openFileInPane]);
 
     // The bibliography is read once per project; saving a file reloads
     // it, so an entry added in the editor is citable straight away.
@@ -238,44 +305,33 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
         void refreshReferences();
     }, [refreshReferences]);
 
-    const save = useCallback(async (): Promise<void> => {
-        const view = viewRef.current;
-        const file = openFileRef.current;
-        if (!view || !file) return;
-
-        const result = await saveFile(file.path, view.state.doc.toString());
-
-        if (!result.ok) {
-            showStatus({ kind: "error", text: `Save failed: ${result.error}` });
-            return;
-        }
-
-        showStatus({ kind: "info", text: "Saved ✓" });
-        setIsDirty(false);
-
-        // The saved file may have been a `.bib`, so the citation list
-        // is refreshed rather than left stale until the project reopens.
-        if (file.path.toLowerCase().endsWith(".bib")) void refreshReferences();
-    }, [showStatus, refreshReferences]);
-
     /**
-     * Repoints the open file after an entry it lives under is renamed
-     * or moved, preserving any unsaved contents.
+     * Writes one pane's document back to disk.
      *
-     * @param from - The entry's old path.
-     * @param to - The entry's new path.
+     * @param paneId - The pane to save.
      */
-    const repointOpenFile = useCallback((from: string, to: string): void => {
-        const openPath = openFileRef.current?.path;
-        if (openPath === undefined) return;
+    const savePane = useCallback(
+        async (paneId: PaneId): Promise<void> => {
+            const view = panesRef.current.viewFor(paneId);
+            const document = panesRef.current.documents.get(paneId);
+            if (!view || !document) return;
 
-        const newPath = reparent(openPath, from, to);
-        if (newPath === null) return;
+            const result = await saveFile(document.path, view.state.doc.toString());
 
-        const currentDoc =
-            viewRef.current?.state.doc.toString() ?? openFileRef.current?.initialDoc ?? "";
-        setOpenFile({ path: newPath, initialDoc: currentDoc });
-    }, []);
+            if (!result.ok) {
+                showStatus({ kind: "error", text: `Save failed: ${result.error}` });
+                return;
+            }
+
+            showStatus({ kind: "info", text: "Saved ✓" });
+            panesRef.current.markClean(paneId);
+
+            // The saved file may have been a `.bib`, so the citation list
+            // is refreshed rather than left stale until the project reopens.
+            if (document.path.toLowerCase().endsWith(".bib")) void refreshReferences();
+        },
+        [showStatus, refreshReferences],
+    );
 
     /**
      * Handles a file-management request from the browser: prompts for
@@ -294,7 +350,7 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
                     showStatus({ kind: "error", text: result.error });
                     return;
                 }
-                repointOpenFile(operation.sourcePath, result.data);
+                panesRef.current.repointPaths(operation.sourcePath, result.data);
                 void refreshTree();
                 return;
             }
@@ -311,19 +367,13 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
                 return;
             }
 
-            // Close the editor when the open file (or an ancestor
-            // directory of it) was deleted.
-            const openPath = openFileRef.current?.path;
-            const deletedOpenFile =
-                openPath !== undefined && isAtOrInside(operation.path, openPath);
-            if (deletedOpenFile) {
-                setOpenFile(null);
-                setIsDirty(false);
-            }
+            // Empty any pane showing the deleted entry, or something
+            // that lived inside it.
+            panesRef.current.forgetDeleted(operation.path);
 
             void refreshTree();
         },
-        [refreshTree, showStatus, repointOpenFile],
+        [refreshTree, showStatus],
     );
 
     /**
@@ -338,11 +388,11 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
             const result = await renameEntry(path, newName);
             if (!result.ok) return result.error;
 
-            repointOpenFile(path, result.data);
+            panesRef.current.repointPaths(path, result.data);
             void refreshTree();
             return null;
         },
-        [refreshTree, repointOpenFile],
+        [refreshTree],
     );
 
     /**
@@ -386,22 +436,22 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
     const actions = useMemo<EditorActions>(
         () => ({
             save: () => {
-                void save();
+                void savePane(panesRef.current.activePaneId);
             },
             undo: () => {
-                const view = viewRef.current;
+                const view = panesRef.current.activeView();
                 if (!view) return;
                 undo(view);
                 view.focus();
             },
             redo: () => {
-                const view = viewRef.current;
+                const view = panesRef.current.activeView();
                 if (!view) return;
                 redo(view);
                 view.focus();
             },
             insertSnippet: (name: SnippetName) => {
-                const view = viewRef.current;
+                const view = panesRef.current.activeView();
                 if (!view) return;
                 insertSnippetIntoView(view, SNIPPETS[name]);
             },
@@ -409,26 +459,26 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
                 setDialog({ kind: "newFile", parentDir: project.path });
             },
             exitProject: () => {
-                if (!confirmDiscardChanges()) return;
+                if (!confirmDiscardChanges(null)) return;
                 navigate({ kind: "browser" });
             },
             viewMode,
             setViewMode: (mode: ViewMode) => setViewMode(mode),
             findReplace: () => {
-                const view = viewRef.current;
+                const view = panesRef.current.activeView();
                 if (!view) return;
                 openSearchPanel(view);
                 view.focus();
             },
         }),
-        [save, confirmDiscardChanges, navigate, project.path, viewMode],
+        [savePane, confirmDiscardChanges, navigate, project.path, viewMode],
     );
 
-    // Image paths in LaTeX are relative to the document, so the
-    // resolver is rebuilt whenever a different file opens.
+    // Image paths in LaTeX are relative to the document, so the resolver
+    // follows whichever file the active pane has open.
     const resolveImageSource = useMemo(
-        () => createImageSourceResolver(openFile?.path ?? null),
-        [openFile?.path],
+        () => createImageSourceResolver(panes.activeDocument?.path ?? null),
+        [panes.activeDocument?.path],
     );
 
     // The settings every editor on this page runs under. The editor
@@ -473,8 +523,8 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
             className={`project-page${dockSide === "right" ? " project-page-dock-right" : ""}`}
         >
             <Toolbar
-                isDirty={isDirty}
-                hasOpenFile={openFile !== null}
+                isDirty={panes.isActiveDirty}
+                hasOpenFile={panes.activeDocument !== null}
                 viewMode={viewMode}
                 actions={actions}
                 statusMessage={statusMessage}
@@ -488,8 +538,8 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
                 >
                     <FileBrowser
                         tree={tree}
-                        selectedPath={openFile?.path ?? null}
-                        onSelectFile={(path) => void openFileByPath(path)}
+                        selectedPath={panes.activeDocument?.path ?? null}
+                        onSelectFile={openFileByPath}
                         onFileOperation={(operation) => void handleFileOperation(operation)}
                         onRename={renameInline}
                         dragHandleProps={handleProps}
@@ -497,33 +547,27 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
                 </ResizablePanel>
 
                 <section className="project-editor-panel">
-                    {openFile ? (
-                        <TextEditor
-                            // Remount per file: clean editor + fresh undo history.
-                            key={openFile.path}
-                            initialDoc={openFile.initialDoc}
-                            configuration={configuration}
-                            onDiagnosticsToggled={(visible) =>
-                                updateSettings({ showDiagnostics: visible })
-                            }
-                            onViewReady={(view) => {
-                                viewRef.current = view;
-                            }}
-                            onViewDestroyed={() => {
-                                // Without this the page keeps pointing at a
-                                // destroyed editor after the open file is
-                                // deleted; CodeMirror swallows the dispatch,
-                                // so the staleness never surfaces.
-                                viewRef.current = null;
-                            }}
-                            onDocChanged={() => setIsDirty(true)}
-                            onSaveRequested={() => void save()}
-                        />
-                    ) : (
-                        <div className="editor-placeholder">
-                            Select a file to start editing.
-                        </div>
-                    )}
+                    <PaneTree
+                        node={panes.layout}
+                        documents={panes.documents}
+                        dirtyPanes={panes.dirtyPanes}
+                        activePaneId={panes.activePaneId}
+                        canClose={panes.hasSeveralPanes}
+                        configuration={configuration}
+                        onActivate={panes.activate}
+                        onDropFile={(paneId, side, path) => {
+                            void openFileInPane(paneId, path, side);
+                        }}
+                        onClose={panes.close}
+                        onViewReady={panes.registerView}
+                        onViewDestroyed={panes.unregisterView}
+                        onDocChanged={panes.markDirty}
+                        onSaveRequested={(paneId) => void savePane(paneId)}
+                        onDiagnosticsToggled={(visible) => {
+                            updateSettings({ showDiagnostics: visible });
+                        }}
+                        onResizeSplit={panes.resize}
+                    />
                 </section>
             </div>
 

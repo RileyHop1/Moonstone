@@ -12,7 +12,7 @@ import { EditorPane } from "../views/ProjectPage/EditorPane";
 import type { EditorConfiguration } from "../views/editor/TextEditor/editorConfiguration";
 import { writeFileDragPayload } from "../shared/dragPayload";
 import type { FileDragPayload } from "../shared/dragPayload";
-import { makeDataTransfer } from "./dataTransfer";
+import { fireDragEvent, makeDataTransfer } from "./dataTransfer";
 
 const CONFIGURATION: EditorConfiguration = {
     viewMode: "live",
@@ -260,5 +260,59 @@ describe("EditorPane close button", () => {
         fireEvent.click(screen.getByRole("button", { name: /close/i }));
 
         expect(onClose).toHaveBeenCalledWith("pane-1");
+    });
+});
+
+describe("EditorPane edge resolution", () => {
+    /**
+     * Gives the pane a rectangle, since jsdom reports every box as 0x0.
+     *
+     * @param pane - The pane element.
+     */
+    function givePaneABox(pane: Element): void {
+        vi.spyOn(pane, "getBoundingClientRect").mockReturnValue({
+            x: 0,
+            y: 0,
+            left: 0,
+            top: 0,
+            right: 800,
+            bottom: 600,
+            width: 800,
+            height: 600,
+            toJSON: () => ({}),
+        });
+    }
+
+    it.each([
+        ["left", 10, 300],
+        ["right", 790, 300],
+        ["top", 400, 10],
+        ["bottom", 400, 590],
+    ])("reports a drop near the %s edge", (side, clientX, clientY) => {
+        const { pane, onDropFile } = renderPane();
+        givePaneABox(pane);
+        const transfer = transferFor({ kind: "file", path: "C:\\p\\main.tex" });
+
+        fireDragEvent(pane, "dragenter", { dataTransfer: transfer, clientX, clientY });
+        fireDragEvent(pane, "dragover", { dataTransfer: transfer, clientX, clientY });
+        fireDragEvent(pane, "drop", { dataTransfer: transfer, clientX, clientY });
+
+        expect(onDropFile).toHaveBeenCalledWith("pane-1", side, "C:\\p\\main.tex");
+    });
+
+    it("reports a drop in the middle as no edge, which opens in place", () => {
+        const { pane, onDropFile } = renderPane();
+        givePaneABox(pane);
+        const transfer = transferFor({ kind: "file", path: "C:\\p\\main.tex" });
+
+        fireDragEvent(pane, "dragenter", {
+            dataTransfer: transfer,
+            clientX: 400,
+            clientY: 300,
+        });
+        fireDragEvent(pane, "dragover", { dataTransfer: transfer, clientX: 400, clientY: 300 });
+        fireDragEvent(pane, "drop", { dataTransfer: transfer, clientX: 400, clientY: 300 });
+
+        expect(onDropFile).toHaveBeenCalledWith("pane-1", null, "C:\\p\\main.tex");
     });
 });

@@ -87,11 +87,18 @@ export function TextEditor({
     // applying it is a side effect on CodeMirror, not a render input.
     const appliedRef = useRef(configuration);
 
+    // Read once. The document the editor starts with is decided at
+    // mount, and the parent controls remounting through the React `key`
+    // — so a later change here must *not* rebuild the view. It would
+    // otherwise throw away the undo history behind the parent's back,
+    // which is exactly what a rename used to do.
+    const initialDocRef = useRef(initialDoc);
+
     useEffect(() => {
         if (!hostRef.current) return;
 
         const editor = new EditorView({
-            doc: initialDoc,
+            doc: initialDocRef.current,
             extensions: [
                 ...editorExtensions(appliedRef.current),
                 basicSetup,
@@ -143,7 +150,7 @@ export function TextEditor({
             viewRef.current = null;
             editor.destroy();
         };
-    }, [initialDoc]);
+    }, []);
 
     // Apply settings changes in place, preserving the document and undo
     // history — a remount would lose both.

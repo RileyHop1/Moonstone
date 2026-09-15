@@ -161,15 +161,43 @@ Three things follow from marking the drag instead:
   `drop` event fires at all**. This is a good candidate for "the drop
   does nothing and there is no error anywhere".
 
-**Testing note:** jsdom has no `DataTransfer`, and `fireEvent.drop` will
-accept any object in its place. A stub whose `setData` records without
-storing — and which has no `types` — lets a drag test pass while the
-code under test cannot read back what the source wrote. Use
-`src/test/dataTransfer.ts`, which actually stores.
+**Testing note — two traps, both silent.** jsdom has no `DataTransfer`,
+and `fireEvent.drop` will accept any object in its place: a stub whose
+`setData` records without storing, and which has no `types`, lets a drag
+test pass while the code under test cannot read back what the source
+wrote. jsdom also has no `DragEvent`, so
+`fireEvent.dragOver(element, {clientX})` constructs a plain `Event` and
+**silently discards the coordinates** — handlers read `undefined`, every
+distance becomes `NaN`, and a test that looks like it is dropping on an
+edge is really dropping nowhere. `src/test/dataTransfer.ts` provides
+`makeDataTransfer` and `fireDragEvent` for both.
+
+## The editor area
+
+The page no longer shows one editor: it mounts a `PaneTree`, and
+several files can be open side by side. Dragging a file from the browser
+onto a pane's **edge** splits it; dropping in the **middle** opens the
+file in that pane instead. See `docs/split-panes.md`.
+
+Three behaviours changed with it, each fixing something the
+single-editor page got wrong:
+
+- **Re-opening the file a pane already shows is no longer a no-op.** It
+  re-reads from disk, which is the only way to discard unsaved changes
+  and start again. The guard that skipped it made that impossible.
+- **Concurrent opens resolve last-_clicked_, not last-_finished_.** Two
+  quick clicks used to race, and whichever read came back second won
+  regardless of which the user asked for. A request counter now
+  discards any answer that has been superseded.
+- **Renaming the open file keeps its undo history.** See "Why documents
+  carry a version" in `docs/split-panes.md`.
 
 ## Files
 
-- `src/views/ProjectPage/ProjectPage.tsx` — state + orchestration
+- `src/views/ProjectPage/ProjectPage.tsx` — orchestration
+- `src/views/ProjectPage/usePaneWorkspace.ts` — pane state
+- `src/views/ProjectPage/PaneTree.tsx`, `EditorPane.tsx`,
+  `PaneSplitter.tsx`, `paneLayout.ts` — the split editor area
 - `src/shared/dragPayload.ts` — the typed drag payload and its validation
 - `src/views/ProjectPage/FileBrowser/` — tree panel (+ `RenameInput.tsx`)
 - `src/views/ProjectPage/Toolbar/` — action row

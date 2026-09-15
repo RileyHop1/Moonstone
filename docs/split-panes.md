@@ -7,10 +7,8 @@ Source: `src/views/ProjectPage/paneLayout.ts` (the model),
 Tests: `src/test/paneLayout.test.ts`, `src/test/PaneTree.test.tsx`,
 `src/test/EditorPane.test.tsx`
 
-> **Status:** the model, rendering, drop handling and the draggable
-> splitter are complete and tested. Wiring into `ProjectPage` — per-pane
-> documents, save, focus — is the next stage; until then nothing mounts a
-> `PaneTree`.
+> **Status:** shipped. The project page mounts a `PaneTree`; drag a
+> file from the browser onto a pane's edge to split.
 
 ## The model
 
@@ -136,6 +134,51 @@ drop from making another column.
 Everything about validating the drag payload — why a private MIME type,
 why the kind travels with the path, and the `effectAllowed`/`dropEffect`
 trap — is in `docs/project-page.md`.
+
+## Where the state lives
+
+`usePaneWorkspace` owns everything hanging off the tree:
+
+|                |                                                                                                                                               |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `documents`    | `Map<PaneId, PaneDocument>` — keyed by **pane**, not path, because two panes may show the same file and each needs its own editor state       |
+| `dirtyPanes`   | `Set<PaneId>` — dirtiness is per pane, so the toolbar's Save reflects the focused one while "discard changes?" on exit asks about all of them |
+| `activePaneId` | which pane the toolbar, file browser selection and snippets act on                                                                            |
+| `viewsRef`     | `Map<PaneId, EditorView>`, maintained through `onViewReady`/`onViewDestroyed`                                                                 |
+
+The views are a **ref, not state**: nothing renders differently because a
+view exists, and putting CodeMirror instances in state would re-render
+the whole tree on every mount.
+
+`close` computes its result _outside_ every state updater. React may
+invoke an updater more than once — it does under StrictMode — so an
+updater that closed over the other setters would run them twice.
+
+### What happens to open panes when files move
+
+- **Renamed or moved:** `repointPaths` rewrites every affected pane's
+  path, reading the _live_ document out of each editor so unsaved work
+  survives. The document's `version` is deliberately left alone — see
+  below.
+- **Deleted:** `forgetDeleted` empties any pane showing the entry or
+  something inside it, but does **not** close the pane. An empty pane is
+  somewhere to open the next file; a closed one is a layout the user did
+  not ask for.
+
+### Why documents carry a version
+
+The editor is keyed on `${paneId}:${version}`, and that key is the only
+thing that decides when it remounts.
+
+A remount is right for a newly opened file — clean editor, fresh undo
+history. It is wrong for a rename, which used to change the key (it was
+the path) and silently cost the author the undo history of a file they
+were in the middle of editing. So `showDocument` and `splitWith` mint a
+new version; `repointPaths` keeps the old one.
+
+`TextEditor` reads `initialDoc` once, at mount, for the same reason: if
+it rebuilt the view whenever that prop changed, it would undo this
+behind the parent's back.
 
 ## Still to do
 

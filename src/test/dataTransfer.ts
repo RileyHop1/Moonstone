@@ -44,3 +44,42 @@ export function makeDataTransfer(initial: Readonly<Record<string, string>> = {})
     // interface (files, items, setDragImage) is never reached in jsdom.
     return stub as unknown as DataTransfer;
 }
+
+/** A drag event's payload and where the pointer is. */
+export interface DragEventInit {
+    readonly dataTransfer: DataTransfer;
+    readonly clientX?: number;
+    readonly clientY?: number;
+}
+
+/**
+ * Fires a drag event carrying real pointer coordinates.
+ *
+ * **`fireEvent.dragOver(element, {clientX})` does not work.** jsdom
+ * implements no `DragEvent`, so Testing Library falls back to
+ * constructing a plain `Event` — which has no `clientX` at all, and
+ * silently ignores the one in the init. Handlers then read `undefined`,
+ * every coordinate becomes `NaN`, and a test that looks like it is
+ * dropping on an edge is really dropping nowhere in particular.
+ *
+ * A `MouseEvent` carries the coordinates properly and bubbles the same
+ * way, so React's synthetic handlers see what they would in a browser.
+ *
+ * @param element - The element to dispatch on.
+ * @param type - The drag event type, e.g. `"dragover"`.
+ * @param init - The drag's payload and pointer position.
+ */
+export function fireDragEvent(element: Element, type: string, init: DragEventInit): void {
+    const event = new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        clientX: init.clientX ?? 0,
+        clientY: init.clientY ?? 0,
+    });
+
+    // `dataTransfer` is not part of MouseEvent, and is read-only on the
+    // events that do have it.
+    Object.defineProperty(event, "dataTransfer", { value: init.dataTransfer });
+
+    element.dispatchEvent(event);
+}

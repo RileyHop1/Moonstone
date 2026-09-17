@@ -306,7 +306,7 @@ pub async fn rename_entry<R: Runtime>(
     let root = paths::moonstone_root(&app)?;
     let entry = paths::ensure_within_root(&root, Path::new(&path))?;
 
-    rename_entry_impl(&entry, &new_name)
+    rename_entry_impl(&root, &entry, &new_name)
 }
 
 /// Moves a file or directory into a different directory inside the
@@ -336,7 +336,7 @@ pub async fn move_entry<R: Runtime>(
     let source = paths::ensure_within_root(&root, Path::new(&source_path))?;
     let dest = paths::ensure_within_root(&root, Path::new(&destination_dir))?;
 
-    ensure_deletable(&root, &source)?;
+    ensure_file_browser_entry(&root, &source)?;
 
     move_entry_impl(&source, &dest)
 }
@@ -361,7 +361,7 @@ pub async fn delete_entry<R: Runtime>(app: AppHandle<R>, path: String) -> Result
     let root = paths::moonstone_root(&app)?;
     let entry = paths::ensure_within_root(&root, Path::new(&path))?;
 
-    ensure_deletable(&root, &entry)?;
+    ensure_file_browser_entry(&root, &entry)?;
 
     trash::delete(&entry).map_err(|e| e.to_string())
 }
@@ -370,6 +370,7 @@ pub async fn delete_entry<R: Runtime>(app: AppHandle<R>, path: String) -> Result
 ///
 /// # Parameters
 ///
+/// * `root` - The Moonstone projects directory.
 /// * `entry` - The existing file or directory.
 /// * `new_name` - The new bare name.
 ///
@@ -379,9 +380,15 @@ pub async fn delete_entry<R: Runtime>(app: AppHandle<R>, path: String) -> Result
 ///
 /// # Errors
 ///
-/// Returns an error if the name is invalid, the target already
-/// exists, or the filesystem rename fails.
-pub fn rename_entry_impl(entry: &Path, new_name: &str) -> Result<String, String> {
+/// Returns an error if the entry is the projects directory or a whole
+/// project, the name is invalid, the target already exists, or the
+/// filesystem rename fails.
+pub fn rename_entry_impl(
+    root: &Path,
+    entry: &Path,
+    new_name: &str,
+) -> Result<String, String> {
+    ensure_file_browser_entry(root, entry)?;
     paths::validate_name(new_name)?;
 
     let parent = entry
@@ -489,9 +496,9 @@ fn resolve_renamed_file_name(entry: &Path, new_name: &str) -> Result<String, Str
     Ok(final_name)
 }
 
-/// Errors when `entry` must not be deleted: entries directly under the
-/// Moonstone root are whole projects, which this command does not
-/// manage.
+/// Errors when `entry` must not be changed by a file-browser command:
+/// entries directly under the Moonstone root are whole projects, which
+/// have their own project-level commands.
 ///
 /// # Parameters
 ///
@@ -505,15 +512,16 @@ fn resolve_renamed_file_name(entry: &Path, new_name: &str) -> Result<String, Str
 /// # Errors
 ///
 /// Returns an error for the root itself or its direct children.
-pub fn ensure_deletable(root: &Path, entry: &Path) -> Result<(), String> {
+pub fn ensure_file_browser_entry(root: &Path, entry: &Path) -> Result<(), String> {
     let canonical_root = root.canonicalize().map_err(|e| e.to_string())?;
+    let canonical_entry = entry.canonicalize().map_err(|e| e.to_string())?;
 
-    if entry == canonical_root {
-        return Err("The projects directory itself can't be deleted".to_string());
+    if canonical_entry == canonical_root {
+        return Err("The projects directory itself can't be changed here".to_string());
     }
 
-    if entry.parent() == Some(canonical_root.as_path()) {
-        return Err("Whole projects can't be deleted from the file browser".to_string());
+    if canonical_entry.parent() == Some(canonical_root.as_path()) {
+        return Err("Whole projects must be changed from the project browser".to_string());
     }
 
     Ok(())
@@ -903,43 +911,51 @@ mod file_manager_tests {
     #[test]
     fn test_rename_entry_renames_file_keeping_extension() {
         let dir = tempdir().unwrap();
-        let file = dir.path().join("old.tex");
+        let project = dir.path().join("project");
+        std::fs::create_dir(&project).unwrap();
+        let file = project.join("old.tex");
         std::fs::write(&file, "content").unwrap();
 
-        let renamed = rename_entry_impl(&file, "new").unwrap();
+        let renamed = rename_entry_impl(dir.path(), &file, "new").unwrap();
 
         assert!(renamed.ends_with("new.tex"));
-        assert!(dir.path().join("new.tex").exists());
+        assert!(project.join("new.tex").exists());
         assert!(!file.exists());
     }
 
     #[test]
     fn test_rename_entry_rejects_non_tex_target() {
         let dir = tempdir().unwrap();
-        let file = dir.path().join("old.tex");
+        let project = dir.path().join("project");
+        std::fs::create_dir(&project).unwrap();
+        let file = project.join("old.tex");
         std::fs::write(&file, "").unwrap();
 
-        assert!(rename_entry_impl(&file, "new.pdf").is_err());
+        assert!(rename_entry_impl(dir.path(), &file, "new.pdf").is_err());
     }
 
     #[test]
     fn test_rename_entry_refuses_overwrite() {
         let dir = tempdir().unwrap();
-        std::fs::write(dir.path().join("a.tex"), "").unwrap();
-        std::fs::write(dir.path().join("b.tex"), "").unwrap();
+        let project = dir.path().join("project");
+        std::fs::create_dir(&project).unwrap();
+        std::fs::write(project.join("a.tex"), "").unwrap();
+        std::fs::write(project.join("b.tex"), "").unwrap();
 
-        assert!(rename_entry_impl(&dir.path().join("a.tex"), "b").is_err());
+        assert!(rename_entry_impl(dir.path(), &project.join("a.tex"), "b").is_err());
     }
 
     #[test]
     fn test_rename_entry_renames_directory() {
         let dir = tempdir().unwrap();
-        let sub = dir.path().join("chapters");
+        let project = dir.path().join("project");
+        std::fs::create_dir(&project).unwrap();
+        let sub = project.join("chapters");
         std::fs::create_dir(&sub).unwrap();
 
-        rename_entry_impl(&sub, "sections").unwrap();
+        rename_entry_impl(dir.path(), &sub, "sections").unwrap();
 
-        assert!(dir.path().join("sections").is_dir());
+        assert!(project.join("sections").is_dir());
     }
 
     #[test]
@@ -1020,7 +1036,7 @@ mod file_manager_tests {
     }
 
     #[test]
-    fn test_ensure_deletable_guards_root_and_projects() {
+    fn test_file_browser_commands_guard_root_and_projects() {
         let root = tempdir().unwrap();
         let project = root.path().join("project");
         let nested = project.join("file.tex");
@@ -1031,8 +1047,25 @@ mod file_manager_tests {
         let canonical_project = project.canonicalize().unwrap();
         let canonical_nested = nested.canonicalize().unwrap();
 
-        assert!(ensure_deletable(root.path(), &canonical_root).is_err());
-        assert!(ensure_deletable(root.path(), &canonical_project).is_err());
-        assert!(ensure_deletable(root.path(), &canonical_nested).is_ok());
+        assert!(ensure_file_browser_entry(root.path(), &canonical_root).is_err());
+        assert!(ensure_file_browser_entry(root.path(), &canonical_project).is_err());
+        assert!(ensure_file_browser_entry(root.path(), &canonical_nested).is_ok());
+    }
+
+    #[test]
+    fn test_rename_entry_refuses_root_and_whole_projects() {
+        let root = tempdir().unwrap();
+        let project = root.path().join("project");
+        std::fs::create_dir(&project).unwrap();
+
+        let canonical_root = root.path().canonicalize().unwrap();
+        let canonical_project = project.canonicalize().unwrap();
+
+        assert!(rename_entry_impl(root.path(), &canonical_root, "renamed-root").is_err());
+        assert!(
+            rename_entry_impl(root.path(), &canonical_project, "renamed-project").is_err()
+        );
+        assert!(root.path().exists());
+        assert!(project.exists());
     }
 }

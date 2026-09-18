@@ -142,7 +142,7 @@ screen possible.
 
 ## How it flows
 
-`SettingsProvider` (`src/shared/settings.tsx`) loads once at startup,
+`SettingsProvider` (`src/shared/SettingsProvider.tsx`) loads once at startup,
 stamps `data-theme` and `--editor-font-size` onto the document root on
 every change, and persists updates in the background. Values crossing
 the IPC boundary are normalized/clamped — nothing from disk is

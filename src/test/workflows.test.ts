@@ -20,7 +20,7 @@ import { parse } from "yaml";
 const WORKFLOWS = join(process.cwd(), ".github", "workflows");
 
 /** The permissions a job or workflow asks for. */
-type Permissions = Record<string, string> | string | undefined;
+type Permissions = Record<string, string> | string | null | undefined;
 
 /** One job as declared in a workflow. */
 interface WorkflowJob {
@@ -254,14 +254,17 @@ describe("reusable workflow permissions", () => {
 
         for (const { called, id, job } of calledJobs(file)) {
             const wanted = job.permissions;
-            if (wanted === undefined) continue;
+            if (wanted === undefined || wanted === null) continue;
 
             const scopes = typeof wanted === "string" ? {} : wanted;
 
             for (const [scope, level] of Object.entries(scopes)) {
                 if (level === "none" || level === "read") continue;
 
-                const allowed = typeof granted === "object" ? granted[scope] : undefined;
+                const allowed =
+                    typeof granted === "object" && granted !== null
+                        ? granted[scope]
+                        : undefined;
 
                 expect(
                     allowed,
@@ -281,11 +284,12 @@ describe("reusable workflow permissions", () => {
 
         for (const [id, job] of Object.entries(frontend.jobs)) {
             const permissions = job.permissions;
-            const scopes = typeof permissions === "object" ? permissions : {};
+            // A bare `permissions:` key parses to null, and `typeof null`
+            // is "object", so the null check is not redundant.
+            const scopes =
+                typeof permissions === "object" && permissions !== null ? permissions : {};
 
-            expect(
-                Object.entries(scopes ?? {}).filter(([, level]) => level === "write"),
-            ).toEqual([]);
+            expect(Object.entries(scopes).filter(([, level]) => level === "write")).toEqual([]);
             expect(id).not.toBe("reviewdog");
         }
     });

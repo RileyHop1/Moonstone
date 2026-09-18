@@ -8,8 +8,8 @@ import type { RenderResult } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { NavigationContext } from "../shared/navigation";
 import type { AppPage, NavigationValue, ReturnablePage } from "../shared/navigation";
-import { AppActionsProvider } from "../shared/appActions";
-import { SettingsProvider } from "../shared/settings";
+import { AppActionsProvider } from "../shared/AppActionsProvider";
+import { SettingsProvider } from "../shared/SettingsProvider";
 
 /** A render result extended with the recorded navigation calls. */
 export interface ProviderRenderResult extends RenderResult {

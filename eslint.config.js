@@ -114,6 +114,16 @@ export default tseslint.config(
         },
     },
 
+    // Browser-test harnesses are page entry points: they mount a root and
+    // export nothing, which is exactly what this rule flags. Fast refresh
+    // is irrelevant to a page Playwright loads fresh for every test.
+    {
+        files: ["src/test/browser/*Harness.tsx"],
+        rules: {
+            "react-refresh/only-export-components": "off",
+        },
+    },
+
     // Node scripts and root config files. `tsconfig.json` covers `src`
     // only, so there is no type information for these and the
     // type-aware rules would throw rather than skip them.

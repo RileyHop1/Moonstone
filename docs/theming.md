@@ -20,7 +20,7 @@ shows, so the naming can be revisited without a migration.
 
 ## How a theme is applied
 
-`settings.tsx` sets `data-theme` on the document element (`dark` is
+`SettingsProvider.tsx` sets `data-theme` on the document element (`dark` is
 also the unattributed default, so the base `:root` block is its
 palette). Everything else follows from CSS custom properties declared
 in `src/styles/styles.css`, so switching themes repaints the app
@@ -153,6 +153,6 @@ went wrong.
 - `src/shared/themes.ts` — the theme registry (ids, labels, light/dark)
 - `src/styles/styles.css` — every palette, and the only place colours live
 - `src/views/editor/TextEditor/moonstoneTheme.ts` — editor chrome + syntax, per palette
-- `src/shared/settings.tsx` — applies `data-theme` to the document
+- `src/shared/SettingsProvider.tsx` — applies `data-theme` to the document
 - Tests: `src/test/themePalette.test.ts` (source rule),
   `src/test/browser/theme.browser.spec.ts` (contrast)

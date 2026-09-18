@@ -66,6 +66,43 @@ describe("Settings", () => {
         });
     });
 
+    describe("PDF preview", () => {
+        it("persists opening the PDF after compiling being turned off", async () => {
+            renderWithProviders(<Settings />, { kind: "settings" });
+
+            fireEvent.click(screen.getByRole("switch", { name: "Open PDF after compiling" }));
+
+            await waitFor(() => {
+                expect(invokeMock).toHaveBeenCalledWith(
+                    "save_settings",
+                    expect.objectContaining({
+                        settings: expect.objectContaining({ openPdfAfterCompile: false }),
+                    }),
+                );
+            });
+        });
+
+        it("leaves the preview on when the stored value is malformed", async () => {
+            // Only an explicit `false` turns it off: a hand-edited or
+            // older settings file must not silently hide the PDF.
+            mockCommands({
+                get_settings: () => ({ theme: "light", openPdfAfterCompile: "no" }),
+                save_settings: () => null,
+            });
+            renderWithProviders(<Settings />, { kind: "settings" });
+
+            // The default is also "on", so first wait for the stored
+            // settings to have loaded — signalled by the non-default
+            // theme — or this passes before the value is ever read.
+            await waitFor(() => {
+                expect(screen.getByRole("combobox", { name: "Theme" })).toHaveValue("light");
+            });
+            expect(
+                screen.getByRole("switch", { name: "Open PDF after compiling" }),
+            ).toBeChecked();
+        });
+    });
+
     it("switches the theme, applies it to the DOM, and persists it", async () => {
         renderWithProviders(<Settings />, { kind: "settings" });
 
@@ -84,6 +121,7 @@ describe("Settings", () => {
                 spellCheckEnabled: true,
                 lineNumberMode: "absolute",
                 showDiagnostics: false,
+                openPdfAfterCompile: true,
             },
         });
     });
@@ -116,6 +154,7 @@ describe("Settings", () => {
                     spellCheckEnabled: true,
                     lineNumberMode: "absolute",
                     showDiagnostics: false,
+                    openPdfAfterCompile: true,
                 },
             });
         });
@@ -137,6 +176,7 @@ describe("Settings", () => {
                         spellCheckEnabled: true,
                         lineNumberMode: "absolute",
                         showDiagnostics: false,
+                        openPdfAfterCompile: true,
                     },
                 });
             });
@@ -157,6 +197,7 @@ describe("Settings", () => {
                         spellCheckEnabled: false,
                         lineNumberMode: "absolute",
                         showDiagnostics: false,
+                        openPdfAfterCompile: true,
                     },
                 });
             });
@@ -196,6 +237,7 @@ describe("Settings", () => {
                         spellCheckEnabled: true,
                         lineNumberMode: "relative",
                         showDiagnostics: false,
+                        openPdfAfterCompile: true,
                     },
                 });
             });
@@ -266,6 +308,7 @@ describe("Settings", () => {
                         spellCheckEnabled: true,
                         lineNumberMode: "absolute",
                         showDiagnostics: true,
+                        openPdfAfterCompile: true,
                     },
                 });
             });

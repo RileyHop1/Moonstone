@@ -16,7 +16,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
 import { isAtOrInside, reparent } from "../../shared/paths";
-import type { PaneDocument } from "./EditorPane";
+import type { LoadedFile, PaneDocument } from "./EditorPane";
 import {
     closePane,
     createLayout,
@@ -28,17 +28,6 @@ import {
     splitPane,
 } from "./paneLayout";
 import type { DropSide, PaneId, PaneNode, PaneSplit } from "./paneLayout";
-
-/**
- * A file just read from disk.
- *
- * The workspace adds the version that keys the editor, so callers never
- * have to reason about when a remount is warranted.
- */
-export interface LoadedFile {
-    readonly path: string;
-    readonly initialDoc: string;
-}
 
 /** What the editor area currently looks like, and how to change it. */
 export interface PaneWorkspace {
@@ -243,14 +232,20 @@ export function usePaneWorkspace(): PaneWorkspace {
                 const newPath = reparent(document.path, from, to);
                 if (newPath === null) continue;
 
-                const live = viewsRef.current.get(paneId)?.state.doc.toString();
-                next.set(paneId, {
-                    ...document,
-                    path: newPath,
-                    // Version deliberately unchanged: the editor must
-                    // not remount, or the rename costs the undo history.
-                    initialDoc: live ?? document.initialDoc,
-                });
+                // Version deliberately unchanged: the editor must not
+                // remount, or the rename costs the undo history.
+                next.set(
+                    paneId,
+                    document.kind === "text"
+                        ? {
+                              ...document,
+                              path: newPath,
+                              initialDoc:
+                                  viewsRef.current.get(paneId)?.state.doc.toString() ??
+                                  document.initialDoc,
+                          }
+                        : { ...document, path: newPath },
+                );
                 changed = true;
             }
 

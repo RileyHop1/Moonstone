@@ -18,13 +18,28 @@ import { fireDragEvent, makeDataTransfer } from "./dataTransfer";
 
 vi.mock("@tauri-apps/api/core", async () => {
     const { invokeMock: mock } = await import("./mockTauri");
-    return { invoke: mock, isTauri: () => true };
+    return {
+        invoke: mock,
+        isTauri: () => true,
+        convertFileSrc: (path: string) => `asset://${path}`,
+    };
 });
 
 vi.mock("../views/editor/TextEditor", async () => {
     const { createElement } = await import("react");
     return {
         TextEditor: () => createElement("div", { "data-testid": "mock-editor" }),
+    };
+});
+
+// pdf.js needs canvas and a worker, neither of which jsdom has. The real
+// viewer is covered by `pdfViewer.browser.spec.ts`; here only the URL it
+// is handed matters, since that is what carries the reload.
+vi.mock("../views/ProjectPage/PdfViewer", async () => {
+    const { createElement } = await import("react");
+    return {
+        PdfViewer: ({ source }: { source: string }) =>
+            createElement("div", { "data-testid": "pdf-viewer", "data-source": source }),
     };
 });
 
@@ -615,5 +630,147 @@ describe("ProjectPage auto-open", () => {
                 filePath: "C:/root/demo/demo.tex",
             });
         });
+    });
+});
+
+describe("ProjectPage PDFs", () => {
+    /** The tree with a compiled PDF beside the source. */
+    const PDF_TREE: FileNode = {
+        kind: "directory",
+        name: "demo",
+        path: "C:/root/demo",
+        children: [
+            { kind: "file", name: "demo.tex", path: "C:/root/demo/demo.tex" },
+            { kind: "file", name: "demo.pdf", path: "C:/root/demo/demo.pdf" },
+        ],
+    };
+
+    /** A clean compile of `demo.tex`. */
+    const COMPILED = { pdfPath: "C:/root/demo/demo.pdf", logPath: null, diagnostics: [] };
+
+    /**
+     * Routes the commands a compile needs.
+     *
+     * @param openPdfAfterCompile - The stored setting.
+     */
+    function mockProject(openPdfAfterCompile: boolean): void {
+        mockCommands({
+            get_settings: () => ({ theme: "dark", openPdfAfterCompile }),
+            list_project_files: () => PDF_TREE,
+            read_file: () => "",
+            compile_project: () => COMPILED,
+            export_pdf: () => ({ exportedTo: "D:/out/demo.pdf" }),
+        });
+    }
+
+    /**
+     * Renders the page and waits for the main file to open.
+     *
+     * @returns Nothing; the page is on screen once this resolves.
+     */
+    async function renderWithMainFile(): Promise<void> {
+        renderWithProviders(<ProjectPage project={PROJECT} />);
+        await screen.findByTestId("mock-editor");
+    }
+
+    beforeEach(() => {
+        resetInvokeMock();
+    });
+
+    it("opens a PDF in a viewer without trying to read it as text", async () => {
+        mockProject(true);
+        await renderWithMainFile();
+
+        fireEvent.click(fileRow("demo.pdf"));
+
+        const viewer = await screen.findByTestId("pdf-viewer");
+        expect(viewer.getAttribute("data-source")).toMatch(
+            /^asset:\/\/C:\/root\/demo\/demo\.pdf\?v=\d+$/,
+        );
+        // `read_file` refuses non-text files; asking it is the old bug.
+        expect(invokeMock).not.toHaveBeenCalledWith("read_file", {
+            filePath: "C:/root/demo/demo.pdf",
+        });
+    });
+
+    it("offers export but not editing while a PDF pane is active", async () => {
+        mockProject(true);
+        await renderWithMainFile();
+
+        fireEvent.click(fileRow("demo.pdf"));
+        await screen.findByTestId("pdf-viewer");
+
+        expect(screen.getByRole("button", { name: "Export PDF…" })).toBeEnabled();
+        expect(screen.getByRole("button", { name: "Compile" })).toBeDisabled();
+        expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+    });
+
+    it("opens the compiled PDF beside the source and keeps focus on the source", async () => {
+        mockProject(true);
+        await renderWithMainFile();
+
+        fireEvent.click(screen.getByRole("button", { name: "Compile" }));
+
+        await screen.findByTestId("pdf-viewer");
+        expect(document.querySelectorAll(".editor-pane")).toHaveLength(2);
+        const active = document.querySelector(".editor-pane-active");
+        expect(active?.querySelector("[data-testid='mock-editor']")).not.toBeNull();
+    });
+
+    it("reloads the open preview on a second compile instead of splitting again", async () => {
+        mockProject(true);
+        await renderWithMainFile();
+
+        fireEvent.click(screen.getByRole("button", { name: "Compile" }));
+        const firstSource = (await screen.findByTestId("pdf-viewer")).getAttribute("src");
+
+        fireEvent.click(await screen.findByRole("button", { name: "Compile" }));
+
+        await waitFor(() => {
+            expect(screen.getByTestId("pdf-viewer").getAttribute("data-source")).not.toBe(
+                firstSource,
+            );
+        });
+        expect(document.querySelectorAll(".editor-pane")).toHaveLength(2);
+    });
+
+    it("leaves the layout alone when the preview setting is off", async () => {
+        mockProject(false);
+        await renderWithMainFile();
+
+        fireEvent.click(screen.getByRole("button", { name: "Compile" }));
+
+        expect(await screen.findByText("Compiled ✓")).toBeInTheDocument();
+        expect(screen.queryByTestId("pdf-viewer")).not.toBeInTheDocument();
+        expect(document.querySelectorAll(".editor-pane")).toHaveLength(1);
+    });
+
+    it("exports the PDF the open document compiles to", async () => {
+        mockProject(true);
+        await renderWithMainFile();
+
+        fireEvent.click(screen.getByRole("button", { name: "Export PDF…" }));
+
+        expect(await screen.findByText("Exported to D:/out/demo.pdf")).toBeInTheDocument();
+        expect(invokeMock).toHaveBeenCalledWith("export_pdf", {
+            pdfPath: "C:/root/demo/demo.pdf",
+        });
+    });
+
+    it("says nothing when the export dialog is cancelled", async () => {
+        mockCommands({
+            get_settings: () => ({ theme: "dark" }),
+            list_project_files: () => PDF_TREE,
+            read_file: () => "",
+            export_pdf: () => ({ exportedTo: null }),
+        });
+        await renderWithMainFile();
+
+        fireEvent.click(screen.getByRole("button", { name: "Export PDF…" }));
+
+        await waitFor(() => {
+            expect(invokeMock).toHaveBeenCalledWith("export_pdf", expect.anything());
+        });
+        expect(screen.queryByText(/Export/, { selector: ".toolbar-status" })).toBeNull();
     });
 });

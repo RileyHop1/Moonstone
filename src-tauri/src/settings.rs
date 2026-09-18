@@ -53,6 +53,15 @@ pub struct AppSettings {
     /// Whether the editor's diagnostic overlay is shown.
     #[serde(default)]
     pub show_diagnostics: bool,
+    /// Whether compiling opens the PDF in a pane beside the source.
+    #[serde(default = "default_open_pdf_after_compile")]
+    pub open_pdf_after_compile: bool,
+}
+
+/// Compiling shows its result, because a PDF the author has to go and
+/// find is the problem this setting exists to solve.
+fn default_open_pdf_after_compile() -> bool {
+    true
 }
 
 /// The theme a fresh install starts with.
@@ -90,6 +99,7 @@ impl Default for AppSettings {
             spell_check_enabled: default_spell_check(),
             line_number_mode: default_line_number_mode(),
             show_diagnostics: false,
+            open_pdf_after_compile: default_open_pdf_after_compile(),
         }
     }
 }
@@ -235,6 +245,7 @@ mod settings_tests {
             spell_check_enabled: false,
             line_number_mode: "relative".to_string(),
             show_diagnostics: true,
+            open_pdf_after_compile: false,
         };
 
         save_settings_impl(&path, &settings).unwrap();
@@ -260,6 +271,7 @@ mod settings_tests {
         assert!(settings.spell_check_enabled);
         assert_eq!(settings.line_number_mode, default_line_number_mode());
         assert!(!settings.show_diagnostics);
+        assert!(settings.open_pdf_after_compile);
     }
 
     #[test]

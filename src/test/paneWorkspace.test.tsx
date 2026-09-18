@@ -47,7 +47,11 @@ describe("usePaneWorkspace", () => {
         const { workspace, run } = mountWorkspace();
 
         run((w) => {
-            w.showDocument(w.activePaneId, { path: "C:\\p\\main.tex", initialDoc: "hello" });
+            w.showDocument(w.activePaneId, {
+                kind: "text",
+                path: "C:\\p\\main.tex",
+                initialDoc: "hello",
+            });
         });
 
         expect(workspace().activeDocument?.path).toBe("C:\\p\\main.tex");
@@ -58,11 +62,11 @@ describe("usePaneWorkspace", () => {
         const { workspace, run } = mountWorkspace();
 
         run((w) => {
-            w.showDocument(w.activePaneId, { path: "one.tex", initialDoc: "" });
+            w.showDocument(w.activePaneId, { kind: "text", path: "one.tex", initialDoc: "" });
         });
         const first = workspace().activePaneId;
         run((w) => {
-            w.splitWith(first, "right", { path: "two.tex", initialDoc: "" });
+            w.splitWith(first, "right", { kind: "text", path: "two.tex", initialDoc: "" });
         });
 
         expect(shownPaths(workspace())).toEqual(["one.tex", "two.tex"]);
@@ -76,10 +80,14 @@ describe("usePaneWorkspace", () => {
         const { workspace, run } = mountWorkspace();
 
         run((w) => {
-            w.showDocument(w.activePaneId, { path: "same.tex", initialDoc: "" });
+            w.showDocument(w.activePaneId, { kind: "text", path: "same.tex", initialDoc: "" });
         });
         run((w) => {
-            w.splitWith(w.activePaneId, "right", { path: "same.tex", initialDoc: "" });
+            w.splitWith(w.activePaneId, "right", {
+                kind: "text",
+                path: "same.tex",
+                initialDoc: "",
+            });
         });
 
         const versions = Array.from(workspace().documents.values(), (d) => d.version);
@@ -92,11 +100,15 @@ describe("usePaneWorkspace", () => {
             const { workspace, run } = mountWorkspace();
 
             run((w) => {
-                w.showDocument(w.activePaneId, { path: "one.tex", initialDoc: "" });
+                w.showDocument(w.activePaneId, {
+                    kind: "text",
+                    path: "one.tex",
+                    initialDoc: "",
+                });
             });
             const first = workspace().activePaneId;
             run((w) => {
-                w.splitWith(first, "right", { path: "two.tex", initialDoc: "" });
+                w.splitWith(first, "right", { kind: "text", path: "two.tex", initialDoc: "" });
             });
             run((w) => {
                 w.markDirty(first);
@@ -128,7 +140,11 @@ describe("usePaneWorkspace", () => {
                 w.markDirty(w.activePaneId);
             });
             run((w) => {
-                w.showDocument(w.activePaneId, { path: "fresh.tex", initialDoc: "" });
+                w.showDocument(w.activePaneId, {
+                    kind: "text",
+                    path: "fresh.tex",
+                    initialDoc: "",
+                });
             });
 
             expect(workspace().isActiveDirty).toBe(false);
@@ -140,10 +156,18 @@ describe("usePaneWorkspace", () => {
             const { workspace, run } = mountWorkspace();
 
             run((w) => {
-                w.showDocument(w.activePaneId, { path: "one.tex", initialDoc: "" });
+                w.showDocument(w.activePaneId, {
+                    kind: "text",
+                    path: "one.tex",
+                    initialDoc: "",
+                });
             });
             run((w) => {
-                w.splitWith(w.activePaneId, "right", { path: "two.tex", initialDoc: "" });
+                w.splitWith(w.activePaneId, "right", {
+                    kind: "text",
+                    path: "two.tex",
+                    initialDoc: "",
+                });
             });
             const second = workspace().activePaneId;
             run((w) => {
@@ -158,10 +182,18 @@ describe("usePaneWorkspace", () => {
             const { workspace, run } = mountWorkspace();
 
             run((w) => {
-                w.showDocument(w.activePaneId, { path: "one.tex", initialDoc: "" });
+                w.showDocument(w.activePaneId, {
+                    kind: "text",
+                    path: "one.tex",
+                    initialDoc: "",
+                });
             });
             run((w) => {
-                w.splitWith(w.activePaneId, "right", { path: "two.tex", initialDoc: "" });
+                w.splitWith(w.activePaneId, "right", {
+                    kind: "text",
+                    path: "two.tex",
+                    initialDoc: "",
+                });
             });
             const closed = workspace().activePaneId;
             run((w) => {
@@ -192,7 +224,11 @@ describe("usePaneWorkspace", () => {
             const { workspace, run } = mountWorkspace();
 
             run((w) => {
-                w.showDocument(w.activePaneId, { path: "C:\\p\\old.tex", initialDoc: "body" });
+                w.showDocument(w.activePaneId, {
+                    kind: "text",
+                    path: "C:\\p\\old.tex",
+                    initialDoc: "body",
+                });
             });
             run((w) => {
                 w.repointPaths("C:\\p\\old.tex", "C:\\p\\new.tex");
@@ -207,6 +243,7 @@ describe("usePaneWorkspace", () => {
 
             run((w) => {
                 w.showDocument(w.activePaneId, {
+                    kind: "text",
                     path: "C:\\p\\old\\main.tex",
                     initialDoc: "",
                 });
@@ -224,7 +261,11 @@ describe("usePaneWorkspace", () => {
             const { workspace, run } = mountWorkspace();
 
             run((w) => {
-                w.showDocument(w.activePaneId, { path: "C:\\p\\old.tex", initialDoc: "" });
+                w.showDocument(w.activePaneId, {
+                    kind: "text",
+                    path: "C:\\p\\old.tex",
+                    initialDoc: "",
+                });
             });
             const before = workspace().activeDocument?.version;
 
@@ -239,7 +280,11 @@ describe("usePaneWorkspace", () => {
             const { workspace, run } = mountWorkspace();
 
             run((w) => {
-                w.showDocument(w.activePaneId, { path: "C:\\p\\other.tex", initialDoc: "" });
+                w.showDocument(w.activePaneId, {
+                    kind: "text",
+                    path: "C:\\p\\other.tex",
+                    initialDoc: "",
+                });
             });
             run((w) => {
                 w.repointPaths("C:\\p\\old.tex", "C:\\p\\new.tex");
@@ -255,7 +300,11 @@ describe("usePaneWorkspace", () => {
             const { workspace, run } = mountWorkspace();
 
             run((w) => {
-                w.showDocument(w.activePaneId, { path: "C:\\p\\gone.tex", initialDoc: "" });
+                w.showDocument(w.activePaneId, {
+                    kind: "text",
+                    path: "C:\\p\\gone.tex",
+                    initialDoc: "",
+                });
             });
             run((w) => {
                 w.forgetDeleted("C:\\p\\gone.tex");
@@ -271,6 +320,7 @@ describe("usePaneWorkspace", () => {
 
             run((w) => {
                 w.showDocument(w.activePaneId, {
+                    kind: "text",
                     path: "C:\\p\\chapters\\intro.tex",
                     initialDoc: "",
                 });
@@ -287,6 +337,7 @@ describe("usePaneWorkspace", () => {
 
             run((w) => {
                 w.showDocument(w.activePaneId, {
+                    kind: "text",
                     path: "C:\\p\\chapters-old\\intro.tex",
                     initialDoc: "",
                 });
@@ -304,7 +355,11 @@ describe("usePaneWorkspace", () => {
             const { workspace, run } = mountWorkspace();
 
             run((w) => {
-                w.splitWith(w.activePaneId, "right", { path: "two.tex", initialDoc: "" });
+                w.splitWith(w.activePaneId, "right", {
+                    kind: "text",
+                    path: "two.tex",
+                    initialDoc: "",
+                });
             });
 
             const root = workspace().layout;
@@ -335,7 +390,7 @@ describe("usePaneWorkspace", () => {
         const { workspace, run } = mountWorkspace();
 
         run((w) => {
-            w.showDocument(w.activePaneId, { path: "one.tex", initialDoc: "" });
+            w.showDocument(w.activePaneId, { kind: "text", path: "one.tex", initialDoc: "" });
         });
 
         expect(workspace().isShowing("one.tex")).toBe(true);

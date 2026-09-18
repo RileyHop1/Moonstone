@@ -14,7 +14,7 @@ button and no way to lose a change by navigating away.
 
 | Section  | Settings                                        |
 | -------- | ----------------------------------------------- |
-| General  | Theme                                           |
+| General  | Theme, open PDF after compiling                 |
 | Editor   | Font size, edit mode, line numbers, spell check |
 | Advanced | Show editor diagnostics                         |
 
@@ -58,6 +58,8 @@ are navigable and testable by role rather than by class name.
   and syntax colours route through the same variables, so the whole app
   (CodeMirror included) follows the choice. Full write-up, including
   how to add one, in `theming.md`.
+- **Open PDF after compiling** — on by default; only an explicit
+  `false` turns it off. See `pdf-compilation.md`.
 - **Editor font size** — 10–24 px (clamped), applied through the
   `--editor-font-size` CSS variable.
 - **Edit mode** — None, Vim or Helix. See `modal-editing.md`.

@@ -37,6 +37,7 @@ export interface StoredSettings {
     readonly spellCheckEnabled: unknown;
     readonly lineNumberMode: unknown;
     readonly showDiagnostics: unknown;
+    readonly openPdfAfterCompile: unknown;
 }
 
 /**
@@ -137,6 +138,8 @@ export interface AppSettings {
     readonly lineNumberMode: LineNumberMode;
     /** Whether the editor's diagnostic overlay is shown. */
     readonly showDiagnostics: boolean;
+    /** Whether compiling opens the PDF in a pane beside the source. */
+    readonly openPdfAfterCompile: boolean;
 }
 
 /** How serious a problem the LaTeX engine reported is. */
@@ -173,6 +176,12 @@ export interface CompileOutcome {
     /** Absolute path of the engine log, for what the parser could not
      * turn into a diagnostic. */
     readonly logPath: string | null;
+}
+
+/** What exporting a PDF did. */
+export interface ExportOutcome {
+    /** Where the PDF was copied, or null when the user cancelled. */
+    readonly exportedTo: string | null;
 }
 
 /**

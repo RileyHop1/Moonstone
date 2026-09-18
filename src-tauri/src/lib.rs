@@ -22,8 +22,12 @@ pub fn run() {
         // `capabilities/default.json`, so the ability to run a process
         // stays on this side of the IPC boundary.
         .plugin(tauri_plugin_shell::init())
+        // Likewise: `export_pdf` opens the save dialog from Rust, and the
+        // webview has no dialog permission of its own.
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             compiler::compile_project,
+            compiler::export_pdf,
             file_manager::create_file,
             file_manager::create_directory,
             file_manager::list_project_files,

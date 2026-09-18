@@ -8,6 +8,7 @@ import { THEMES } from "../../shared/themes";
 import type { Theme } from "../../shared/types";
 import { SettingsRow } from "./SettingsRow";
 import { SettingsSelect } from "./SettingsSelect";
+import { ToggleSwitch } from "./ToggleSwitch";
 
 /**
  * The selectable themes, in display order.
@@ -28,13 +29,25 @@ export function GeneralTab() {
     const { settings, updateSettings } = useSettings();
 
     return (
-        <SettingsRow label="Theme" description="Applies immediately across the app.">
-            <SettingsSelect
-                label="Theme"
-                options={THEME_CHOICES}
-                value={settings.theme}
-                onChange={(theme) => updateSettings({ theme })}
-            />
-        </SettingsRow>
+        <>
+            <SettingsRow label="Theme" description="Applies immediately across the app.">
+                <SettingsSelect
+                    label="Theme"
+                    options={THEME_CHOICES}
+                    value={settings.theme}
+                    onChange={(theme) => updateSettings({ theme })}
+                />
+            </SettingsRow>
+            <SettingsRow
+                label="Open PDF after compiling"
+                description="Shows the compiled PDF in a pane beside the document, and reloads it on every compile."
+            >
+                <ToggleSwitch
+                    label="Open PDF after compiling"
+                    checked={settings.openPdfAfterCompile}
+                    onChange={(openPdfAfterCompile) => updateSettings({ openPdfAfterCompile })}
+                />
+            </SettingsRow>
+        </>
     );
 }

@@ -127,6 +127,7 @@ function PaneArea() {
     // the app's rather than an empty pane.
     useEffect(() => {
         showDocument(activePaneId, {
+            kind: "text",
             path: "main.tex",
             initialDoc: contentsFor("main.tex"),
         });
@@ -144,7 +145,7 @@ function PaneArea() {
             configurationFor={configurationFor}
             onActivate={panes.activate}
             onDropFile={(paneId, side, path) => {
-                const loaded = { path, initialDoc: contentsFor(path) };
+                const loaded = { kind: "text" as const, path, initialDoc: contentsFor(path) };
 
                 if (side === null) panes.showDocument(paneId, loaded);
                 else panes.splitWith(paneId, side, loaded);

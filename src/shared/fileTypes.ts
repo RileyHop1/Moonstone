@@ -6,6 +6,8 @@
  * lets a bad choice be caught before a round trip.
  */
 
+import { basename, join } from "./paths";
+
 /** One selectable file type. */
 export interface FileType {
     /** Extension without the dot, as the backend expects it. */
@@ -47,4 +49,34 @@ export const DEFAULT_FILE_EXTENSION = "tex";
 export function isEditableExtension(extension: string): boolean {
     const normalized = extension.toLowerCase();
     return FILE_TYPES.some((type) => type.extension === normalized);
+}
+
+/**
+ * Reports whether a path names a PDF, which panes show in a viewer
+ * rather than an editor.
+ *
+ * @param path - Any file path.
+ * @returns True for a `.pdf` file, in any letter case.
+ */
+export function isPdfPath(path: string): boolean {
+    return path.toLowerCase().endsWith(".pdf");
+}
+
+/**
+ * Names the PDF a document compiles to: the document's stem, at the
+ * project root — even for a document in a subdirectory.
+ *
+ * Mirrors `publish_pdf` in `src-tauri/src/compiler.rs`, which is where
+ * the file actually gets written.
+ *
+ * @param projectPath - Absolute path of the project directory.
+ * @param documentPath - Absolute path of the source document.
+ * @returns The path its compiled PDF lands at.
+ */
+export function compiledPdfPath(projectPath: string, documentPath: string): string {
+    const name = basename(documentPath);
+    const dot = name.lastIndexOf(".");
+    const stem = dot > 0 ? name.slice(0, dot) : name;
+
+    return join(projectPath, `${stem}.pdf`);
 }

@@ -33,6 +33,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     spellCheckEnabled: true,
     lineNumberMode: "absolute",
     showDiagnostics: false,
+    openPdfAfterCompile: true,
 };
 
 /** Allowed editor font-size bounds in pixels. */
@@ -120,6 +121,9 @@ export function normalizeSettings(stored: StoredSettings | null | undefined): Ap
     // Developer-facing and off unless explicitly asked for.
     const showDiagnostics = stored.showDiagnostics === true;
 
+    // On unless explicitly turned off, like spell checking.
+    const openPdfAfterCompile = stored.openPdfAfterCompile !== false;
+
     return {
         theme,
         editorFontSize,
@@ -127,6 +131,7 @@ export function normalizeSettings(stored: StoredSettings | null | undefined): Ap
         spellCheckEnabled,
         lineNumberMode,
         showDiagnostics,
+        openPdfAfterCompile,
     };
 }
 

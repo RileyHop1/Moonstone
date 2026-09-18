@@ -179,6 +179,10 @@ several files can be open side by side. Dragging a file from the browser
 onto a pane's **edge** splits it; dropping in the **middle** opens the
 file in that pane instead. See `docs/split-panes.md`.
 
+A pane can also show a **PDF**, rendered with pdf.js — opened from the
+browser, or split off automatically after a compile. See "Viewing the
+PDF" in `docs/pdf-compilation.md`.
+
 Three behaviours changed with it, each fixing something the
 single-editor page got wrong:
 

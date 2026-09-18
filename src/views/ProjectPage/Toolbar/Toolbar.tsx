@@ -21,8 +21,10 @@ export interface StatusMessage {
 export interface ToolbarProps {
     /** True when the open file has unsaved changes. */
     readonly isDirty: boolean;
-    /** True when a file is open in the editor. */
+    /** True when the active pane has any file open, PDFs included. */
     readonly hasOpenFile: boolean;
+    /** True when the active pane holds editable text rather than a PDF. */
+    readonly canEditFile: boolean;
     /** True while a compile is running, so it cannot be started twice. */
     readonly isCompiling: boolean;
     /**
@@ -81,19 +83,20 @@ const SNIPPET_BUTTONS: readonly SnippetButton[] = [
 export function Toolbar({
     isDirty,
     hasOpenFile,
+    canEditFile,
     isCompiling,
     actions,
     statusMessage,
 }: ToolbarProps) {
     // Read-only mode is non-editable, so snippet insertion is disabled.
-    const canEdit = hasOpenFile && actions.viewMode !== "readonly";
+    const canEdit = canEditFile && actions.viewMode !== "readonly";
 
     return (
         <div className="editor-toolbar">
             <button
                 type="button"
                 className="toolbar-button"
-                disabled={!hasOpenFile || !isDirty}
+                disabled={!canEditFile || !isDirty}
                 title="Save (Ctrl+S)"
                 onClick={actions.save}
             >
@@ -102,7 +105,7 @@ export function Toolbar({
             <button
                 type="button"
                 className="toolbar-button"
-                disabled={!hasOpenFile}
+                disabled={!canEditFile}
                 title="Undo (Ctrl+Z)"
                 onClick={actions.undo}
             >
@@ -111,7 +114,7 @@ export function Toolbar({
             <button
                 type="button"
                 className="toolbar-button"
-                disabled={!hasOpenFile}
+                disabled={!canEditFile}
                 title="Redo (Ctrl+Y)"
                 onClick={actions.redo}
             >
@@ -120,7 +123,7 @@ export function Toolbar({
             <button
                 type="button"
                 className="toolbar-button"
-                disabled={!hasOpenFile}
+                disabled={!canEditFile}
                 title="Find & Replace (Ctrl+F)"
                 onClick={actions.findReplace}
             >
@@ -129,11 +132,20 @@ export function Toolbar({
             <button
                 type="button"
                 className="toolbar-button"
-                disabled={!hasOpenFile || isCompiling}
+                disabled={!canEditFile || isCompiling}
                 title="Compile this file to PDF"
                 onClick={actions.compile}
             >
                 {isCompiling ? "Compiling…" : "Compile"}
+            </button>
+            <button
+                type="button"
+                className="toolbar-button"
+                disabled={!hasOpenFile || isCompiling}
+                title="Save a copy of the compiled PDF somewhere else"
+                onClick={actions.exportPdf}
+            >
+                Export PDF…
             </button>
 
             <span className="toolbar-separator" />
@@ -144,7 +156,7 @@ export function Toolbar({
                         key={segment.mode}
                         type="button"
                         className={`toolbar-segment-button${actions.viewMode === segment.mode ? " toolbar-segment-active" : ""}`}
-                        disabled={!hasOpenFile}
+                        disabled={!canEditFile}
                         title={segment.title}
                         onClick={() => actions.setViewMode(segment.mode)}
                     >

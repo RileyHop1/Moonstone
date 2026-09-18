@@ -5,8 +5,9 @@ as the TeX engine.
 
 > **Status:** compiling works. A **Compile** button in the toolbar
 > builds the open document, artifacts stay hidden, and errors are
-> reported against their source line. Compile-on-save (D3) and the PDF
-> pane (D4) are still to come.
+> reported against their source line. The PDF opens in a pane beside
+> the source, and **Export PDF…** saves a copy anywhere. Compile-on-save
+> (D3) is still to come.
 
 ## Why Tectonic
 
@@ -241,6 +242,88 @@ Nothing is lost — the prefix only raises the 260-character limit, and
 every command canonicalizes again on the way in — and the paths stay
 readable, which matters because they are shown in tooltips.
 
+`publish_pdf` had been missed, and returned the `\\?\` form. That went
+unnoticed until the preview had to find "the pane already showing this
+PDF" by comparing paths; it is now converted too, and a Rust test
+pins it.
+
+## Viewing the PDF
+
+`PaneDocument` is a union — `{kind: "text", …}` or `{kind: "pdf", …}`
+(`EditorPane.tsx`). A PDF pane renders `PdfViewer`, which draws the
+document with **pdf.js** (`pdfjs-dist`, pinned) from the asset-protocol
+URL. `openFileInPane` skips `read_file` for a `.pdf` (that command
+refuses non-text files — the old "can't open a PDF" error), so
+double-clicking a PDF in the file browser, dropping it on a pane and
+dropping it on a pane edge all go through that one branch.
+
+### Why pdf.js, on every platform
+
+The first version was an `<iframe>` leaning on the webview's built-in
+viewer. That works in WebView2 and WKWebView, but **WebKitGTK has no
+PDF viewer**, so on Linux the pane was blank. pdf.js fixes that, and
+using it everywhere rather than only on Linux buys three more things:
+one code path to test; drops onto the PDF work (an iframe swallowed the
+drag events, so the pane's handlers never saw them); and a recompile
+can swap the document in place, keeping zoom and scroll position.
+
+Details that are load-bearing:
+
+- **Loading order.** `pdf_viewer.mjs` reads the core library from
+  `globalThis.pdfjsLib` as it is evaluated, so `loadPdfJs` imports the
+  core, publishes it, then imports the viewer. Both are dynamic imports:
+  pdf.js (~0.7 MB of JS plus a 1.3 MB worker) never touches startup.
+- **The worker** is imported with Vite's `?url`, so it ships in
+  `dist/assets` and works offline.
+- **Annotations are disabled.** A link in the PDF would otherwise
+  navigate the whole app window away from Moonstone.
+- **The vertical scrollbar is always reserved** (`overflow-y: scroll`).
+  Found in the real app: a page that only just overflowed at fit-width
+  made the scrollbar appear, which narrowed the pane, which re-fit the
+  page smaller, which removed the scrollbar — forever, snapping the zoom
+  back under the reader. Headless Chromium hides scrollbars, so the spec
+  that guards this runs in a `chromium-scrollbars` Playwright project.
+
+Zoom is three buttons (−, +, Fit width) above the pages; the default is
+fit-width, re-applied when the pane's width changes.
+
+After a compile, if **Open PDF after compiling** is on, the PDF is
+shown to the right of the source: a pane already showing it is
+reloaded, otherwise one is split off. Focus goes back to the source.
+
+**Reloading.** A recompile rewrites the same file, so the pane's
+`version` is bumped and goes into the URL as `?v=` (the asset protocol
+resolves by path and ignores the query). A new URL makes `PdfViewer`
+load the new document into the **same** viewer, remember the zoom and
+scroll offset, and restore both on pdf.js's `pagesinit`. The component
+is not remounted, which is what makes keeping the reader's place
+possible.
+
+**Testing.** jsdom has no canvas or workers, so the jsdom suites stub
+`PdfViewer`. The real viewer runs in `pdfViewer.browser.spec.ts` against
+committed fixtures (`src/test/browser/fixtures/`), in Chromium **and
+WebKit** — the closest engine to Linux's WebKitGTK that Playwright
+offers. CI installs both. Linux itself has still not been run by hand.
+
+## Exporting
+
+**Export PDF…** copies the PDF out of the project. `export_pdf` takes
+only the _source_, checks it is an existing `.pdf` inside the root
+(`validate_export_source`), and then opens the save dialog **from
+Rust** with `tauri-plugin-dialog`. The destination therefore only ever
+comes from a native dialog the user answered. A command that took the
+destination as an argument would let the webview overwrite any file
+the user can write to. The webview has no dialog permission at all.
+
+The dialog's callback is bridged through a `oneshot` channel rather
+than using the blocking API, which would park an async worker for as
+long as the dialog is open. Cancelling returns `exportedTo: null`,
+which the page treats as "say nothing".
+
+From a document, the PDF exported is `compiledPdfPath` — the stem at
+the project root, mirroring `publish_pdf`, which puts even a
+subdirectory document's PDF there.
+
 ## Still to do
 
 - **D3** — compile on save, debounced, with a toolbar status and a
@@ -256,11 +339,8 @@ readable, which matters because they are shown in tooltips.
   those as warnings that never reach Tectonic's normalised stderr —
   they exist only in the `.log`, which is why `--keep-logs` is on and
   `logPath` comes back with every outcome.
-- **D4** — a PDF pane. `PaneDocument` becomes a discriminated union;
-  the layout model and drop handling are untouched. WebView2 and
-  WKWebView display a PDF in an `<iframe>` natively, **WebKitGTK does
-  not**, so Linux needs bundled pdf.js — a known gap, not a surprise to
-  discover later.
+- **A smoke test on real Linux.** The WebKit spec is a stand-in for
+  WebKitGTK, not a replacement.
 - **Verifying the sidecar on the real matrix.** It runs in dev on
   Windows. No release has been built with `externalBin` wired in, so
   `release.yml` still needs a `npm run tectonic:fetch --target …` step

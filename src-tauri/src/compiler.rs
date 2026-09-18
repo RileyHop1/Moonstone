@@ -30,6 +30,7 @@ use tauri::{
     AppHandle,
     Runtime,
 };
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_shell::ShellExt;
 
 use crate::paths;
@@ -372,7 +373,117 @@ fn publish_pdf(
     std::fs::copy(built, &published)
         .map_err(|e| format!("Could not write the compiled PDF: {}", e))?;
 
-    Ok(Some(published.to_string_lossy().to_string()))
+    // The display form, not the canonical `\\?\C:\…` one: the frontend
+    // matches this against file-tree paths to find a pane already
+    // showing the PDF, and hands it to the asset protocol.
+    Ok(Some(paths::to_display_string(&published)))
+}
+
+/// What exporting a PDF did.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportOutcome {
+    /// Where the PDF was copied, or `None` when the user cancelled.
+    pub exported_to: Option<String>,
+}
+
+/// Checks that a path names an existing PDF inside the Moonstone root.
+///
+/// # Parameters
+///
+/// * `root` - The Moonstone projects root.
+/// * `pdf_path` - The path the frontend asked to export.
+///
+/// # Returns
+///
+/// The canonical path of the PDF.
+///
+/// # Errors
+///
+/// Returns an error if the path escapes the root, is not a `.pdf`, or
+/// does not exist yet.
+fn validate_export_source(root: &Path, pdf_path: &Path) -> Result<std::path::PathBuf, String> {
+    let pdf = paths::ensure_within_root(root, pdf_path)?;
+
+    let is_pdf = pdf
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("pdf"));
+    if !is_pdf {
+        return Err("Only a PDF can be exported".to_string());
+    }
+
+    if !pdf.is_file() {
+        return Err("There is no PDF yet. Compile this document first".to_string());
+    }
+
+    Ok(pdf)
+}
+
+/// Copies a compiled PDF to a location the user picks.
+///
+/// The save dialog is opened **here**, not in the webview, so the
+/// destination can only be one the user chose in a native dialog. A
+/// command taking the destination as an argument would let the webview
+/// overwrite any file the user can write to.
+///
+/// # Parameters
+///
+/// * `app` - Handle used to resolve the root and open the dialog.
+/// * `pdf_path` - Absolute path of the PDF to export.
+///
+/// # Returns
+///
+/// Where the PDF was copied, or no destination when cancelled.
+///
+/// # Errors
+///
+/// Returns an error if the source fails [`validate_export_source`], the
+/// chosen path cannot be read, or the copy fails.
+#[tauri::command]
+pub async fn export_pdf<R: Runtime>(
+    app: AppHandle<R>,
+    pdf_path: String,
+) -> Result<ExportOutcome, String> {
+    let root = paths::moonstone_root(&app)?;
+    let source = validate_export_source(&root, Path::new(&pdf_path))?;
+
+    let file_name = source
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| "document.pdf".to_string());
+
+    // The callback form, bridged through a channel, rather than the
+    // blocking one: blocking would park an async worker thread for as
+    // long as the dialog stays open.
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .add_filter("PDF", &["pdf"])
+        .set_file_name(file_name)
+        .save_file(move |chosen| {
+            // The receiver only disappears if the command was dropped,
+            // and then there is nobody left to tell.
+            let _ = sender.send(chosen);
+        });
+
+    let Some(chosen) = receiver
+        .await
+        .map_err(|_| "The save dialog closed unexpectedly".to_string())?
+    else {
+        return Ok(ExportOutcome { exported_to: None });
+    };
+
+    let destination = chosen
+        .into_path()
+        .map_err(|e| format!("Could not use that location: {}", e))?;
+
+    tokio::fs::copy(&source, &destination)
+        .await
+        .map_err(|e| format!("Could not write the PDF: {}", e))?;
+
+    Ok(ExportOutcome {
+        exported_to: Some(paths::to_display_string(&destination)),
+    })
 }
 
 #[cfg(test)]
@@ -574,6 +685,65 @@ mod compiler_tests {
         assert!(arguments.contains(&"--synctex".to_string()));
         assert!(arguments.contains(&"--untrusted".to_string()));
         assert!(arguments.contains(&"--keep-logs".to_string()));
+    }
+
+    #[test]
+    fn test_validate_export_source_accepts_a_pdf_inside_the_root() {
+        let root = tempfile::tempdir().unwrap();
+        let pdf = root.path().join("main.pdf");
+        std::fs::write(&pdf, b"%PDF").unwrap();
+
+        assert!(validate_export_source(root.path(), &pdf).is_ok());
+    }
+
+    #[test]
+    fn test_validate_export_source_rejects_a_file_that_is_not_a_pdf() {
+        // Export copies to wherever the user points it; letting it copy
+        // a `.tex` or anything else would make it a general file copier.
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("main.tex");
+        std::fs::write(&source, "\\documentclass{article}").unwrap();
+
+        let error = validate_export_source(root.path(), &source).unwrap_err();
+
+        assert!(error.contains("Only a PDF"));
+    }
+
+    #[test]
+    fn test_validate_export_source_asks_for_a_compile_when_the_pdf_is_missing() {
+        let root = tempfile::tempdir().unwrap();
+
+        let error = validate_export_source(root.path(), &root.path().join("main.pdf")).unwrap_err();
+
+        assert!(error.contains("Compile this document first"));
+    }
+
+    #[test]
+    fn test_validate_export_source_rejects_a_pdf_outside_the_root() {
+        let root = tempfile::tempdir().unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        let pdf = elsewhere.path().join("secret.pdf");
+        std::fs::write(&pdf, b"%PDF").unwrap();
+
+        assert!(validate_export_source(root.path(), &pdf).is_err());
+    }
+
+    #[test]
+    fn test_publish_pdf_returns_the_display_form_of_the_path() {
+        // The project path arrives canonicalized — `\\?\C:\…` on
+        // Windows — and the frontend compares the result against file
+        // tree paths, which never carry that prefix.
+        let project = tempfile::tempdir().unwrap();
+        let canonical = project.path().canonicalize().unwrap();
+        let built = canonical.join("built.pdf");
+        std::fs::write(&built, b"%PDF").unwrap();
+
+        let published = publish_pdf(&built, &canonical, std::ffi::OsStr::new("main"))
+            .unwrap()
+            .unwrap();
+
+        assert!(!published.starts_with(r"\\?\"));
+        assert!(published.ends_with("main.pdf"));
     }
 
     #[test]

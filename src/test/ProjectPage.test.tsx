@@ -28,7 +28,11 @@ vi.mock("@tauri-apps/api/core", async () => {
 vi.mock("../views/editor/TextEditor", async () => {
     const { createElement } = await import("react");
     return {
-        TextEditor: () => createElement("div", { "data-testid": "mock-editor" }),
+        TextEditor: ({ onDocChanged }: { readonly onDocChanged: () => void }) =>
+            createElement("div", {
+                "data-testid": "mock-editor",
+                onClick: onDocChanged,
+            }),
     };
 });
 
@@ -540,6 +544,51 @@ describe("ProjectPage", () => {
 
         const closeButtons = document.querySelectorAll<HTMLElement>(".editor-pane-close");
         closeButtons[1]?.click();
+
+        await waitFor(() => {
+            expect(document.querySelectorAll(".editor-pane")).toHaveLength(1);
+        });
+    });
+
+    it("keeps a dirty pane open when discarding its changes is cancelled", async () => {
+        renderWithProviders(<ProjectPage project={PROJECT} />);
+        await screen.findByTestId("mock-editor");
+
+        const pane = document.querySelector(".editor-pane");
+        if (!pane) throw new Error("The pane did not render");
+
+        dropOnPaneEdge(pane, "demo.tex");
+
+        await waitFor(() => {
+            expect(document.querySelectorAll(".editor-pane")).toHaveLength(2);
+        });
+
+        fireEvent.click(screen.getAllByTestId("mock-editor")[1]!);
+        fireEvent.click(document.querySelectorAll<HTMLElement>(".editor-pane-close")[1]!);
+
+        expect(await screen.findByText("This pane has unsaved changes. Closing it discards them."))
+            .toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+        expect(document.querySelectorAll(".editor-pane")).toHaveLength(2);
+    });
+
+    it("closes a dirty pane after discarding its changes is confirmed", async () => {
+        renderWithProviders(<ProjectPage project={PROJECT} />);
+        await screen.findByTestId("mock-editor");
+
+        const pane = document.querySelector(".editor-pane");
+        if (!pane) throw new Error("The pane did not render");
+
+        dropOnPaneEdge(pane, "demo.tex");
+
+        await waitFor(() => {
+            expect(document.querySelectorAll(".editor-pane")).toHaveLength(2);
+        });
+
+        fireEvent.click(screen.getAllByTestId("mock-editor")[1]!);
+        fireEvent.click(document.querySelectorAll<HTMLElement>(".editor-pane-close")[1]!);
+        fireEvent.click(await screen.findByRole("button", { name: "Discard" }));
 
         await waitFor(() => {
             expect(document.querySelectorAll(".editor-pane")).toHaveLength(1);

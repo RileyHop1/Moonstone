@@ -77,6 +77,9 @@ type FileDialogState =
     | { readonly kind: "newFile"; readonly parentDir: string }
     | { readonly kind: "newFolder"; readonly parentDir: string };
 
+/** Why one pane's unsaved document is about to be discarded. */
+type DiscardReason = "replace" | "close";
+
 /** How long transient info status messages stay visible. */
 const STATUS_CLEAR_MS = 2000;
 
@@ -227,10 +230,11 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
      *
      * @param paneId - The pane about to be reused, or null to ask about
      *   every pane at once (leaving the project).
+     * @param reason - What will discard a single pane's document.
      * @returns True when it is safe to proceed.
      */
     const confirmDiscardChanges = useCallback(
-        async (paneId: PaneId | null): Promise<boolean> => {
+        async (paneId: PaneId | null, reason: DiscardReason = "replace"): Promise<boolean> => {
             const dirty =
                 paneId === null
                     ? panesRef.current.hasUnsavedChanges
@@ -243,12 +247,26 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
                 message:
                     paneId === null
                         ? "This project has unsaved changes. Leaving now discards them."
-                        : "This pane has unsaved changes. Opening another file discards them.",
+                        : reason === "close"
+                          ? "This pane has unsaved changes. Closing it discards them."
+                          : "This pane has unsaved changes. Opening another file discards them.",
                 confirmLabel: "Discard",
                 isDestructive: true,
             });
         },
         [confirm],
+    );
+
+    /** Closes a pane after protecting any unsaved document it contains. */
+    const closePane = useCallback(
+        (paneId: PaneId): void => {
+            void (async () => {
+                if (!(await confirmDiscardChanges(paneId, "close"))) return;
+
+                panesRef.current.close(paneId);
+            })();
+        },
+        [confirmDiscardChanges],
     );
 
     /**
@@ -736,7 +754,7 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
                         onDropFile={(paneId, side, path) => {
                             void openFileInPane(paneId, path, side);
                         }}
-                        onClose={panes.close}
+                        onClose={closePane}
                         onViewReady={panes.registerView}
                         onViewDestroyed={panes.unregisterView}
                         onDocChanged={panes.markDirty}

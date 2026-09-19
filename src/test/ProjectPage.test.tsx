@@ -566,8 +566,9 @@ describe("ProjectPage", () => {
         fireEvent.click(screen.getAllByTestId("mock-editor")[1]!);
         fireEvent.click(document.querySelectorAll<HTMLElement>(".editor-pane-close")[1]!);
 
-        expect(await screen.findByText("This pane has unsaved changes. Closing it discards them."))
-            .toBeInTheDocument();
+        expect(
+            await screen.findByText("This pane has unsaved changes. Closing it discards them."),
+        ).toBeInTheDocument();
         fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
         expect(document.querySelectorAll(".editor-pane")).toHaveLength(2);

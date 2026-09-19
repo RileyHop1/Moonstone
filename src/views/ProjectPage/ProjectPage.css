@@ -160,6 +160,66 @@
     inset: 0;
 }
 
+/* A PDF pane: a zoom strip above pdf.js's pages. */
+.pdf-viewer {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.pdf-viewer-toolbar {
+    display: flex;
+    gap: 0.25rem;
+    padding: 0.2rem 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.pdf-viewer-toolbar button {
+    padding: 0 0.5rem;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.pdf-viewer-toolbar button:hover {
+    color: var(--accent);
+    background: var(--surface-hover);
+}
+
+/* The box pdf.js's absolutely positioned scroller fills. */
+.pdf-viewer-body {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    background: var(--bg-preview);
+}
+
+/* pdf.js refuses a container that is not absolutely positioned.
+   The vertical scrollbar is always reserved: if it came and went, a page
+   that only just overflowed at fit-width would narrow the pane, re-fit
+   smaller, stop overflowing, widen the pane, re-fit larger — forever. */
+.pdf-viewer-scroll {
+    position: absolute;
+    inset: 0;
+    overflow-x: auto;
+    overflow-y: scroll;
+}
+
+.pdf-viewer-error {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    color: var(--error-color);
+    background: var(--bg-editor);
+}
+
 .editor-placeholder {
     flex: 1;
     display: flex;

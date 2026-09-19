@@ -62,10 +62,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Only Chromium is configured in playwright.config.ts, so the other
-      # browser downloads would be dead weight.
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
+      # The two engines playwright.config.ts configures. WebKit runs the
+      # PDF viewer spec on Linux — the platform pdf.js is there for.
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
 
       - name: Browser tests
         run: npm run test:browser

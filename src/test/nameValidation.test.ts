@@ -11,7 +11,12 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { validateEntryName } from "../shared/nameValidation";
-import { FILE_TYPES, isEditableExtension } from "../shared/fileTypes";
+import {
+    compiledPdfPath,
+    FILE_TYPES,
+    isEditableExtension,
+    isPdfPath,
+} from "../shared/fileTypes";
 
 describe("validateEntryName", () => {
     it("accepts ordinary names", () => {
@@ -105,5 +110,27 @@ describe("file types", () => {
         expect([...backendExtensions].sort()).toEqual(
             FILE_TYPES.map((type) => type.extension).sort(),
         );
+    });
+});
+
+describe("compiledPdfPath", () => {
+    it("names the PDF after the document, at the project root", () => {
+        expect(compiledPdfPath("C:/p", "C:/p/main.tex")).toBe("C:/p/main.pdf");
+    });
+
+    it("puts a subdirectory document's PDF at the project root, as the compiler does", () => {
+        expect(compiledPdfPath("C:/p", "C:/p/chapters/one.tex")).toBe("C:/p/one.pdf");
+    });
+
+    it("keeps dots inside a document's name", () => {
+        expect(compiledPdfPath("C:/p", "C:/p/v1.2.draft.tex")).toBe("C:/p/v1.2.draft.pdf");
+    });
+});
+
+describe("isPdfPath", () => {
+    it("recognises a PDF in any letter case and nothing else", () => {
+        expect(isPdfPath("C:/p/main.PDF")).toBe(true);
+        expect(isPdfPath("C:/p/main.tex")).toBe(false);
+        expect(isPdfPath("C:/p/pdf")).toBe(false);
     });
 });

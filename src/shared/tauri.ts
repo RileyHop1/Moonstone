@@ -12,6 +12,7 @@ import {
     parseArrayOf,
     parseCompileOutcome,
     parseFileNode,
+    parseExportOutcome,
     parseNothing,
     parseProjectInfo,
     parseReference,
@@ -32,6 +33,7 @@ import {
 import type {
     AppSettings,
     CompileOutcome,
+    ExportOutcome,
     FileNode,
     ProjectInfo,
     Reference,
@@ -106,6 +108,22 @@ export function createImageSourceResolver(
 
         return convertFileSrc(fullPath);
     };
+}
+
+/**
+ * Builds the URL a PDF viewer loads a compiled document from.
+ *
+ * The version goes into the query because a recompile rewrites the same
+ * path, and a URL that never changes is one the webview may answer from
+ * its cache. The asset protocol resolves by path alone, so the query
+ * costs nothing.
+ *
+ * @param pdfPath - Absolute path of the PDF, inside the Moonstone root.
+ * @param version - The pane's load count, bumped on every reload.
+ * @returns A URL the webview can load.
+ */
+export function pdfSource(pdfPath: string, version: number): string {
+    return `${convertFileSrc(pdfPath)}?v=${version}`;
 }
 
 // Declared in `types.ts`, beside the settings it normalises into;
@@ -245,6 +263,20 @@ export function compileProject(
     mainFile: string,
 ): Promise<Result<CompileOutcome>> {
     return invokeCommand("compile_project", parseCompileOutcome, { projectPath, mainFile });
+}
+
+/**
+ * Copies a compiled PDF to wherever the user chooses.
+ *
+ * The backend opens the save dialog itself, so the destination can
+ * only ever be one the user picked — this side never names a path to
+ * write to.
+ *
+ * @param pdfPath - Absolute path of the PDF, inside the Moonstone root.
+ * @returns Where it was written, or a null destination if cancelled.
+ */
+export function exportPdf(pdfPath: string): Promise<Result<ExportOutcome>> {
+    return invokeCommand("export_pdf", parseExportOutcome, { pdfPath });
 }
 
 /**

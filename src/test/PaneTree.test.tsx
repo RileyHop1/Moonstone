@@ -190,7 +190,7 @@ describe("PaneTree", () => {
 
     it("names the file each pane has open", () => {
         const documents = new Map<PaneId, PaneDocument>([
-            ["pane-1", { path: "C:\\p\\main.tex", initialDoc: "", version: 1 }],
+            ["pane-1", { kind: "text", path: "C:\\p\\main.tex", initialDoc: "", version: 1 }],
         ]);
 
         const { container } = renderTree(createLayout("main.tex", "pane-1"), documents);

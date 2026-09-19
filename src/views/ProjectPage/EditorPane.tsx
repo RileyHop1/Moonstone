@@ -22,23 +22,32 @@ import { TextEditor } from "../editor/TextEditor";
 import type { EditorConfiguration } from "../editor/TextEditor/editorConfiguration";
 import { hasFileDragPayload, readFileDragPayload } from "../../shared/dragPayload";
 import { basename } from "../../shared/paths";
+import { pdfSource } from "../../shared/tauri";
 import { edgeForPoint } from "./paneLayout";
+import { PdfViewer } from "./PdfViewer";
 import type { DropSide, PaneId } from "./paneLayout";
 
-/** The document a pane has open. */
-export interface PaneDocument {
-    readonly path: string;
-    readonly initialDoc: string;
-    /**
-     * Counts genuinely new loads into this pane.
-     *
-     * The editor is keyed on it, so it — and only it — decides when the
-     * editor remounts. A rename changes `path` while leaving this alone,
-     * because remounting would silently throw away the undo history of
-     * a file the author is in the middle of editing.
-     */
-    readonly version: number;
-}
+/**
+ * A file loaded into a pane: text to edit, or a compiled PDF to view.
+ *
+ * A PDF carries no contents — the webview reads it straight off disk
+ * through the asset protocol — so it has no `initialDoc` to go stale.
+ */
+export type LoadedFile =
+    | { readonly kind: "text"; readonly path: string; readonly initialDoc: string }
+    | { readonly kind: "pdf"; readonly path: string };
+
+/**
+ * The document a pane has open.
+ *
+ * `version` counts genuinely new loads into this pane. The editor (or
+ * viewer) is keyed on it, so it — and only it — decides when a remount
+ * happens. A rename changes `path` while leaving this alone, because
+ * remounting would silently throw away the undo history of a file the
+ * author is in the middle of editing. For a PDF, a new version is how a
+ * recompile reloads the viewer.
+ */
+export type PaneDocument = LoadedFile & { readonly version: number };
 
 /** Props for {@link EditorPane}. */
 export interface EditorPaneProps {
@@ -249,7 +258,11 @@ export function EditorPane({
                 )}
             </header>
 
-            {paneDocument ? (
+            {paneDocument?.kind === "pdf" ? (
+                // A recompile writes to the same path; the version in the
+                // URL is what makes the viewer load it again, in place.
+                <PdfViewer source={pdfSource(paneDocument.path, paneDocument.version)} />
+            ) : paneDocument ? (
                 <TextEditor
                     // Remount per *load*, not per path: a newly opened
                     // file deserves a clean editor and a fresh undo

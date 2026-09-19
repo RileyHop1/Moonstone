@@ -19,6 +19,7 @@
 import type {
     CompileDiagnostic,
     CompileOutcome,
+    ExportOutcome,
     FileNode,
     ProjectInfo,
     Reference,
@@ -237,6 +238,7 @@ export const parseStoredSettings: Parser<StoredSettings> = (value) => {
         spellCheckEnabled: value.spellCheckEnabled,
         lineNumberMode: value.lineNumberMode,
         showDiagnostics: value.showDiagnostics,
+        openPdfAfterCompile: value.openPdfAfterCompile,
     };
 };
 
@@ -312,4 +314,18 @@ export const parseCompileOutcome: Parser<CompileOutcome> = (value) => {
     }
 
     return { pdfPath, logPath, diagnostics };
+};
+
+/**
+ * Parses the result of exporting a PDF.
+ *
+ * @param value - The raw response.
+ * @returns The outcome, or null when the shape is wrong.
+ */
+export const parseExportOutcome: Parser<ExportOutcome> = (value) => {
+    if (!isRecord(value)) return null;
+
+    const exportedTo = nullableStringField(value, "exportedTo");
+
+    return exportedTo === undefined ? null : { exportedTo };
 };

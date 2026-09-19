@@ -16,6 +16,7 @@ function makeEditorActions(overrides?: Partial<EditorActions>): EditorActions {
         insertSnippet: vi.fn(),
         newFile: vi.fn(),
         compile: vi.fn(),
+        exportPdf: vi.fn(),
         exitProject: vi.fn(),
         viewMode: "live",
         setViewMode: vi.fn(),
@@ -42,6 +43,7 @@ function makeContext(editor: EditorActions | null): MenuContext {
             spellCheckEnabled: true,
             lineNumberMode: "absolute",
             showDiagnostics: false,
+            openPdfAfterCompile: true,
         },
         updateSettings: vi.fn(),
     };

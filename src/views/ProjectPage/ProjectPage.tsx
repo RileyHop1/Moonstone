@@ -15,7 +15,7 @@ import { NameDialog } from "../../components/NameDialog";
 import { useConfirm } from "../../components/useConfirm";
 import type { NameDialogResult } from "../../components/NameDialog";
 import { ResizablePanel } from "../../components/ResizablePanel";
-import { DEFAULT_FILE_EXTENSION } from "../../shared/fileTypes";
+import { compiledPdfPath, DEFAULT_FILE_EXTENSION, isPdfPath } from "../../shared/fileTypes";
 import { relativeTo } from "../../shared/paths";
 import { useNavigation } from "../../shared/navigation";
 import { useAppActions } from "../../shared/appActions";
@@ -29,12 +29,20 @@ import {
     listReferences,
     moveEntry,
     compileProject,
+    exportPdf,
     readFile,
     openExternalLink,
     renameEntry,
     saveFile,
 } from "../../shared/tauri";
-import type { FileNode, LoadState, ProjectInfo, Reference, ViewMode } from "../../shared/types";
+import type {
+    FileNode,
+    LoadState,
+    ProjectInfo,
+    Reference,
+    Result,
+    ViewMode,
+} from "../../shared/types";
 import { useDockDrag } from "../../shared/useDockDrag";
 import type { DockSide } from "../../shared/useDockDrag";
 import { openSearchPanel } from "@codemirror/search";
@@ -42,6 +50,7 @@ import { DEFAULT_VIEW_MODE } from "../editor/TextEditor/viewMode";
 import { SNIPPETS, insertSnippetIntoView } from "../editor/TextEditor/snippets";
 import { FileBrowser } from "./FileBrowser";
 import type { FileOperation } from "./FileBrowser";
+import type { LoadedFile } from "./EditorPane";
 import { PaneTree } from "./PaneTree";
 import { usePaneConfigurations } from "./usePaneConfigurations";
 import { usePaneWorkspace } from "./usePaneWorkspace";
@@ -107,6 +116,25 @@ function findMainFilePath(tree: FileNode, projectName: string): string | null {
 }
 
 /**
+ * Loads a file in the form a pane shows it.
+ *
+ * A PDF is not read at all: the viewer loads it straight off disk, and
+ * `readFile` refuses anything that is not editable text.
+ *
+ * @param path - The file to load.
+ * @returns The loaded file, or the read error.
+ */
+async function loadPaneFile(path: string): Promise<Result<LoadedFile>> {
+    if (isPdfPath(path)) return { ok: true, data: { kind: "pdf", path } };
+
+    const result = await readFile(path);
+
+    return result.ok
+        ? { ok: true, data: { kind: "text", path, initialDoc: result.data } }
+        : result;
+}
+
+/**
  * The first file anywhere below a node, depth first.
  *
  * @param node - The node to search.
@@ -146,7 +174,14 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
     // Modal editing and spell checking are user preferences, not
     // per-session editor state, so they come from settings and persist.
     const { settings, updateSettings } = useSettings();
-    const { modalMode, spellCheckEnabled, lineNumberMode, showDiagnostics, theme } = settings;
+    const {
+        modalMode,
+        spellCheckEnabled,
+        lineNumberMode,
+        showDiagnostics,
+        theme,
+        openPdfAfterCompile,
+    } = settings;
 
     const { confirm, dialog: confirmationDialog } = useConfirm();
     const panes = usePaneWorkspace();
@@ -250,7 +285,7 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
             if (side === null && !(await confirmDiscardChanges(paneId))) return;
 
             const request = (openRequestRef.current += 1);
-            const result = await readFile(path);
+            const result = await loadPaneFile(path);
 
             // A newer request has been made since; its answer is the one
             // the user is waiting for.
@@ -263,9 +298,8 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
 
             showStatus(null);
 
-            const document = { path, initialDoc: result.data };
-            if (side === null) panesRef.current.showDocument(paneId, document);
-            else panesRef.current.splitWith(paneId, side, document);
+            if (side === null) panesRef.current.showDocument(paneId, result.data);
+            else panesRef.current.splitWith(paneId, side, result.data);
         },
         [confirmDiscardChanges, showStatus],
     );
@@ -367,6 +401,31 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
     );
 
     /**
+     * Shows a freshly compiled PDF: reloads a pane already showing it,
+     * or opens one to the right of the source.
+     *
+     * Focus goes back to the source pane, so the author carries on
+     * typing where they were rather than in the viewer.
+     *
+     * @param sourcePaneId - The pane holding the document just compiled.
+     * @param pdfPath - The PDF the compile wrote.
+     */
+    const showCompiledPdf = useCallback((sourcePaneId: PaneId, pdfPath: string): void => {
+        const workspace = panesRef.current;
+        const pdf: LoadedFile = { kind: "pdf", path: pdfPath };
+
+        for (const [paneId, document] of workspace.documents) {
+            if (document.kind === "pdf" && document.path === pdfPath) {
+                workspace.showDocument(paneId, pdf);
+                return;
+            }
+        }
+
+        workspace.splitWith(sourcePaneId, "right", pdf);
+        workspace.activate(sourcePaneId);
+    }, []);
+
+    /**
      * Compiles the active pane's document to PDF.
      *
      * Saves first. Compiling what is on disk while the author looks at
@@ -374,8 +433,9 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
      * cannot see, which is worse than not compiling at all.
      */
     const compileActivePane = useCallback(async (): Promise<void> => {
-        const document = panesRef.current.documents.get(panesRef.current.activePaneId);
-        if (!document) return;
+        const sourcePaneId = panesRef.current.activePaneId;
+        const document = panesRef.current.documents.get(sourcePaneId);
+        if (document?.kind !== "text") return;
 
         const mainFile = relativeTo(project.path, document.path);
         if (mainFile === null) {
@@ -383,7 +443,7 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
             return;
         }
 
-        await savePane(panesRef.current.activePaneId);
+        await savePane(sourcePaneId);
 
         setIsCompiling(true);
         const result = await compileProject(project.path, mainFile);
@@ -394,11 +454,14 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
             return;
         }
 
-        // The PDF lands beside the source, so the browser is a file out
-        // of date until it is reloaded. This happens even when the
-        // document had errors: the engine writes a best-effort PDF
-        // anyway, and hiding it would be pretending it does not exist.
-        if (result.data.pdfPath !== null) void refreshTree();
+        // The PDF lands in the project, so the browser is a file out of
+        // date until it is reloaded. This happens even when the document
+        // had errors: the engine writes a best-effort PDF anyway, and
+        // hiding it would be pretending it does not exist.
+        if (result.data.pdfPath !== null) {
+            void refreshTree();
+            if (openPdfAfterCompile) showCompiledPdf(sourcePaneId, result.data.pdfPath);
+        }
 
         const errors = result.data.diagnostics.filter(
             (diagnostic) => diagnostic.severity === "error",
@@ -419,7 +482,35 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
             kind: "info",
             text: result.data.pdfPath ? "Compiled ✓" : "No PDF produced",
         });
-    }, [project.path, savePane, showStatus, refreshTree]);
+    }, [project.path, savePane, showStatus, refreshTree, openPdfAfterCompile, showCompiledPdf]);
+
+    /**
+     * Exports the active pane's PDF to wherever the user chooses.
+     *
+     * A PDF pane exports what it shows; a document exports the PDF it
+     * compiles to. The destination dialog is opened by the backend, so
+     * there is no path to choose here.
+     */
+    const exportActivePdf = useCallback(async (): Promise<void> => {
+        const document = panesRef.current.activeDocument;
+        if (!document) return;
+
+        const pdfPath =
+            document.kind === "pdf"
+                ? document.path
+                : compiledPdfPath(project.path, document.path);
+        const result = await exportPdf(pdfPath);
+
+        if (!result.ok) {
+            showStatus({ kind: "error", text: `Export failed: ${result.error}` });
+            return;
+        }
+
+        // Null means the dialog was cancelled, which needs no comment.
+        const { exportedTo } = result.data;
+        if (exportedTo !== null)
+            showStatus({ kind: "info", text: `Exported to ${exportedTo}` });
+    }, [project.path, showStatus]);
 
     /**
      * Handles a file-management request from the browser: prompts for
@@ -552,6 +643,9 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
             compile: () => {
                 void compileActivePane();
             },
+            exportPdf: () => {
+                void exportActivePdf();
+            },
             exitProject: () => {
                 void (async () => {
                     if (!(await confirmDiscardChanges(null))) return;
@@ -567,7 +661,15 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
                 view.focus();
             },
         }),
-        [savePane, confirmDiscardChanges, compileActivePane, navigate, project.path, viewMode],
+        [
+            savePane,
+            confirmDiscardChanges,
+            compileActivePane,
+            exportActivePdf,
+            navigate,
+            project.path,
+            viewMode,
+        ],
     );
 
     // The settings every editor on this page shares. The editor applies
@@ -618,6 +720,7 @@ export function ProjectPage({ project, isActive = true }: ProjectPageProps) {
             <Toolbar
                 isDirty={panes.isActiveDirty}
                 hasOpenFile={panes.activeDocument !== null}
+                canEditFile={panes.activeDocument?.kind === "text"}
                 isCompiling={isCompiling}
                 actions={actions}
                 statusMessage={statusMessage}

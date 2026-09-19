@@ -36,6 +36,27 @@ export default defineConfig({
             name: "chromium",
             use: { ...devices["Desktop Chrome"] },
         },
+        {
+            // Linux's webview is WebKitGTK, which has no built-in PDF
+            // viewer — the reason pdf.js is bundled. WebKit is the closest
+            // engine Playwright offers, so the PDF spec runs here too.
+            // Only that spec: the rest are about layout Chromium covers.
+            name: "webkit",
+            testMatch: /pdfViewer\.browser\.spec\.ts/,
+            use: { ...devices["Desktop Safari"] },
+        },
+        {
+            // Headless Chromium hides scrollbars, so a bug that exists
+            // only because a scrollbar takes up width cannot happen in
+            // the project above. This one keeps them, for the specs
+            // tagged @scrollbars.
+            name: "chromium-scrollbars",
+            grep: /@scrollbars/,
+            use: {
+                ...devices["Desktop Chrome"],
+                launchOptions: { ignoreDefaultArgs: ["--hide-scrollbars"] },
+            },
+        },
     ],
 
     webServer: {

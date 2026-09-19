@@ -1,11 +1,12 @@
 /**
  * Test suite for the project page: file tree rendering, expand and
  * collapse, auto-open, file management (create/rename/delete),
- * toolbar state, and exiting.
+ * toolbar state, exiting, and the compile loop.
  *
- * The real TextEditor is mocked out — CodeMirror needs DOM measurement
- * APIs jsdom does not provide, and the page's logic is independent of
- * the editor internals.
+ * The real TextEditor is replaced by a bare CodeMirror view: its preview
+ * needs DOM measurement jsdom does not provide, and the page's logic is
+ * independent of the editor internals — it only needs a view to save
+ * from, read the root document out of, and jump to lines in.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -13,6 +14,7 @@ import { act, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ProjectPage } from "../views/ProjectPage";
 import type { FileNode, ProjectInfo } from "../shared/types";
 import { invokeMock, mockCommands, resetInvokeMock } from "./mockTauri";
+import type { CommandHandler } from "./mockTauri";
 import { renderWithProviders } from "./testUtils";
 import { fireDragEvent, makeDataTransfer } from "./dataTransfer";
 
@@ -26,13 +28,43 @@ vi.mock("@tauri-apps/api/core", async () => {
 });
 
 vi.mock("../views/editor/TextEditor", async () => {
-    const { createElement } = await import("react");
+    const { createElement, useEffect } = await import("react");
+    const { EditorView } = await import("@codemirror/view");
+
+    /** The props the mock uses. */
+    interface MockEditorProps {
+        readonly initialDoc: string;
+        readonly onDocChanged: () => void;
+        readonly onViewReady: (view: InstanceType<typeof EditorView>) => void;
+        readonly onViewDestroyed: () => void;
+    }
+
     return {
-        TextEditor: ({ onDocChanged }: { readonly onDocChanged: () => void }) =>
-            createElement("div", {
+        // A bare CodeMirror view with none of the editor's extensions: the
+        // page needs one to save, find the root document and jump to lines.
+        TextEditor: ({
+            initialDoc,
+            onDocChanged,
+            onViewReady,
+            onViewDestroyed,
+        }: MockEditorProps) => {
+            useEffect(() => {
+                const view = new EditorView({ doc: initialDoc });
+                onViewReady(view);
+
+                return () => {
+                    onViewDestroyed();
+                    view.destroy();
+                };
+                // Mount only, like the real editor.
+                // eslint-disable-next-line react-hooks/exhaustive-deps
+            }, []);
+
+            return createElement("div", {
                 "data-testid": "mock-editor",
                 onClick: onDocChanged,
-            }),
+            });
+        },
     };
 });
 
@@ -743,7 +775,7 @@ describe("ProjectPage PDFs", () => {
         });
     });
 
-    it("offers export but not editing while a PDF pane is active", async () => {
+    it("offers export and compile but not editing while a PDF pane is active", async () => {
         mockProject(true);
         await renderWithMainFile();
 
@@ -751,8 +783,10 @@ describe("ProjectPage PDFs", () => {
         await screen.findByTestId("pdf-viewer");
 
         expect(screen.getByRole("button", { name: "Export PDF…" })).toBeEnabled();
-        expect(screen.getByRole("button", { name: "Compile" })).toBeDisabled();
+        // Compiling builds the root document, whatever pane is active.
+        expect(screen.getByRole("button", { name: "Compile" })).toBeEnabled();
         expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+        expect(screen.getByRole("button", { name: "Show in PDF" })).toBeDisabled();
     });
 
     it("opens the compiled PDF beside the source and keeps focus on the source", async () => {
@@ -822,5 +856,213 @@ describe("ProjectPage PDFs", () => {
             expect(invokeMock).toHaveBeenCalledWith("export_pdf", expect.anything());
         });
         expect(screen.queryByText(/Export/, { selector: ".toolbar-status" })).toBeNull();
+    });
+});
+
+describe("ProjectPage compile loop", () => {
+    /** An undefined command in the chapter, and a missing citation. */
+    const PROBLEMS = [
+        {
+            severity: "error",
+            file: "chapters/intro",
+            line: 3,
+            message: "Undefined control sequence",
+        },
+        {
+            severity: "warning",
+            file: "demo.tex",
+            line: 9,
+            message: "Undefined citation: knuth",
+        },
+    ];
+
+    /**
+     * Routes the commands the compile loop needs.
+     *
+     * @param overrides - Handlers replacing the defaults.
+     */
+    function mockProject(overrides: Record<string, CommandHandler> = {}): void {
+        mockCommands({
+            get_settings: () => ({ theme: "dark", openPdfAfterCompile: false }),
+            get_project_settings: () => ({ mainFile: null }),
+            save_project_settings: () => null,
+            list_project_files: () => TREE,
+            read_file: (args) => `contents of ${String(args?.filePath)}`,
+            save_file: () => null,
+            compile_project: () => ({ pdfPath: null, logPath: null, diagnostics: [] }),
+            ...overrides,
+        });
+    }
+
+    /**
+     * Renders the page and waits for its main file's editor.
+     *
+     * @returns The editor element.
+     */
+    async function renderPage(): Promise<HTMLElement> {
+        renderWithProviders(<ProjectPage project={PROJECT} />);
+        return screen.findByTestId("mock-editor");
+    }
+
+    /**
+     * The main files compiles were asked to build, in order.
+     *
+     * @returns Each `compile_project` call's main file.
+     */
+    function compiledMainFiles(): unknown[] {
+        return invokeMock.mock.calls
+            .filter(([command]) => command === "compile_project")
+            .map(([, args]) => args?.mainFile);
+    }
+
+    /**
+     * Saves with fake timers and lets the compile-on-save delay pass.
+     *
+     * @returns Once every timer has fired.
+     */
+    async function saveAndWait(): Promise<void> {
+        vi.useFakeTimers();
+        fireEvent.click(screen.getByRole("button", { name: "Save" }));
+        await act(async () => {
+            await vi.runAllTimersAsync();
+        });
+    }
+
+    beforeEach(() => {
+        resetInvokeMock();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it("compiles the project's document, not the chapter that is open", async () => {
+        mockProject();
+        await renderPage();
+        fireEvent.click(await findFileRow("chapters"));
+        fireEvent.click(await findFileRow("intro.tex"));
+        await waitFor(() => {
+            expect(invokeMock).toHaveBeenCalledWith("read_file", {
+                filePath: "C:/root/demo/chapters/intro.tex",
+            });
+        });
+
+        fireEvent.click(screen.getByRole("button", { name: "Compile" }));
+
+        await waitFor(() => expect(compiledMainFiles()).toEqual(["demo.tex"]));
+    });
+
+    it("compiles the main document stored with the project", async () => {
+        mockProject({ get_project_settings: () => ({ mainFile: "chapters/intro.tex" }) });
+        await renderPage();
+
+        fireEvent.click(screen.getByRole("button", { name: "Compile" }));
+
+        await waitFor(() => expect(compiledMainFiles()).toEqual(["chapters/intro.tex"]));
+    });
+
+    it("badges the main document and lets another .tex file become it", async () => {
+        mockProject();
+        await renderPage();
+        expect(fileRow("demo.tex").parentElement).toHaveTextContent("main");
+
+        fireEvent.click(await findFileRow("chapters"));
+        fireEvent.contextMenu(await findFileRow("intro.tex"));
+        fireEvent.click(screen.getByText("Set as Main Document"));
+
+        await waitFor(() => {
+            expect(invokeMock).toHaveBeenCalledWith("save_project_settings", {
+                projectPath: "C:/root/demo",
+                settings: { mainFile: "chapters/intro.tex" },
+            });
+        });
+        await waitFor(() => {
+            expect(fileRow("intro.tex").parentElement).toHaveTextContent("main");
+        });
+        expect(fileRow("demo.tex").parentElement).not.toHaveTextContent("main");
+    });
+
+    it("lists the problems and opens the file one names", async () => {
+        mockProject({
+            compile_project: () => ({ pdfPath: null, logPath: null, diagnostics: PROBLEMS }),
+        });
+        await renderPage();
+
+        fireEvent.click(screen.getByRole("button", { name: "Compile" }));
+        const panel = await screen.findByRole("region", { name: "Compile problems" });
+
+        expect(panel).toHaveTextContent("1 error, 1 warning");
+        expect(panel).toHaveTextContent("Undefined citation: knuth");
+
+        // The engine reported `chapters/intro`, as `\input` wrote it.
+        fireEvent.click(screen.getByText("Undefined control sequence"));
+
+        await waitFor(() => {
+            expect(invokeMock).toHaveBeenCalledWith("read_file", {
+                filePath: "C:/root/demo/chapters/intro.tex",
+            });
+        });
+    });
+
+    it("hides the problems panel when a compile comes back clean", async () => {
+        let diagnostics: unknown[] = PROBLEMS;
+        mockProject({ compile_project: () => ({ pdfPath: null, logPath: null, diagnostics }) });
+        await renderPage();
+
+        fireEvent.click(screen.getByRole("button", { name: "Compile" }));
+        await screen.findByRole("region", { name: "Compile problems" });
+
+        diagnostics = [];
+        fireEvent.click(await screen.findByRole("button", { name: "Compile" }));
+
+        await waitFor(() => {
+            expect(screen.queryByRole("region", { name: "Compile problems" })).toBeNull();
+        });
+    });
+
+    it("compiles once after a save when compile-on-save is on", async () => {
+        mockProject();
+        fireEvent.click(await renderPage());
+
+        await saveAndWait();
+
+        expect(invokeMock).toHaveBeenCalledWith("save_file", expect.anything());
+        expect(compiledMainFiles()).toEqual(["demo.tex"]);
+    });
+
+    it("does not compile on save when the setting is off", async () => {
+        mockProject({
+            get_settings: () => ({
+                theme: "dark",
+                openPdfAfterCompile: false,
+                compileOnSave: false,
+            }),
+        });
+        fireEvent.click(await renderPage());
+        await waitFor(() => {
+            expect(invokeMock).toHaveBeenCalledWith("get_settings", undefined);
+        });
+
+        await saveAndWait();
+
+        expect(invokeMock).toHaveBeenCalledWith("save_file", expect.anything());
+        expect(compiledMainFiles()).toEqual([]);
+    });
+
+    it("shows the cursor's line in the compiled PDF", async () => {
+        mockProject({ sync_to_pdf: () => ({ page: 2, x: 100, y: 200 }) });
+        await renderPage();
+
+        fireEvent.click(screen.getByRole("button", { name: "Show in PDF" }));
+
+        await waitFor(() => {
+            expect(invokeMock).toHaveBeenCalledWith("sync_to_pdf", {
+                pdfPath: "C:/root/demo/demo.pdf",
+                sourcePath: "C:/root/demo/demo.tex",
+                line: 1,
+            });
+        });
+        // Opened beside the source, since no pane was showing it.
+        expect(await screen.findByTestId("pdf-viewer")).toBeInTheDocument();
     });
 });

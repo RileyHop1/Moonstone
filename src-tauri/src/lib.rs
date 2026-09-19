@@ -9,7 +9,9 @@ mod compiler;
 mod file_manager;
 mod paths;
 mod project_manager;
+mod project_settings;
 mod settings;
+mod synctex;
 mod templates;
 
 /// Builds and runs the Tauri application with all commands registered.
@@ -28,6 +30,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             compiler::compile_project,
             compiler::export_pdf,
+            synctex::sync_to_source,
+            synctex::sync_to_pdf,
+            project_settings::get_project_settings,
+            project_settings::save_project_settings,
             file_manager::create_file,
             file_manager::create_directory,
             file_manager::list_project_files,

@@ -11,12 +11,15 @@ global hot bar menus use), so the toolbar and menus stay in sync.
   changes). Also `Ctrl+S`.
 - **Undo / Redo** — the CodeMirror history commands.
 - **🔍 Find** — opens the find-and-replace panel (see below).
-- **Compile** — saves the open file and builds it to PDF (see
-  [PDF compilation](pdf-compilation.md)). Saving first is deliberate:
-  compiling what is on disk while the author looks at something newer
-  reports errors against lines they cannot see. Disabled while a
-  compile is running, and the label says so. Opens (or reloads) the
-  PDF in a pane beside the source unless that setting is off.
+- **Compile** — saves every unsaved pane and builds the project's root
+  document to PDF (see [PDF compilation](pdf-compilation.md)). Saving
+  first is deliberate: compiling what is on disk while the author looks
+  at something newer reports errors against lines they cannot see.
+  Disabled while a compile is running, and the label says so. Opens (or
+  reloads) the PDF in a pane beside the source unless that setting is
+  off. Problems are summed up in the status and listed under the editor.
+- **Show in PDF** — scrolls the compiled PDF to the cursor's line
+  (SyncTeX), opening it if needed. Also `Ctrl+Alt+J`.
 - **Export PDF…** — copies the compiled PDF wherever the user picks in
   the system save dialog. Works from a document (its compiled PDF) or
   from a PDF pane (the PDF shown).
@@ -26,8 +29,9 @@ global hot bar menus use), so the toolbar and menus stay in sync.
   in Read-only mode, since that mode is non-editable.
 - **Exit** — leaves the project (prompts if there are unsaved changes).
 
-When the active pane shows a PDF, only Export PDF… and Exit stay
-enabled — there is nothing to edit or compile.
+When the active pane shows a PDF, only Compile, Export PDF… and Exit
+stay enabled — there is nothing to edit, but the root document can
+still be built.
 
 ## View modes
 

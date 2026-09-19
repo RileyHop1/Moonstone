@@ -15,8 +15,23 @@
 
 import { Compartment } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
+import { linter } from "@codemirror/lint";
 import { latex } from "codemirror-lang-latex";
 import type { EditorProfile } from "./editorProfile";
+import { findTextModeMath } from "./latex";
+
+/**
+ * Flags math-only commands in running text, which the preview would
+ * otherwise draw as if nothing were wrong.
+ */
+const textModeMathLinter = linter((view) =>
+    findTextModeMath(view.state.doc.toString()).map(({ from, to, name }) => ({
+        from,
+        to,
+        severity: "error",
+        message: `\\${name} only works in math mode. Wrap it in $…$, or LaTeX stops with "Missing $ inserted".`,
+    })),
+);
 
 /** Compartment holding the language support, if any. */
 export const languageCompartment = new Compartment();
@@ -31,7 +46,7 @@ export const languageCompartment = new Compartment();
 export function languageExtensionForProfile(profile: EditorProfile): Extension {
     if (!profile.usesLatexLanguage) return [];
 
-    return latex({
+    const language = latex({
         autoCloseTags: true,
         enableLinting: profile.usesLinting,
         enableTooltips: true,
@@ -43,4 +58,7 @@ export function languageExtensionForProfile(profile: EditorProfile): Extension {
         // autocompletion still offers them alongside ours.
         enableAutocomplete: false,
     });
+
+    // Only whole documents: a package file's macros are full of maths.
+    return profile.id === "latex" ? [language, textModeMathLinter] : language;
 }

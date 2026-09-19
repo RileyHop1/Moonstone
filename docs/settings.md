@@ -12,11 +12,11 @@ A sidebar of sections beside the selected section's controls. Every
 control applies immediately and persists itself, so there is no save
 button and no way to lose a change by navigating away.
 
-| Section  | Settings                                        |
-| -------- | ----------------------------------------------- |
-| General  | Theme, open PDF after compiling                 |
-| Editor   | Font size, edit mode, line numbers, spell check |
-| Advanced | Show editor diagnostics                         |
+| Section  | Settings                                         |
+| -------- | ------------------------------------------------ |
+| General  | Theme, open PDF after compiling, compile on save |
+| Editor   | Font size, edit mode, line numbers, spell check  |
+| Advanced | Show editor diagnostics                          |
 
 Sections are declared in `settingsTabs.ts` as plain data, so adding one
 is a line there plus its panel component. `Settings.tsx` owns only the
@@ -60,6 +60,9 @@ are navigable and testable by role rather than by class name.
   how to add one, in `theming.md`.
 - **Open PDF after compiling** — on by default; only an explicit
   `false` turns it off. See `pdf-compilation.md`.
+- **Compile on save** — on by default; only an explicit `false` turns
+  it off. Rebuilds the root document in the background after each save.
+  See `pdf-compilation.md`.
 - **Editor font size** — 10–24 px (clamped), applied through the
   `--editor-font-size` CSS variable.
 - **Edit mode** — None, Vim or Helix. See `modal-editing.md`.

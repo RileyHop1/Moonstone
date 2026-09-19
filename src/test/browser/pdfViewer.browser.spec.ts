@@ -153,4 +153,63 @@ test.describe("PDF viewer", () => {
 
         await expect(page.getByRole("alert")).toContainText("Could not open this PDF");
     });
+    test("reports a double-click in PDF points, whatever the zoom", async ({ page }) => {
+        await openFixture(page);
+
+        /**
+         * Double-clicks a fraction of the way across and down page one's
+         * printed area (inside pdf.js's page border).
+         *
+         * @param fx - Fraction across.
+         * @param fy - Fraction down.
+         * @returns The spot the viewer reported.
+         */
+        const doubleClickAt = async (fx: number, fy: number) => {
+            const area = await page
+                .locator(PAGES)
+                .first()
+                .evaluate((element) => {
+                    const box = element.getBoundingClientRect();
+                    return {
+                        x: box.left + element.clientLeft,
+                        y: box.top + element.clientTop,
+                        width: element.clientWidth,
+                        height: element.clientHeight,
+                    };
+                });
+            await page.mouse.dblclick(area.x + area.width * fx, area.y + area.height * fy);
+            return page.evaluate(() => {
+                const clicks = window.moonstoneSyncClicks ?? [];
+                return clicks[clicks.length - 1];
+            });
+        };
+
+        const fitted = await doubleClickAt(0.5, 0.25);
+        await page.getByRole("button", { name: "+" }).click();
+        await page.getByRole("button", { name: "+" }).click();
+        await page.locator(".pdf-viewer-scroll").evaluate((element) => element.scrollTo(0, 0));
+        const zoomed = await doubleClickAt(0.5, 0.25);
+
+        // The fixture is US Letter, 612 × 792pt: this is (306, 198). A
+        // conversion that forgot the zoom, or the page border — which
+        // the app's box-sizing reset once squeezed inside the page —
+        // lands points away.
+        for (const spot of [fitted, zoomed]) {
+            expect(spot?.page).toBe(1);
+            expect(Math.abs((spot?.x ?? 0) - 306)).toBeLessThan(1);
+            expect(Math.abs((spot?.y ?? 0) - 198)).toBeLessThan(1);
+        }
+    });
+
+    test("scrolls to a jump target and flashes its line", async ({ page }) => {
+        await openFixture(page);
+
+        await page.evaluate(() => window.setPdfTarget?.({ page: 3, x: 100, y: 300 }));
+
+        const third = page.locator(PAGES).nth(2);
+        await expect(third.locator(".pdf-sync-marker")).toHaveCount(1);
+        await expect(third).toBeInViewport();
+        // The marker removes itself once it has faded.
+        await expect(third.locator(".pdf-sync-marker")).toHaveCount(0, { timeout: 5000 });
+    });
 });

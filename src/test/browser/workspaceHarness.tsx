@@ -157,6 +157,8 @@ function PaneArea() {
             onSaveRequested={() => undefined}
             onDiagnosticsToggled={() => undefined}
             onResizeSplit={panes.resize}
+            pdfTarget={null}
+            onPdfDoubleClick={() => undefined}
         />
     );
 }
@@ -250,6 +252,7 @@ function mountHarness(): void {
                         <FileBrowser
                             tree={tree}
                             selectedPath={null}
+                            mainFilePath={null}
                             onSelectFile={noop}
                             onFileOperation={noop}
                             onRename={(path, newName) => {

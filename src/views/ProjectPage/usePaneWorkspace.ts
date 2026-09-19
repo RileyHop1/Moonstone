@@ -52,8 +52,9 @@ export interface PaneWorkspace {
     readonly activate: (paneId: PaneId) => void;
     /** Loads a file into a pane, replacing whatever it showed. */
     readonly showDocument: (paneId: PaneId, loaded: LoadedFile) => void;
-    /** Opens a file in a new pane beside an existing one. */
-    readonly splitWith: (paneId: PaneId, side: DropSide, loaded: LoadedFile) => void;
+    /** Opens a file in a new pane beside an existing one; returns the
+     * new pane. */
+    readonly splitWith: (paneId: PaneId, side: DropSide, loaded: LoadedFile) => PaneId;
     readonly close: (paneId: PaneId) => void;
     readonly markDirty: (paneId: PaneId) => void;
     readonly markClean: (paneId: PaneId) => void;
@@ -158,7 +159,7 @@ export function usePaneWorkspace(): PaneWorkspace {
     }, []);
 
     const splitWith = useCallback(
-        (paneId: PaneId, side: DropSide, loaded: LoadedFile): void => {
+        (paneId: PaneId, side: DropSide, loaded: LoadedFile): PaneId => {
             const newPaneId = nextPaneId();
             const version = (loadCounterRef.current += 1);
 
@@ -172,6 +173,7 @@ export function usePaneWorkspace(): PaneWorkspace {
                 new Map(previous).set(newPaneId, { ...loaded, version }),
             );
             setActivePaneId(newPaneId);
+            return newPaneId;
         },
         [nextPaneId],
     );

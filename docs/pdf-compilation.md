@@ -3,11 +3,11 @@
 Turning a project into a PDF, using [Tectonic](https://tectonic-typesetting.github.io/)
 as the TeX engine.
 
-> **Status:** compiling works. A **Compile** button in the toolbar
-> builds the open document, artifacts stay hidden, and errors are
-> reported against their source line. The PDF opens in a pane beside
-> the source, and **Export PDF…** saves a copy anywhere. Compile-on-save
-> (D3) is still to come.
+> **Status:** the compile loop is complete. Compiling builds the
+> project's root document, on demand or on every save; problems
+> (undefined references and citations included) are listed under the
+> editor and jump to their line; SyncTeX jumps both ways between source
+> and PDF; and **Export PDF…** saves a copy anywhere.
 
 ## Why Tectonic
 
@@ -324,30 +324,91 @@ From a document, the PDF exported is `compiledPdfPath` — the stem at
 the project root, mirroring `publish_pdf`, which puts even a
 subdirectory document's PDF there.
 
+## The compile loop
+
+Source: `src/views/ProjectPage/compileLoop.ts` (pure),
+`useCompileLoop.ts`, `ProblemsPanel.tsx`, `src-tauri/src/synctex.rs`,
+`project_settings.rs`. Tests: `compileLoop.test.ts`,
+`useCompileLoop.test.tsx`, the "compile loop" block of
+`ProjectPage.test.tsx`, the SyncTeX specs in `pdfViewer.browser.spec.ts`,
+and the Rust `compiler_tests` / `synctex_tests`.
+
+### The root document
+
+Compiling builds one file, whatever pane is active. `resolveRootDocument`
+picks, in order: the active file's `% !TEX root = …` comment (relative to
+that file); the main document stored with the project; the active file
+if it has `\documentclass`; `<project>.tex`; `main.tex`; and finally the
+active file anyway, so a chapter with no way home still reports why it
+failed.
+
+The stored choice lives in `<project>/.moonstone.json` (dot-prefixed, so
+the file browser hides it). **Set as Main Document** in a `.tex` file's
+context menu writes it; the browser badges the effective main file; a
+rename or move of it is followed. A stored file that has since been
+deleted is simply skipped. The PDF, Export and the problem list all
+follow the root.
+
+### Problems
+
+Every compile's diagnostics go to a panel under the editor, summed up
+("2 errors, 1 warning") in the toolbar status. Clicking one opens its
+file — never over a PDF pane — and puts the cursor on the line.
+`resolveDiagnosticFile` handles TeX's spelling: names are relative to the
+root document's folder and may lack `.tex`.
+
+**Undefined references and citations** come from the `.log`, not stderr.
+The warning names a line but not a file, so `parse_log_warnings` tracks
+TeX's `(file … )` nesting to find it, after rejoining lines TeX wrapped
+at 79 columns. Tectonic writes included names as `\input` spelled them
+(`(chapters/one`), the same as stderr.
+
+### SyncTeX
+
+`synctex.rs` reads `.moonstone-build/<stem>.synctex.gz` (gzip, via
+`flate2`). The trap worth knowing: **a line box is tagged with where TeX
+broke the paragraph**, often the next file, so only the points inside it
+(glue, kerns) carry trustworthy lines. PDF → source finds the printed
+line clicked from the boxes, then the nearest point on it; source → PDF
+takes the first point from the nearest line at or after the cursor that
+produced output. Units: scaled points, origin at the page's top-left,
+65781.76 sp per PDF point.
+
+In the viewer, a **double-click** jumps to the source; **Show in PDF**
+(toolbar, File menu, `Ctrl+Alt+J`) scrolls the PDF to the cursor's line
+and flashes a band across it. Getting the click right uncovered a real
+bug: the app's `box-sizing: border-box` reset pulled pdf.js's page border
+inside the page, squashing every PDF by 18px.
+
+### Compile on save
+
+On by default (Settings → General). `useCompileLoop` guarantees one
+compile at a time: a request mid-compile queues exactly one catch-up
+compile, and saves within 500 ms collapse into one. A save-triggered
+compile only reloads a PDF pane already open; only a Compile click opens
+one. A Compile click saves every dirty pane first, since the edits may be
+in any file the root pulls in.
+
+**The first compile** is answered with progress: the backend streams the
+engine's `note: downloading <file>` lines as `compile-progress` events,
+and the toolbar names each file ("Downloading LaTeX packages (first
+compile only): latex.ltx"). A cold cache produced 247 of them.
+
+### The preview is no longer more permissive than LaTeX
+
+A math-only command in running text (`\alpha` outside math) compiles to
+"Missing $ inserted". `findTextModeMath` finds them — outside `$…$`,
+`\(…\)`, `\[…\]` and math environments, in the body only, since the
+preamble's macro definitions are full of maths. The preview draws their
+glyphs in the error colour with a wavy underline, and a CodeMirror linter
+explains the fix. Symbols LaTeX accepts in text (`\ldots`, `\S`, …) are
+exempt.
+
 ## Still to do
 
-- **D3** — compile on save, debounced, with a toolbar status and a
-  setting to turn it off. Must have an answer for the 79-second first
-  compile.
-- **Diagnostics as a panel, not a status line.** The toolbar currently
-  shows the first error and a count. The diagnostics panel already
-  exists and is the natural home, with each entry clickable to its
-  source line. Note that a diagnostic's `file` may lack an extension
-  (`\input{chapters/one}` reports `chapters/one`), so resolving it to a
-  real file is the reader's job.
-- **Undefined references and citations are missing.** LaTeX reports
-  those as warnings that never reach Tectonic's normalised stderr —
-  they exist only in the `.log`, which is why `--keep-logs` is on and
-  `logPath` comes back with every outcome.
 - **A smoke test on real Linux.** The WebKit spec is a stand-in for
   WebKitGTK, not a replacement.
 - **Verifying the sidecar on the real matrix.** It runs in dev on
   Windows. No release has been built with `externalBin` wired in, so
   `release.yml` still needs a `npm run tectonic:fetch --target …` step
   per matrix entry, and that has not been exercised.
-- **The preview is more permissive than the engine.** Moonstone renders
-  `\alpha` in text mode; LaTeX refuses to compile it ("Missing $
-  inserted"). So a document can look finished in the editor and fail to
-  build. Found by compiling the Welcome project, whose scratch content
-  does exactly this. The bundled templates are unaffected — all ten
-  compile.

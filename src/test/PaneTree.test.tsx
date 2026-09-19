@@ -83,6 +83,8 @@ function renderTree(
             onSaveRequested={vi.fn()}
             onDiagnosticsToggled={vi.fn()}
             onResizeSplit={onResizeSplit}
+            pdfTarget={null}
+            onPdfDoubleClick={vi.fn()}
         />,
     );
 

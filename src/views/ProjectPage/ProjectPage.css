@@ -209,6 +209,13 @@
     overflow-y: scroll;
 }
 
+/* pdf.js sizes a page's content box and draws its 9px border outside it.
+   The app-wide `border-box` reset pulled the border inside, squashing
+   every page by 18px and skewing SyncTeX clicks by several points. */
+.pdfViewer .page {
+    box-sizing: content-box;
+}
+
 .pdf-viewer-error {
     position: absolute;
     inset: 0;
@@ -297,4 +304,96 @@
         var(--accent) calc(50% + 1px),
         transparent calc(50% + 1px)
     );
+}
+
+/* ---- Compile problems, under the editor ---- */
+
+.problems-panel {
+    display: flex;
+    flex-direction: column;
+    max-height: 30%;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-sidebar);
+    font-size: 0.8rem;
+}
+
+.problems-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.2rem 0.6rem;
+    color: var(--text-secondary);
+}
+
+.problems-close {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.problems-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    overflow-y: auto;
+}
+
+.problem {
+    display: flex;
+    gap: 0.5rem;
+    align-items: baseline;
+    width: 100%;
+    padding: 0.15rem 0.6rem;
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.problem:hover:not(:disabled) {
+    background: var(--surface-hover);
+}
+
+.problem:disabled {
+    cursor: default;
+}
+
+.problem-severity {
+    flex: none;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--text-secondary);
+}
+
+.problem-error .problem-severity {
+    background: var(--error-color);
+}
+
+.problem-message {
+    flex: 1;
+    min-width: 0;
+}
+
+.problem-location {
+    color: var(--text-secondary);
+}
+
+/* The band a jump from the source flashes across the PDF line. */
+.pdf-sync-marker {
+    position: absolute;
+    left: 0;
+    right: 0;
+    pointer-events: none;
+    background: var(--surface-drop-target);
+    animation: pdf-sync-fade 1.5s ease-out forwards;
+}
+
+@keyframes pdf-sync-fade {
+    to {
+        opacity: 0;
+    }
 }

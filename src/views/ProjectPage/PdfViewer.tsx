@@ -9,20 +9,36 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import type * as PdfJsCore from "pdfjs-dist";
 import type * as PdfJsViewer from "pdfjs-dist/web/pdf_viewer.mjs";
-import type { EventBus, PDFViewer as PdfViewerInstance } from "pdfjs-dist/web/pdf_viewer.mjs";
+import type {
+    EventBus,
+    PDFPageView,
+    PDFViewer as PdfViewerInstance,
+} from "pdfjs-dist/web/pdf_viewer.mjs";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import type { PdfLocation } from "../../shared/types";
 import "pdfjs-dist/web/pdf_viewer.css";
 
 /** Props for {@link PdfViewer}. */
 export interface PdfViewerProps {
     /** URL to load; a new value reloads the document in place. */
     readonly source: string;
+    /** A spot to scroll to and flash; each new object flashes again. */
+    readonly target?: PdfLocation | null | undefined;
+    /** Called with the spot the user double-clicked. */
+    readonly onSyncClick?: ((location: PdfLocation) => void) | undefined;
 }
 
 /** The zoom a document opens at: the page fills the pane's width. */
 const FIT_WIDTH = "page-width";
+
+/** Context kept above a jumped-to line, in PDF points (one inch). */
+const CONTEXT_ABOVE_PT = 72;
+
+/** Height of the band flashed across a jumped-to line, in PDF points. */
+const MARKER_HEIGHT_PT = 14;
 
 /** The two pdf.js modules, loaded together and only once. */
 type PdfJs = readonly [typeof PdfJsCore, typeof PdfJsViewer];
@@ -74,17 +90,67 @@ async function createViewer(
 }
 
 /**
+ * The rendered view of one page.
+ *
+ * @param viewer - The viewer.
+ * @param page - The 1-based page number.
+ * @returns The page's view, or null when there is no such page.
+ */
+async function pageViewAt(
+    viewer: PdfViewerInstance,
+    page: number,
+): Promise<PDFPageView | null> {
+    const [, viewerModule] = await loadPdfJs();
+    // pdf.js types this as `any`; the class check is what narrows it.
+    const view: unknown = viewer.getPageView(page - 1);
+
+    return view instanceof viewerModule.PDFPageView ? view : null;
+}
+
+/**
+ * Scrolls a spot into view and flashes a band across its line.
+ *
+ * @param viewer - The viewer.
+ * @param location - The spot, in PDF points from the page's top-left.
+ */
+async function revealLocation(
+    viewer: PdfViewerInstance,
+    { page, y }: PdfLocation,
+): Promise<void> {
+    const view = await pageViewAt(viewer, page);
+    if (!view) return;
+
+    // The destination is in PDF space, whose y axis runs up the page.
+    const pageTop = view.viewport.viewBox[3] ?? 0;
+    viewer.scrollPageIntoView({
+        pageNumber: page,
+        destArray: [null, { name: "XYZ" }, null, pageTop - y + CONTEXT_ABOVE_PT, null],
+    });
+
+    const { scale } = view.viewport;
+    const marker = document.createElement("div");
+    marker.className = "pdf-sync-marker";
+    marker.style.top = `${(y - MARKER_HEIGHT_PT) * scale}px`;
+    marker.style.height = `${MARKER_HEIGHT_PT * 1.4 * scale}px`;
+    marker.addEventListener("animationend", () => marker.remove(), { once: true });
+    view.div.append(marker);
+}
+
+/**
  * Renders a PDF, reloading it in place whenever `source` changes.
  *
- * @param props - The URL of the PDF.
+ * @param props - The URL of the PDF, and the SyncTeX hooks.
  * @returns The viewer element.
  */
-export function PdfViewer({ source }: PdfViewerProps) {
+export function PdfViewer({ source, target, onSyncClick }: PdfViewerProps) {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const viewerRef = useRef<Promise<{ viewer: PdfViewerInstance; eventBus: EventBus }> | null>(
         null,
     );
     const [error, setError] = useState<string | null>(null);
+
+    // A target that arrived before its pages did; the next load shows it.
+    const pendingTargetRef = useRef<PdfLocation | null>(null);
 
     useEffect(() => {
         const container = containerRef.current;
@@ -111,6 +177,10 @@ export function PdfViewer({ source }: PdfViewerProps) {
                 () => {
                     viewer.currentScaleValue = scale;
                     container.scrollTop = scrollTop;
+
+                    const pending = pendingTargetRef.current;
+                    pendingTargetRef.current = null;
+                    if (pending) void revealLocation(viewer, pending);
                 },
                 { once: true, signal: abort.signal },
             );
@@ -128,6 +198,44 @@ export function PdfViewer({ source }: PdfViewerProps) {
 
         return () => abort.abort();
     }, [source]);
+
+    // Declared after the load effect, which is what creates the viewer.
+    useEffect(() => {
+        if (!target) return;
+
+        pendingTargetRef.current = target;
+        void viewerRef.current?.then(({ viewer }) => {
+            if (viewer.pagesCount === 0 || pendingTargetRef.current !== target) return;
+
+            pendingTargetRef.current = null;
+            void revealLocation(viewer, target);
+        });
+    }, [target]);
+
+    /**
+     * Reports a double-clicked spot in PDF points, for SyncTeX.
+     *
+     * @param event - The double click.
+     */
+    const handleDoubleClick = (event: ReactMouseEvent<HTMLDivElement>): void => {
+        if (!onSyncClick || !(event.target instanceof Element)) return;
+
+        const pageElement = event.target.closest<HTMLElement>(".page");
+        const page = Number(pageElement?.dataset.pageNumber);
+        if (!pageElement || !Number.isInteger(page)) return;
+
+        const bounds = pageElement.getBoundingClientRect();
+        const offsetX = event.clientX - bounds.left - pageElement.clientLeft;
+        const offsetY = event.clientY - bounds.top - pageElement.clientTop;
+
+        void viewerRef.current?.then(async ({ viewer }) => {
+            const view = await pageViewAt(viewer, page);
+            if (!view) return;
+
+            const { scale } = view.viewport;
+            onSyncClick({ page, x: offsetX / scale, y: offsetY / scale });
+        });
+    };
 
     // Fit-width is a ratio of the pane, so it is re-applied whenever a
     // split or the file browser changes the pane's width.
@@ -194,7 +302,11 @@ export function PdfViewer({ source }: PdfViewerProps) {
             <div className="pdf-viewer-body">
                 {/* pdf.js requires an absolutely positioned container with a
                     `.pdfViewer` child; the body gives it a box to fill. */}
-                <div ref={containerRef} className="pdf-viewer-scroll">
+                <div
+                    ref={containerRef}
+                    className="pdf-viewer-scroll"
+                    onDoubleClick={handleDoubleClick}
+                >
                     <div className="pdfViewer" />
                 </div>
                 {error !== null && (

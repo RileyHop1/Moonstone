@@ -40,6 +40,7 @@ import type { ListItem } from "../latex/findListItems";
 import { findMacros } from "../latex/findMacros";
 import type { MacroTable } from "../latex/findMacros";
 import { findSections } from "../latex/findSections";
+import { findTextModeMathIn } from "../latex/findTextModeMath";
 import type { SectionRange } from "../latex/findSections";
 import { parseTabular } from "../latex/parseTabular";
 import {
@@ -283,10 +284,14 @@ function buildInlineDecorations(view: EditorView): InlineDecorationSets {
             if (isRevealed(state, symbol.from, symbol.to)) continue;
 
             replaces.push(
-                Decoration.replace({ widget: new SymbolWidget(symbol.symbol) }).range(
-                    symbol.from,
-                    symbol.to,
-                ),
+                Decoration.replace({
+                    widget: new SymbolWidget(
+                        symbol.symbol,
+                        scan.textModeMath.has(symbol.from)
+                            ? "cm-symbol cm-math-only"
+                            : undefined,
+                    ),
+                }).range(symbol.from, symbol.to),
             );
         }
 
@@ -440,6 +445,11 @@ interface DocumentScan {
      * entry on every render.
      */
     readonly macroKey: string;
+    /**
+     * Where math-only commands sit in running text. LaTeX refuses these,
+     * so their glyphs are drawn as errors rather than as finished output.
+     */
+    readonly textModeMath: ReadonlySet<number>;
 }
 
 /**
@@ -455,13 +465,18 @@ function scanDocument(docText: string): DocumentScan {
     // Read from the masked text, so a definition sitting in a comment
     // is not picked up — commented-out macros are common in preambles.
     const macros = findMacros(scanText);
+    const math = findMathRanges(scanText, 0);
+    const environments = findEnvironments(scanText);
 
     return {
         docText,
         scanText,
         inertRegions,
-        math: findMathRanges(scanText, 0),
-        environments: findEnvironments(scanText),
+        math,
+        environments,
+        textModeMath: new Set(
+            findTextModeMathIn(scanText, math, environments).map((command) => command.from),
+        ),
         sections: findSections(scanText),
         listItems: findListItems(scanText),
         macros,

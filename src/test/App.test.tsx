@@ -84,6 +84,17 @@ describe("App", () => {
         expect(await screen.findByTestId("mock-editor")).toBeInTheDocument();
     });
 
+    it("masks the titlebar logo with a quoted URL", () => {
+        // Vite inlines the SVG as a data URI full of `'`, and an unquoted
+        // url() containing one is invalid: WebView2 dropped it and drew
+        // a solid square. Here the import is a plain path, so jsdom cannot
+        // show the failure; this pins the quoting that prevents it.
+        const { container } = render(<App />);
+        const logo = container.querySelector(".titlebar-logo");
+
+        expect(logo?.getAttribute("style")).toMatch(/mask-image: url\("/);
+    });
+
     describe("opening settings", () => {
         it("keeps the project page mounted underneath", async () => {
             // Unmounting it would discard the open document, its

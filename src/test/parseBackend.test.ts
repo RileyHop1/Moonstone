@@ -13,7 +13,10 @@ import {
     parseArrayOf,
     parseCompileOutcome,
     parseFileNode,
+    parsePdfLocation,
     parseProjectInfo,
+    parseProjectSettings,
+    parseSourceLocation,
     parseReference,
     parseStoredSettings,
     parseString,
@@ -149,6 +152,39 @@ describe("parseStoredSettings", () => {
 
     it("rejects something that is not an object at all", () => {
         expect(parseStoredSettings("dark")).toBeNull();
+    });
+});
+
+describe("parseProjectSettings", () => {
+    it("reads a stored main file, or none", () => {
+        expect(parseProjectSettings({ mainFile: "main.tex" })).toEqual({
+            mainFile: "main.tex",
+        });
+        expect(parseProjectSettings({ mainFile: null })).toEqual({ mainFile: null });
+    });
+
+    it("rejects a missing or mistyped main file", () => {
+        expect(parseProjectSettings({})).toBeNull();
+        expect(parseProjectSettings({ mainFile: 3 })).toBeNull();
+    });
+});
+
+describe("SyncTeX locations", () => {
+    it("reads a source location", () => {
+        expect(parseSourceLocation({ file: "C:/p/main.tex", line: 4 })).toEqual({
+            file: "C:/p/main.tex",
+            line: 4,
+        });
+        expect(parseSourceLocation({ file: "C:/p/main.tex" })).toBeNull();
+    });
+
+    it("reads a PDF location", () => {
+        expect(parsePdfLocation({ page: 2, x: 72.5, y: 100 })).toEqual({
+            page: 2,
+            x: 72.5,
+            y: 100,
+        });
+        expect(parsePdfLocation({ page: 2, x: Number.NaN, y: 100 })).toBeNull();
     });
 });
 

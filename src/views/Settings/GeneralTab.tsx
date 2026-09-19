@@ -48,6 +48,16 @@ export function GeneralTab() {
                     onChange={(openPdfAfterCompile) => updateSettings({ openPdfAfterCompile })}
                 />
             </SettingsRow>
+            <SettingsRow
+                label="Compile on save"
+                description="Rebuilds the PDF in the background every time you save."
+            >
+                <ToggleSwitch
+                    label="Compile on save"
+                    checked={settings.compileOnSave}
+                    onChange={(compileOnSave) => updateSettings({ compileOnSave })}
+                />
+            </SettingsRow>
         </>
     );
 }

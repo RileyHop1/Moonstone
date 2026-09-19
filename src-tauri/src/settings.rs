@@ -56,6 +56,14 @@ pub struct AppSettings {
     /// Whether compiling opens the PDF in a pane beside the source.
     #[serde(default = "default_open_pdf_after_compile")]
     pub open_pdf_after_compile: bool,
+    /// Whether saving a file compiles the project in the background.
+    #[serde(default = "default_compile_on_save")]
+    pub compile_on_save: bool,
+}
+
+/// On, so the preview keeps up with the writing without being asked.
+fn default_compile_on_save() -> bool {
+    true
 }
 
 /// Compiling shows its result, because a PDF the author has to go and
@@ -100,6 +108,7 @@ impl Default for AppSettings {
             line_number_mode: default_line_number_mode(),
             show_diagnostics: false,
             open_pdf_after_compile: default_open_pdf_after_compile(),
+            compile_on_save: default_compile_on_save(),
         }
     }
 }
@@ -246,6 +255,7 @@ mod settings_tests {
             line_number_mode: "relative".to_string(),
             show_diagnostics: true,
             open_pdf_after_compile: false,
+            compile_on_save: false,
         };
 
         save_settings_impl(&path, &settings).unwrap();
@@ -272,6 +282,7 @@ mod settings_tests {
         assert_eq!(settings.line_number_mode, default_line_number_mode());
         assert!(!settings.show_diagnostics);
         assert!(settings.open_pdf_after_compile);
+        assert!(settings.compile_on_save);
     }
 
     #[test]

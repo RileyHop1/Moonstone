@@ -53,6 +53,8 @@ function renderPane() {
             onDocChanged={vi.fn()}
             onSaveRequested={vi.fn()}
             onDiagnosticsToggled={vi.fn()}
+            pdfTarget={null}
+            onPdfDoubleClick={vi.fn()}
         />,
     );
 

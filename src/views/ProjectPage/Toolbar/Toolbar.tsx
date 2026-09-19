@@ -132,11 +132,20 @@ export function Toolbar({
             <button
                 type="button"
                 className="toolbar-button"
-                disabled={!canEditFile || isCompiling}
-                title="Compile this file to PDF"
+                disabled={isCompiling}
+                title="Compile the main document to PDF"
                 onClick={actions.compile}
             >
                 {isCompiling ? "Compiling…" : "Compile"}
+            </button>
+            <button
+                type="button"
+                className="toolbar-button"
+                disabled={!canEditFile}
+                title="Show this line in the PDF (Ctrl+Alt+J)"
+                onClick={actions.showInPdf}
+            >
+                Show in PDF
             </button>
             <button
                 type="button"

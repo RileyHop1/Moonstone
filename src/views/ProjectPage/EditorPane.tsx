@@ -26,6 +26,7 @@ import { pdfSource } from "../../shared/tauri";
 import { edgeForPoint } from "./paneLayout";
 import { PdfViewer } from "./PdfViewer";
 import type { DropSide, PaneId } from "./paneLayout";
+import type { PdfLocation } from "../../shared/types";
 
 /**
  * A file loaded into a pane: text to edit, or a compiled PDF to view.
@@ -87,6 +88,10 @@ export interface EditorPaneProps {
     readonly onDocChanged: (paneId: PaneId) => void;
     readonly onSaveRequested: (paneId: PaneId) => void;
     readonly onDiagnosticsToggled: (visible: boolean) => void;
+    /** A spot for this pane's PDF to scroll to and flash. */
+    readonly pdfTarget: PdfLocation | null;
+    /** Called when the user double-clicks this pane's PDF. */
+    readonly onPdfDoubleClick: (pdfPath: string, location: PdfLocation) => void;
 }
 
 /**
@@ -131,6 +136,8 @@ export function EditorPane({
     onDocChanged,
     onSaveRequested,
     onDiagnosticsToggled,
+    pdfTarget,
+    onPdfDoubleClick,
 }: EditorPaneProps) {
     const [hoverSide, setHoverSide] = useState<DropSide | "centre" | null>(null);
     const paneRef = useRef<HTMLElement | null>(null);
@@ -261,7 +268,11 @@ export function EditorPane({
             {paneDocument?.kind === "pdf" ? (
                 // A recompile writes to the same path; the version in the
                 // URL is what makes the viewer load it again, in place.
-                <PdfViewer source={pdfSource(paneDocument.path, paneDocument.version)} />
+                <PdfViewer
+                    source={pdfSource(paneDocument.path, paneDocument.version)}
+                    target={pdfTarget}
+                    onSyncClick={(location) => onPdfDoubleClick(paneDocument.path, location)}
+                />
             ) : paneDocument ? (
                 <TextEditor
                     // Remount per *load*, not per path: a newly opened

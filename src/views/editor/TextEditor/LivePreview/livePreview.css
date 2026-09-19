@@ -72,6 +72,13 @@
     background: var(--surface-selected);
 }
 
+/* A math-only symbol in running text: LaTeX will not compile it, so it
+   must not look finished. */
+.cm-math-only {
+    color: var(--error-color);
+    text-decoration: wavy underline var(--error-color);
+}
+
 /* Rendered tabular environment. */
 .cm-table-widget {
     display: flex;

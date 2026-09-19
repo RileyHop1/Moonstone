@@ -28,12 +28,17 @@ use std::path::Path;
 use std::time::Duration;
 use tauri::{
     AppHandle,
+    Emitter,
     Runtime,
 };
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
 
 use crate::paths;
+
+/// Event carrying the name of each package file the engine downloads.
+pub const COMPILE_PROGRESS_EVENT: &str = "compile-progress";
 
 /// Directory inside a project that compilation writes to.
 ///
@@ -315,32 +320,205 @@ pub async fn compile_project<R: Runtime>(
     std::fs::create_dir_all(&build_dir)
         .map_err(|e| format!("Could not create the build directory: {}", e))?;
 
-    let command = app
-        .shell()
-        .sidecar(SIDECAR)
-        .map_err(|e| format!("Could not find the LaTeX engine: {}", e))?
-        .args(engine_arguments(&build_dir, &main));
-
-    let output = tokio::time::timeout(COMPILE_TIMEOUT, command.output())
-        .await
-        .map_err(|_| {
-            format!(
-                "Compilation took longer than {} seconds and was stopped",
-                COMPILE_TIMEOUT.as_secs()
-            )
-        })?
-        .map_err(|e| format!("Could not run the LaTeX engine: {}", e))?;
-
-    let diagnostics = parse_diagnostics(&String::from_utf8_lossy(&output.stderr));
+    let stderr = run_engine(&app, engine_arguments(&build_dir, &main)).await?;
+    let mut diagnostics = parse_diagnostics(&stderr);
 
     let stem = main.file_stem().unwrap_or_default();
     let built_pdf = build_dir.join(stem).with_extension("pdf");
     let log = build_dir.join(stem).with_extension("log");
 
+    // Undefined references and citations only ever reach the log.
+    if let Ok(contents) = std::fs::read_to_string(&log) {
+        for warning in parse_log_warnings(&contents) {
+            if !diagnostics.contains(&warning) {
+                diagnostics.push(warning);
+            }
+        }
+    }
+
     Ok(CompileOutcome {
         pdf_path: publish_pdf(&built_pdf, &project, stem)?,
         diagnostics,
         log_path: log.is_file().then(|| log.to_string_lossy().to_string()),
+    })
+}
+
+/// Runs the engine to completion, reporting package downloads as they
+/// happen.
+///
+/// A first compile on a cold cache spends over a minute downloading,
+/// and a status that says only "Compiling…" for that long reads as a
+/// hang. Each `note: downloading <file>` line is forwarded to the
+/// frontend as a [`COMPILE_PROGRESS_EVENT`] naming the file.
+///
+/// # Parameters
+///
+/// * `app` - Handle used to find the sidecar and emit progress.
+/// * `arguments` - The engine's command line.
+///
+/// # Returns
+///
+/// Everything the engine wrote to standard error.
+///
+/// # Errors
+///
+/// Returns an error if the engine cannot be started or exceeds
+/// [`COMPILE_TIMEOUT`], in which case it is killed.
+async fn run_engine<R: Runtime>(app: &AppHandle<R>, arguments: Vec<String>) -> Result<String, String> {
+    let (mut events, child) = app
+        .shell()
+        .sidecar(SIDECAR)
+        .map_err(|e| format!("Could not find the LaTeX engine: {}", e))?
+        .args(arguments)
+        .spawn()
+        .map_err(|e| format!("Could not run the LaTeX engine: {}", e))?;
+
+    let mut stderr = String::new();
+    let collect = async {
+        while let Some(event) = events.recv().await {
+            let CommandEvent::Stderr(bytes) = event else {
+                continue;
+            };
+            let line = String::from_utf8_lossy(&bytes);
+            let line = line.trim_end();
+
+            if let Some(file) = line.strip_prefix("note: downloading ") {
+                // Progress is best-effort: a window that is gone has
+                // nobody to tell.
+                let _ = app.emit(COMPILE_PROGRESS_EVENT, file);
+            }
+            stderr.push_str(line);
+            stderr.push('\n');
+        }
+    };
+
+    if tokio::time::timeout(COMPILE_TIMEOUT, collect).await.is_err() {
+        let _ = child.kill();
+        return Err(format!(
+            "Compilation took longer than {} seconds and was stopped",
+            COMPILE_TIMEOUT.as_secs()
+        ));
+    }
+
+    Ok(stderr)
+}
+
+/// TeX wraps its log at this many characters, splitting long messages
+/// and file names across lines.
+const LOG_LINE_WIDTH: usize = 79;
+
+/// Parses undefined references and citations out of an engine log.
+///
+/// LaTeX reports these only as log warnings, which never reach the
+/// engine's normalised stderr. The warning names a line but not a
+/// file, so the file is recovered the way TeX tools always have: every
+/// `(name` in the log opens a file and every `)` closes one, and the
+/// innermost open file is the one being read.
+///
+/// # Parameters
+///
+/// * `log` - The contents of the `.log` file.
+///
+/// # Returns
+///
+/// One warning per undefined key and location, in log order.
+pub fn parse_log_warnings(log: &str) -> Vec<CompileDiagnostic> {
+    let mut open_files: Vec<String> = Vec::new();
+    let mut warnings: Vec<CompileDiagnostic> = Vec::new();
+
+    for line in unwrap_log_lines(log) {
+        if let Some(warning) = undefined_warning(&line, open_files.last()) {
+            if !warnings.contains(&warning) {
+                warnings.push(warning);
+            }
+            continue;
+        }
+        track_open_files(&line, &mut open_files);
+    }
+
+    warnings
+}
+
+/// Rejoins log lines TeX wrapped at [`LOG_LINE_WIDTH`].
+///
+/// # Parameters
+///
+/// * `log` - The raw log.
+///
+/// # Returns
+///
+/// The logical lines.
+fn unwrap_log_lines(log: &str) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    let mut continues = false;
+
+    for line in log.lines() {
+        match lines.last_mut() {
+            Some(last) if continues => last.push_str(line),
+            _ => lines.push(line.to_string()),
+        }
+        continues = line.chars().count() == LOG_LINE_WIDTH;
+    }
+
+    lines
+}
+
+/// Updates the stack of files TeX has open from one log line.
+///
+/// # Parameters
+///
+/// * `line` - A logical log line.
+/// * `open_files` - The stack, innermost last.
+fn track_open_files(line: &str, open_files: &mut Vec<String>) {
+    let mut rest = line;
+
+    while let Some(index) = rest.find(['(', ')']) {
+        if rest.as_bytes()[index] == b')' {
+            open_files.pop();
+            rest = &rest[index + 1..];
+            continue;
+        }
+
+        let after = &rest[index + 1..];
+        let end = after
+            .find(|c: char| c.is_whitespace() || c == '(' || c == ')')
+            .unwrap_or(after.len());
+        open_files.push(after[..end].trim_start_matches("./").to_string());
+        rest = &after[end..];
+    }
+}
+
+/// Reads an undefined-reference or undefined-citation warning.
+///
+/// Matches LaTeX's own spelling and the packages that copy it
+/// (`natbib`, `biblatex`):
+/// ``LaTeX Warning: Citation `key' on page 1 undefined on input line 4.``
+///
+/// # Parameters
+///
+/// * `line` - A logical log line.
+/// * `file` - The file TeX was reading, if known.
+///
+/// # Returns
+///
+/// The warning, or `None` when the line is not one.
+fn undefined_warning(line: &str, file: Option<&String>) -> Option<CompileDiagnostic> {
+    let (_, warning) = line.split_once("Warning: ")?;
+    let (kind, rest) = warning
+        .strip_prefix("Reference ")
+        .map(|rest| ("reference", rest))
+        .or_else(|| warning.strip_prefix("Citation ").map(|rest| ("citation", rest)))?;
+
+    let key_and_tail = rest.strip_prefix(['`', '\''])?;
+    let (key, tail) = key_and_tail.split_once('\'')?;
+    let (_, line_text) = tail.split_once("undefined on input line ")?;
+    let digits: String = line_text.chars().take_while(char::is_ascii_digit).collect();
+
+    Some(CompileDiagnostic {
+        severity: DiagnosticSeverity::Warning,
+        file: file.cloned().unwrap_or_default(),
+        line: digits.parse().ok(),
+        message: format!("Undefined {}: {}", kind, key),
     })
 }
 
@@ -744,6 +922,88 @@ mod compiler_tests {
 
         assert!(!published.starts_with(r"\\?\"));
         assert!(published.ends_with("main.pdf"));
+    }
+
+    /// A real Tectonic 0.17.0 log, trimmed of font chatter, from a
+    /// document with an undefined `\ref` and `\cite` in `main.tex` and
+    /// an undefined `\ref` in `\input{chapters/one}`.
+    const UNDEFINED_LOG: &str = concat!(
+        "**\n",
+        "(main.tex\n",
+        "LaTeX2e <2021-11-15> patch level 1\n",
+        "L3 programming layer <2022-02-24> (article.cls\n",
+        "Document Class: article 2021/10/04 v1.4n Standard LaTeX document class\n",
+        "(size10.clo\n",
+        "File: size10.clo 2021/10/04 v1.4n Standard LaTeX file (size option)\n",
+        ")\n",
+        ") (l3backend-xetex.def\n",
+        ") (main.aux)\n",
+        "LaTeX Font Info:    Trying to load font information for TS1+cmr on input line 2\n",
+        ".\n",
+        " (ts1cmr.fd\n",
+        ")\n",
+        "\n",
+        "LaTeX Warning: Reference `sec:missing' on page 1 undefined on input line 4.\n",
+        "\n",
+        "LaTeX Warning: Citation `nobody' on page 1 undefined on input line 4.\n",
+        "\n",
+        "(chapters/one\n",
+        "\n",
+        "LaTeX Warning: Reference `fig:none' on page 1 undefined on input line 2.\n",
+        "\n",
+        ") [1\n",
+        "\n",
+        "] (main.aux)\n",
+        "\n",
+        "LaTeX Warning: There were undefined references.\n",
+        "\n",
+        " )\n",
+    );
+
+    #[test]
+    fn test_parse_log_warnings_attributes_each_warning_to_its_file() {
+        let warnings = parse_log_warnings(UNDEFINED_LOG);
+
+        let found: Vec<_> = warnings
+            .iter()
+            .map(|w| (w.file.as_str(), w.line, w.message.as_str()))
+            .collect();
+        assert_eq!(
+            found,
+            vec![
+                ("main.tex", Some(4), "Undefined reference: sec:missing"),
+                ("main.tex", Some(4), "Undefined citation: nobody"),
+                ("chapters/one", Some(2), "Undefined reference: fig:none"),
+            ]
+        );
+        assert!(warnings.iter().all(|w| w.severity == DiagnosticSeverity::Warning));
+    }
+
+    #[test]
+    fn test_parse_log_warnings_rejoins_a_wrapped_warning() {
+        // TeX wraps at 79 columns, so a long key splits the warning.
+        let line = "LaTeX Warning: Citation `a-very-long-citation-key-that-wraps' on page 12 undefi";
+        assert_eq!(line.len(), LOG_LINE_WIDTH);
+        let log = format!("(main.tex\n{}\nned on input line 30.\n)", line);
+
+        let warnings = parse_log_warnings(&log);
+
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].line, Some(30));
+        assert_eq!(
+            warnings[0].message,
+            "Undefined citation: a-very-long-citation-key-that-wraps"
+        );
+    }
+
+    #[test]
+    fn test_parse_log_warnings_reads_natbib_and_ignores_the_summary() {
+        let log = "(main.tex\nPackage natbib Warning: Citation `x' on page 1 undefined on input line 5.\nLaTeX Warning: There were undefined references.\n)";
+
+        let warnings = parse_log_warnings(log);
+
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].message, "Undefined citation: x");
     }
 
     #[test]

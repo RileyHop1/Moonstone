@@ -7,6 +7,7 @@
  */
 
 import { convertFileSrc, invoke, isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
     parseArrayOf,
@@ -14,8 +15,11 @@ import {
     parseFileNode,
     parseExportOutcome,
     parseNothing,
+    parsePdfLocation,
     parseProjectInfo,
+    parseProjectSettings,
     parseReference,
+    parseSourceLocation,
     parseStoredSettings,
     parseString,
     parseTemplateInfo,
@@ -35,9 +39,12 @@ import type {
     CompileOutcome,
     ExportOutcome,
     FileNode,
+    PdfLocation,
     ProjectInfo,
+    ProjectSettings,
     Reference,
     Result,
+    SourceLocation,
     StoredSettings,
     TemplateInfo,
 } from "./types";
@@ -263,6 +270,83 @@ export function compileProject(
     mainFile: string,
 ): Promise<Result<CompileOutcome>> {
     return invokeCommand("compile_project", parseCompileOutcome, { projectPath, mainFile });
+}
+
+/**
+ * Subscribes to the names of package files a compile downloads.
+ *
+ * Only a cold cache downloads anything, and then for over a minute, so
+ * this is what stops a first compile looking like a hang.
+ *
+ * @param onFile - Called with each file name as its download starts.
+ * @returns A function that unsubscribes.
+ */
+export async function onCompileProgress(onFile: (file: string) => void): Promise<() => void> {
+    if (!isTauri()) return () => undefined;
+
+    try {
+        return await listen<unknown>("compile-progress", ({ payload }) => {
+            if (typeof payload === "string") onFile(payload);
+        });
+    } catch (error: unknown) {
+        // Progress is a courtesy; compiling works without it.
+        console.error("Could not listen for compile progress", { error });
+        return () => undefined;
+    }
+}
+
+/**
+ * Finds the source line behind a point in a compiled PDF (SyncTeX).
+ *
+ * @param pdfPath - The PDF clicked.
+ * @param location - Page and point, in PDF points from the top-left.
+ * @returns The source file and line.
+ */
+export function syncToSource(
+    pdfPath: string,
+    { page, x, y }: PdfLocation,
+): Promise<Result<SourceLocation>> {
+    return invokeCommand("sync_to_source", parseSourceLocation, { pdfPath, page, x, y });
+}
+
+/**
+ * Finds where a source line appears in its compiled PDF (SyncTeX).
+ *
+ * @param pdfPath - The PDF the source compiles into.
+ * @param sourcePath - Absolute path of the source file.
+ * @param line - The 1-based line.
+ * @returns The page and point.
+ */
+export function syncToPdf(
+    pdfPath: string,
+    sourcePath: string,
+    line: number,
+): Promise<Result<PdfLocation>> {
+    return invokeCommand("sync_to_pdf", parsePdfLocation, { pdfPath, sourcePath, line });
+}
+
+/**
+ * Loads the settings stored with a project.
+ *
+ * @param projectPath - Absolute path of the project directory.
+ * @returns The project's settings, or its defaults.
+ */
+export function getProjectSettings(projectPath: string): Promise<Result<ProjectSettings>> {
+    return invokeCommand("get_project_settings", parseProjectSettings, { projectPath });
+}
+
+/**
+ * Saves the settings stored with a project.
+ *
+ * @param projectPath - Absolute path of the project directory.
+ * @param settings - The settings to store.
+ * @returns Nothing on success.
+ */
+export function saveProjectSettings(
+    projectPath: string,
+    settings: ProjectSettings,
+): Promise<Result<null>> {
+    return invokeCommand("save_project_settings", parseNothing, { projectPath, settings });
 }
 
 /**

@@ -83,6 +83,21 @@ describe("Settings", () => {
             });
         });
 
+        it("persists compile-on-save being turned off", async () => {
+            renderWithProviders(<Settings />, { kind: "settings" });
+
+            fireEvent.click(screen.getByRole("switch", { name: "Compile on save" }));
+
+            await waitFor(() => {
+                expect(invokeMock).toHaveBeenCalledWith(
+                    "save_settings",
+                    expect.objectContaining({
+                        settings: expect.objectContaining({ compileOnSave: false }),
+                    }),
+                );
+            });
+        });
+
         it("leaves the preview on when the stored value is malformed", async () => {
             // Only an explicit `false` turns it off: a hand-edited or
             // older settings file must not silently hide the PDF.
@@ -123,6 +138,8 @@ describe("Settings", () => {
                 lineNumberMode: "absolute",
                 showDiagnostics: false,
                 openPdfAfterCompile: true,
+
+                compileOnSave: true,
             },
         });
     });
@@ -156,6 +173,8 @@ describe("Settings", () => {
                     lineNumberMode: "absolute",
                     showDiagnostics: false,
                     openPdfAfterCompile: true,
+
+                    compileOnSave: true,
                 },
             });
         });
@@ -178,6 +197,8 @@ describe("Settings", () => {
                         lineNumberMode: "absolute",
                         showDiagnostics: false,
                         openPdfAfterCompile: true,
+
+                        compileOnSave: true,
                     },
                 });
             });
@@ -199,6 +220,8 @@ describe("Settings", () => {
                         lineNumberMode: "absolute",
                         showDiagnostics: false,
                         openPdfAfterCompile: true,
+
+                        compileOnSave: true,
                     },
                 });
             });
@@ -239,6 +262,8 @@ describe("Settings", () => {
                         lineNumberMode: "relative",
                         showDiagnostics: false,
                         openPdfAfterCompile: true,
+
+                        compileOnSave: true,
                     },
                 });
             });
@@ -310,6 +335,8 @@ describe("Settings", () => {
                         lineNumberMode: "absolute",
                         showDiagnostics: true,
                         openPdfAfterCompile: true,
+
+                        compileOnSave: true,
                     },
                 });
             });

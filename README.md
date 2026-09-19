@@ -43,6 +43,8 @@ Every feature has a design note in [`docs/`](docs/). The ones to start with:
 | [browser tests](docs/browser-tests.md)               | What Playwright covers that jsdom structurally cannot           |
 | [releasing](docs/releasing.md)                       | Cutting a release                                               |
 
+Diagnosed but unfixed bugs are tracked in [Known-bugs.md](Known-bugs.md).
+
 ---
 
 ## Table of Contents

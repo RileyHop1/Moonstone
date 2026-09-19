@@ -14,6 +14,7 @@ import { PaneSplitter } from "./PaneSplitter";
 import type { DropSide, PaneId, PaneNode, PaneSplit } from "./paneLayout";
 import type { EditorView } from "@codemirror/view";
 import type { PaneConfigurationLookup } from "./usePaneConfigurations";
+import type { PdfLocation } from "../../shared/types";
 
 /** Everything a pane needs, passed unchanged down the whole tree. */
 export interface PaneTreeShared {
@@ -41,6 +42,9 @@ export interface PaneTreeShared {
     readonly onDocChanged: (paneId: PaneId) => void;
     readonly onSaveRequested: (paneId: PaneId) => void;
     readonly onDiagnosticsToggled: (visible: boolean) => void;
+    /** A spot for one pane's PDF to scroll to, from a jump in the source. */
+    readonly pdfTarget: { readonly paneId: PaneId; readonly location: PdfLocation } | null;
+    readonly onPdfDoubleClick: (pdfPath: string, location: PdfLocation) => void;
     /**
      * Called when a splitter moves, with the new shares for the two
      * panes either side of boundary `index` in split `splitId`.
@@ -108,6 +112,10 @@ export function PaneTree({ node, size, ...shared }: PaneTreeProps) {
                 onDocChanged={shared.onDocChanged}
                 onSaveRequested={shared.onSaveRequested}
                 onDiagnosticsToggled={shared.onDiagnosticsToggled}
+                pdfTarget={
+                    shared.pdfTarget?.paneId === node.id ? shared.pdfTarget.location : null
+                }
+                onPdfDoubleClick={shared.onPdfDoubleClick}
             />
         );
     }

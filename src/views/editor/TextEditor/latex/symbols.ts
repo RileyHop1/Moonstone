@@ -146,6 +146,26 @@ export const SYMBOLS: Readonly<Record<string, string>> = {
     aleph: "ℵ",
 };
 
+/**
+ * The symbols LaTeX also accepts in running text. Everything else in
+ * {@link SYMBOLS} is math-only: `\alpha` outside `$…$` fails to compile.
+ */
+export const TEXT_MODE_SYMBOLS: ReadonlySet<string> = new Set([
+    "dots",
+    "ldots",
+    "dagger",
+    "ddagger",
+    "S",
+    "P",
+    "copyright",
+    "pounds",
+    "degree",
+    "textdegree",
+    "textbullet",
+    "textemdash",
+    "textendash",
+]);
+
 /** One symbol occurrence found in the scanned text. */
 export interface SymbolRange {
     /** Start of the command, including the backslash. */

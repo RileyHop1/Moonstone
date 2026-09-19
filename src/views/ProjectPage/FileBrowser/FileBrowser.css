@@ -157,3 +157,13 @@
 .file-tree-rename-input-error {
     border-color: var(--error-color);
 }
+
+/* Marks the document compiling builds. */
+.file-tree-badge {
+    margin-left: auto;
+    padding: 0 0.35rem;
+    border-radius: 3px;
+    color: var(--accent);
+    background: var(--surface-selected);
+    font-size: 0.7rem;
+}

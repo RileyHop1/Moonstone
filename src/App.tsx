@@ -13,6 +13,7 @@ import { assertNever } from "./shared/types";
 import { ProjectBrowser } from "./views/ProjectBrowser";
 import { ProjectPage } from "./views/ProjectPage";
 import { Settings } from "./views/Settings";
+import logoUrl from "./assets/moonstone-logo.svg";
 
 /**
  * Renders the page the user is working in.
@@ -75,6 +76,18 @@ export function App() {
                 <AppActionsProvider>
                     <div className="app">
                         <header className="titlebar">
+                            {/* A mask, not an <img>, so the mark takes each
+                                theme's accent colour. The URL is quoted
+                                because Vite inlines the SVG as a data URI
+                                full of `'`, which an unquoted url() rejects. */}
+                            <span
+                                className="titlebar-logo"
+                                aria-hidden="true"
+                                style={{
+                                    maskImage: `url("${logoUrl}")`,
+                                    WebkitMaskImage: `url("${logoUrl}")`,
+                                }}
+                            />
                             <span className="titlebar-title">Moonstone</span>
                             {page.kind === "project" && (
                                 <span className="titlebar-project">— {page.project.name}</span>

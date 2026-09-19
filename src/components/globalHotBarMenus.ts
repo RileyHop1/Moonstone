@@ -48,6 +48,7 @@ function buildFileMenu({ actions, editor, navigate }: MenuContext): Menu {
             { label: "New File", action: editor ? editor.newFile : null },
             { label: "Save", action: editor ? editor.save : null },
             { label: "Compile", action: editor ? editor.compile : null },
+            { label: "Show in PDF", action: editor ? editor.showInPdf : null },
             { label: "Export PDF…", action: editor ? editor.exportPdf : null },
             { label: "Recent Projects", action: null },
         ],

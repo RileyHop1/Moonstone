@@ -67,6 +67,8 @@ export interface ProjectActions {
     readonly newFile: () => void;
     /** Compiles the project to PDF. */
     readonly compile: () => void;
+    /** Shows the cursor's line in the compiled PDF (SyncTeX). */
+    readonly showInPdf: () => void;
     /** Copies the active document's PDF to a location the user picks. */
     readonly exportPdf: () => void;
     /** Leaves the project and returns to the browser. */

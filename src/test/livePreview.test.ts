@@ -142,6 +142,19 @@ describe("live preview — inline layer", () => {
         expect(renderedText(view)).toContain("α");
     });
 
+    it("marks a math-only symbol in running text as an error", () => {
+        // LaTeX refuses `\alpha` outside math, so it must not look finished;
+        // `\ldots` is fine in text and renders normally.
+        const view = mountPreview(String.raw`angle \alpha, \ldots and $\beta$`);
+        const flagged = Array.from(
+            view.dom.querySelectorAll(".cm-math-only"),
+            (e) => e.textContent,
+        );
+
+        expect(flagged).toEqual(["α"]);
+        expect(renderedText(view)).toContain("…");
+    });
+
     it("renders a reference chip", () => {
         const view = mountPreview("see \\ref{sec:intro} above");
 

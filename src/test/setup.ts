@@ -8,8 +8,14 @@
  */
 
 import "@testing-library/jest-dom/vitest";
-import { afterEach } from "vitest";
+import { afterEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
+
+// jsdom has no Tauri IPC, so event subscriptions (compile progress)
+// resolve to a no-op unsubscribe instead of throwing.
+vi.mock("@tauri-apps/api/event", () => ({
+    listen: vi.fn(() => Promise.resolve(() => undefined)),
+}));
 
 /**
  * jsdom implements no ResizeObserver, and components that watch their

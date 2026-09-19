@@ -21,8 +21,11 @@ import type {
     CompileOutcome,
     ExportOutcome,
     FileNode,
+    PdfLocation,
     ProjectInfo,
+    ProjectSettings,
     Reference,
+    SourceLocation,
     StoredSettings,
     TemplateInfo,
 } from "./types";
@@ -239,7 +242,53 @@ export const parseStoredSettings: Parser<StoredSettings> = (value) => {
         lineNumberMode: value.lineNumberMode,
         showDiagnostics: value.showDiagnostics,
         openPdfAfterCompile: value.openPdfAfterCompile,
+        compileOnSave: value.compileOnSave,
     };
+};
+
+/**
+ * Parses a project's settings.
+ *
+ * @param value - The raw response.
+ * @returns The settings, or null when the shape is wrong.
+ */
+export const parseProjectSettings: Parser<ProjectSettings> = (value) => {
+    if (!isRecord(value)) return null;
+
+    const mainFile = nullableStringField(value, "mainFile");
+
+    return mainFile === undefined ? null : { mainFile };
+};
+
+/**
+ * Parses a source location from a PDF click.
+ *
+ * @param value - The raw response.
+ * @returns The location, or null when the shape is wrong.
+ */
+export const parseSourceLocation: Parser<SourceLocation> = (value) => {
+    if (!isRecord(value)) return null;
+
+    const file = stringField(value, "file");
+    const line = numberField(value, "line");
+
+    return file === null || line === null ? null : { file, line };
+};
+
+/**
+ * Parses a location in a PDF.
+ *
+ * @param value - The raw response.
+ * @returns The location, or null when the shape is wrong.
+ */
+export const parsePdfLocation: Parser<PdfLocation> = (value) => {
+    if (!isRecord(value)) return null;
+
+    const page = numberField(value, "page");
+    const x = numberField(value, "x");
+    const y = numberField(value, "y");
+
+    return page === null || x === null || y === null ? null : { page, x, y };
 };
 
 /**

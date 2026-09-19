@@ -16,7 +16,8 @@ has unsaved changes, a confirm dialog protects them first.
 **File management:** the header's ＋file/＋folder buttons create at
 the project root; right-clicking a row opens a context menu —
 directories offer New File / New Folder / Rename / Delete, files offer
-Rename / Delete. Deletes are confirmed and go to the **recycle bin**
+Rename / Delete, and `.tex` files also **Set as Main Document**. The
+file compiling builds carries a **main** badge. Deletes are confirmed and go to the **recycle bin**
 (never permanent).
 
 - **New file:** the dialog asks only for a name; the extension comes
@@ -183,6 +184,10 @@ A pane can also show a **PDF**, rendered with pdf.js — opened from the
 browser, or split off automatically after a compile. See "Viewing the
 PDF" in `docs/pdf-compilation.md`.
 
+Under the panes, a **problems panel** lists what the last compile
+reported; clicking an entry jumps to its line. See "The compile loop" in
+`docs/pdf-compilation.md`.
+
 Three behaviours changed with it, each fixing something the
 single-editor page got wrong:
 
@@ -200,6 +205,8 @@ single-editor page got wrong:
 
 - `src/views/ProjectPage/ProjectPage.tsx` — orchestration
 - `src/views/ProjectPage/usePaneWorkspace.ts` — pane state
+- `src/views/ProjectPage/compileLoop.ts`, `useCompileLoop.ts`,
+  `ProblemsPanel.tsx` — root document, compile scheduling, problems
 - `src/views/ProjectPage/PaneTree.tsx`, `EditorPane.tsx`,
   `PaneSplitter.tsx`, `paneLayout.ts` — the split editor area
 - `src/shared/dragPayload.ts` — the typed drag payload and its validation

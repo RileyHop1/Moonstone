@@ -25,7 +25,8 @@ export type FileOperation =
     | { readonly kind: "newFile"; readonly parentDir: string }
     | { readonly kind: "newFolder"; readonly parentDir: string }
     | { readonly kind: "move"; readonly sourcePath: string; readonly destDir: string }
-    | { readonly kind: "delete"; readonly path: string; readonly name: string };
+    | { readonly kind: "delete"; readonly path: string; readonly name: string }
+    | { readonly kind: "setMain"; readonly path: string };
 
 /** Props for {@link FileBrowser}. */
 export interface FileBrowserProps {
@@ -33,6 +34,8 @@ export interface FileBrowserProps {
     readonly tree: LoadState<FileNode>;
     /** Path of the file currently open in the editor, if any. */
     readonly selectedPath: string | null;
+    /** Path of the document compiling builds, badged in the tree. */
+    readonly mainFilePath: string | null;
     /** Called when the user clicks a file. */
     readonly onSelectFile: (path: string) => void;
     /** Called when the user requests a file-management operation. */
@@ -54,6 +57,7 @@ interface MenuState {
 interface TreeInteraction {
     readonly expandedPaths: ReadonlySet<string>;
     readonly selectedPath: string | null;
+    readonly mainFilePath: string | null;
     readonly renamingPath: string | null;
     readonly dropTargetPath: string | null;
     readonly onSelectFile: (path: string) => void;
@@ -77,6 +81,7 @@ interface TreeInteraction {
 export function FileBrowser({
     tree,
     selectedPath,
+    mainFilePath,
     onSelectFile,
     onFileOperation,
     onRename,
@@ -144,6 +149,7 @@ export function FileBrowser({
     const interaction: TreeInteraction = {
         expandedPaths,
         selectedPath,
+        mainFilePath,
         renamingPath,
         dropTargetPath,
         onSelectFile,
@@ -244,7 +250,12 @@ export function FileBrowser({
                 <ContextMenu
                     x={menu.x}
                     y={menu.y}
-                    items={buildMenuItems(menu.node, onFileOperation, setRenamingPath)}
+                    items={buildMenuItems(
+                        menu.node,
+                        mainFilePath,
+                        onFileOperation,
+                        setRenamingPath,
+                    )}
                     onClose={() => setMenu(null)}
                 />
             )}
@@ -280,12 +291,15 @@ function collectDirectoryPaths(node: FileNode): readonly string[] {
  * new entries; everything can be renamed or deleted.
  *
  * @param node - The node the menu targets.
+ * @param mainFilePath - The current main document, which is not offered
+ *   as a new one.
  * @param onFileOperation - The operation callback.
  * @param onStartRename - Begins inline rename for a path.
  * @returns The menu entries.
  */
 function buildMenuItems(
     node: FileNode,
+    mainFilePath: string | null,
     onFileOperation: (operation: FileOperation) => void,
     onStartRename: (path: string) => void,
 ): readonly ContextMenuItem[] {
@@ -302,7 +316,19 @@ function buildMenuItems(
         },
     ];
 
-    if (node.kind === "file") return shared;
+    if (node.kind === "file") {
+        const canBeMain = node.name.endsWith(".tex") && node.path !== mainFilePath;
+
+        return canBeMain
+            ? [
+                  {
+                      label: "Set as Main Document",
+                      onClick: () => onFileOperation({ kind: "setMain", path: node.path }),
+                  },
+                  ...shared,
+              ]
+            : shared;
+    }
 
     return [
         {
@@ -448,6 +474,14 @@ function FileTreeNode({ node, depth, interaction }: FileTreeNodeProps) {
                 >
                     {icon}
                     <span className="file-tree-name">{node.name}</span>
+                    {node.path === interaction.mainFilePath && (
+                        <span
+                            className="file-tree-badge"
+                            title="Main document: compiling builds this file"
+                        >
+                            main
+                        </span>
+                    )}
                 </button>
             </li>
         );

@@ -38,6 +38,7 @@ export interface StoredSettings {
     readonly lineNumberMode: unknown;
     readonly showDiagnostics: unknown;
     readonly openPdfAfterCompile: unknown;
+    readonly compileOnSave: unknown;
 }
 
 /**
@@ -140,6 +141,31 @@ export interface AppSettings {
     readonly showDiagnostics: boolean;
     /** Whether compiling opens the PDF in a pane beside the source. */
     readonly openPdfAfterCompile: boolean;
+    /** Whether saving a file compiles the project in the background. */
+    readonly compileOnSave: boolean;
+}
+
+/** Settings stored with one project. */
+export interface ProjectSettings {
+    /** The root document, relative to the project with `/`, or null to
+     * let the editor work it out. */
+    readonly mainFile: string | null;
+}
+
+/** A place in the source, from a click in the PDF. */
+export interface SourceLocation {
+    /** Absolute path of the source file. */
+    readonly file: string;
+    /** 1-based line. */
+    readonly line: number;
+}
+
+/** A place in a PDF, in PDF points from the page's top-left corner. */
+export interface PdfLocation {
+    /** 1-based page number. */
+    readonly page: number;
+    readonly x: number;
+    readonly y: number;
 }
 
 /** How serious a problem the LaTeX engine reported is. */

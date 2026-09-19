@@ -25,6 +25,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     lineNumberMode: "absolute",
     showDiagnostics: false,
     openPdfAfterCompile: true,
+    compileOnSave: true,
 };
 
 /** Allowed editor font-size bounds in pixels. */
@@ -114,6 +115,7 @@ export function normalizeSettings(stored: StoredSettings | null | undefined): Ap
 
     // On unless explicitly turned off, like spell checking.
     const openPdfAfterCompile = stored.openPdfAfterCompile !== false;
+    const compileOnSave = stored.compileOnSave !== false;
 
     return {
         theme,
@@ -123,5 +125,6 @@ export function normalizeSettings(stored: StoredSettings | null | undefined): Ap
         lineNumberMode,
         showDiagnostics,
         openPdfAfterCompile,
+        compileOnSave,
     };
 }

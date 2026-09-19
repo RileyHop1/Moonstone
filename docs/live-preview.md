@@ -574,6 +574,12 @@ them — outside math segments and reference chips, and never after a
 `\\` line break. Matches render as inline `SymbolWidget`s
 (`\alpha` → α) with the same cursor-reveal rule.
 
+A math-only symbol in running text (`\alpha` outside math) does not
+compile, so it renders as an error — `.cm-math-only`, error colour and a
+wavy underline — rather than as a finished glyph. The positions come from
+`findTextModeMath`, computed once per document in the cached scan; see
+`pdf-compilation.md` for the rules.
+
 ## Tables
 
 `parseTabular.ts` parses a `tabular`/`tabular*` environment's interior

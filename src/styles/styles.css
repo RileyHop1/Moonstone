@@ -419,6 +419,15 @@ body {
     user-select: none;
 }
 
+.titlebar-logo {
+    width: 18px;
+    height: 18px;
+    margin-right: 8px;
+    background: var(--accent);
+    mask: center / contain no-repeat;
+    -webkit-mask: center / contain no-repeat;
+}
+
 .titlebar-title {
     font-size: 13px;
     font-weight: 600;
